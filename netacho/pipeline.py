@@ -341,7 +341,13 @@ def reread(
         suppressed = doc.pop("suppressed_answered", 0)
         save_review(ctx, doc, questions)
         stats = ctx.usage.extra.get("deshi", {"round1": 0, "round2": None, "dropped_no_anchor": 0})
-        ctx.usage.extra["deshi"] = {**stats, "reread": len(current), "suppressed_answered": suppressed}
+        dropped = stats["dropped_no_anchor"] + ctx.deshi_dropped
+        ctx.usage.extra["deshi"] = {
+            **stats,
+            "dropped_no_anchor": dropped,
+            "reread": len(current),
+            "suppressed_answered": suppressed,
+        }
         ctx.usage.extra["questions"] = len(questions["questions"])
     finally:  # 落ちても、呼んだ分の費用を残す
         store.write(run_path, ctx.usage.to_json(), "run")
