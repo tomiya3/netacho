@@ -1,0 +1,57 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    # Optional: Only run on specific file changes
+    # paths:
+    #   - "src/**/*.ts"
+    #   - "src/**/*.tsx"
+    #   - "src/**/*.js"
+    #   - "src/**/*.jsx"
+
+jobs:
+  claude-review:
+    # fork からの PR には secrets が渡らず必ず失敗するので、同じ repo のブランチからの PR だけ
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # base ブランチとの差分を取るため（1 だと差分が取れずに何も投稿しないことがあった）
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: |
+            PR #${{ github.event.pull_request.number }}（${{ github.repository }}）をレビューしてください。日本語で。
+            先に CLAUDE.md と docs/plan.md の §2〜§6 を読んでから、差分を見ること。
+            差分は `git diff origin/${{ github.event.pull_request.base.ref }}...${{ github.event.pull_request.head.sha }}`（または `gh pr diff ${{ github.event.pull_request.number }}`）で取る。
+            base が main 以外（積んだ PR）のときは、その base との差分だけを見る。
+
+            見る順：
+            1. docs/plan.md と CLAUDE.md との食い違い（LLM の周りは決定的コード、演者の言葉を変えない、札は LLM 0 回、役に見せる物の境界、型は heard だけ、schema 検証は受信直後、数字は実測だけ）
+            2. 本物の高座で壊れそうな箇所（文字起こしの誤り、笑いと台詞の重なり、長尺。ダミーのテストでは出ない問題）
+            3. 変更に対してテストが足りない箇所
+            4. 秘密・個人情報・所属・演者のデータの混入。README や progress.md に推定値の数字を書いていないか
+            5. バグ（境界値、パス、例外時の部分出力、費用の上限の抜け）
+
+            出力：指摘は「重要度（高/中/低）・場所（ファイル:行）・何が問題か・どう直すか」を各3行以内、重要度順に最大8件。
+            該当箇所にはインラインコメントを付ける。問題がなければ「指摘なし」と、何を確認したかを1行。
+            良い判断があれば1〜2点だけ添える。
+          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment,Read,Grep,Glob,Bash(git diff *),Bash(git log *),Bash(git show *),Bash(gh pr diff *),Bash(gh pr view *)"'
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
+

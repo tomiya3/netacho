@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# main への直接 push を止める。マージは PR で。
+# 語の検査：repo の外の一覧（forbidden-words.txt）の語が、push する内容かコミットメッセージにあれば止める。
+# 語そのものは表示しない（ログに残さないため）。
+list="${NETACHO_DATA:-$HOME/netacho-data}/forbidden-words.txt"
+words=""
+if [ -f "$list" ]; then
+  words=$(mktemp)
+  trap 'rm -f "$words"' EXIT
+  grep -vE '^[[:space:]]*(#|$)' "$list" > "$words"  # 空行があると全行に当たるので除く
+else
+  echo "pre-push: $list が無いので語の検査を省略" >&2
+fi
+zero=0000000000000000000000000000000000000000
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    echo "pre-push: main へは直接 push しない。ブランチを切って PR を作る（/pr）" >&2
+    exit 1
+  fi
+  if [ -z "$words" ] || [ ! -s "$words" ] || [ "$local_sha" = "$zero" ]; then
+    continue
+  fi
+  if git grep -lIiFf "$words" "$local_sha" >&2; then
+    echo "pre-push: 出してはいけない語が上のファイルにある" >&2
+    exit 1
+  fi
+  if [ "$remote_sha" = "$zero" ]; then
+    messages=$(git log --format=%B "$local_sha" --not --remotes)
+  else
+    messages=$(git log --format=%B "$remote_sha..$local_sha")
+  fi
+  if grep -qiFf "$words" <<<"$messages"; then
+    echo "pre-push: 出してはいけない語がコミットメッセージにある" >&2
+    exit 1
+  fi
+done
+exit 0

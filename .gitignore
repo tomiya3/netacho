@@ -1,0 +1,42 @@
+# 生成物
+out/
+
+# 演者のデータ（repo の外に置く。取り違えに備えて無視する）
+koza/
+hanashi.json
+kata.json
+sokki.md
+
+# 音声・映像
+*.mp4
+*.MP4
+*.mov
+*.MOV
+*.wav
+*.m4a
+*.mp3
+*.aac
+*.flac
+
+# テストのダミーは入れる
+!tests/fixtures/**
+
+# 秘密
+.env
+.env.*
+!.env.example
+*.key
+credentials*.json
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# モデルキャッシュ
+models/
+.cache/
+
+.DS_Store

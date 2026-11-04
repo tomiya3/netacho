@@ -1,0 +1,111 @@
+ask	git push origin --delete 21-x
+allow	git push -q
+allow	git push -u origin 53-guard-commands
+ask	cd a && git push -f
+ask	git push origin +main
+ask	git branch -D foo
+allow	git branch --show-current
+ask	git reset --hard HEAD
+allow	git reset HEAD~1
+ask	git clean -fd
+ask	git checkout -- .
+allow	git checkout -q main
+ask	git rebase main
+allow	git stash pop -q
+allow	rm -rf out/x
+allow	rm file.txt
+ask	cd x && rm -rf y
+allow	ls -la | grep rm
+ask	x=$(gh pr merge 1)
+ask	gh pr merge 45 --squash
+allow	gh pr comment 45 --body 'see gh pr merge later'
+allow	gh issue close 21
+ask	gh issue delete 21
+allow	gh issue create --title x
+ask	gh api -X PATCH repos/a/b
+allow	gh api repos/a/b/pulls/1/comments
+ask	sudo rm -rf /
+deny	gh pr create --title x
+deny	cd /x && gh pr create --title x
+allow	python3 - <<EOF\ns='`gh pr create` は止める'\nEOF
+allow	git commit -m 'fix: git reset --hard を ask に'
+ask	git -C . push --force
+ask	env X=1 git reset --hard
+ask	X=1 git reset --hard
+ask	bash -c "git status"
+ask	xargs rm -rf
+ask	/bin/rm -rf x
+ask	if true; then rm -rf x; fi
+ask	git push -fu origin x
+ask	git clean --force
+ask	git branch -fd x
+ask	rm x -rf
+ask	rm -v -rf x
+ask	git checkout -f
+ask	git checkout HEAD -- .
+ask	git restore --source=HEAD .
+ask	gh api --method=DELETE repos/a/b
+ask	gh api repos/a/b/pulls -f title=x
+ask	gh api graphql -f query=x
+ask	gh -R a/b pr merge 1
+ask	git rm -rf .
+ask	rmdir x
+ask	git update-ref -d refs/heads/x
+ask	git worktree remove --force ../wt
+allow	git worktree remove ../wt
+allow	git push origin x && git log -d
+allow	git checkout -- netacho/x.py
+deny	git push origin HEAD:main
+deny	git push origin main
+allow	git push origin 53-main-fix
+deny	git push origin HEAD:refs/heads/main
+deny	git push origin +HEAD:main
+ask	eval "rm -rf x"
+ask	\rm -rf x
+allow	rm -f out/test_c/run.json
+allow	rm -rf ./out/test_c
+allow	rm -rf out/test_c/*
+allow	rm -rf /private/tmp/claude-501/abc/scratchpad/gt
+allow	rm -rf out/a && rm -f out/b
+ask	rm -rf out
+ask	rm -rf out/
+ask	rm -rf out/*
+ask	rm -rf out/demo
+ask	rm -rf out/demo/x
+ask	rm -rf out/../docs
+ask	rm -rf docs/x
+ask	rm -rf out/x docs/y
+ask	rm -rf out/a && rm -rf docs
+ask	cd docs && rm -rf out/x
+ask	rm -rf "out/x"
+ask	rm -rf $HOME/x
+ask	rm -rf ~/x
+ask	sudo rm -rf out/x
+ask	xargs rm -rf out/x
+ask	rm -rf /private/tmp/other
+ask	rm -rf /tmp/claude-501
+ask	rm -rf /Users/x/out/a
+ask	rm -rf
+ask	rm -rf out/d*
+ask	rm -rf out/d[e]mo
+ask	rm -rf out/./demo
+ask	rm -rf out/{demo,x}
+ask	rm -rf out/Demo
+ask	rm -rf out/DEMO/x
+ask	rm -rf out//demo
+ask	rm -rf out/x; (rm -rf src)
+ask	rm -rf out/x; { rm -rf src; }
+ask	rm -rf out/x; ! rm -rf src
+ask	rm -rf out/x; nice rm -rf src
+ask	if true; then cd src; rm -rf out/x; fi
+ask	pushd src && rm -rf out/x
+ask	rm -rf out/x & rm -rf src
+ask	rm -rf out/x || rm -rf src
+ask	cd /x && rm -rf /tmp/claude-501/abc/x
+allow	rm -rf out/test_c; rm -f out/b.json
+allow	rm -f /tmp/claude-501/x/y
+allow	rm -rf out/x/*
+ask	rm -rf out/x/*/Documents
+ask	rm -rf out/x/[a]/y
+ask	rm -rf out/x/.*
+ask	rm -rf out/.
