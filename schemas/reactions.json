@@ -1,0 +1,134 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "reactions",
+  "description": "反応の候補。強さは同じ高座の中の順位（1 が最も強い）。未検出は反応なしを意味しない",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "koza_id",
+    "reactions",
+    "hints"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "koza_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "params": {
+      "type": "object"
+    },
+    "reactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "t0",
+          "t1",
+          "kind",
+          "strength_rank",
+          "method"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^react-\\d{4,}$"
+          },
+          "t0": {
+            "type": "number",
+            "minimum": 0
+          },
+          "t1": {
+            "type": "number",
+            "minimum": 0
+          },
+          "kind": {
+            "const": "reaction"
+          },
+          "strength_rank": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "method": {
+            "enum": [
+              "auto",
+              "manual"
+            ]
+          }
+        }
+      }
+    },
+    "hints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "t0",
+          "t1",
+          "seg_id"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "long_pause",
+              "vad_no_text"
+            ]
+          },
+          "t0": {
+            "type": "number",
+            "minimum": 0
+          },
+          "t1": {
+            "type": "number",
+            "minimum": 0
+          },
+          "seg_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^seg-\\d{4,}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "wave": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hop",
+        "db",
+        "baseline_db"
+      ],
+      "properties": {
+        "hop": {
+          "type": "number"
+        },
+        "db": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "baseline_db": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "description": "画面の波。hop 秒ごとの RMS（dB）と基準"
+    }
+  }
+}

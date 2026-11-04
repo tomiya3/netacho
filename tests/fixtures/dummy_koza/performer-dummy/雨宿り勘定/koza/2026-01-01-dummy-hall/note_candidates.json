@@ -1,0 +1,17 @@
+{
+ "schema_version": 1,
+ "koza_id": "2026-01-01-dummy-hall",
+ "candidates": [
+  {
+   "id": "cand-0001",
+   "item_id": "item-0007",
+   "payoff_t": 45.0,
+   "window": [
+    45.0,
+    51.0
+   ],
+   "reaction_ids": [],
+   "why": "no_candidate"
+  }
+ ]
+}

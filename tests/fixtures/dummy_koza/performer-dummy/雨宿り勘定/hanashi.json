@@ -1,0 +1,141 @@
+{
+ "schema_version": 1,
+ "book": "hanashi",
+ "performer_id": "performer-dummy",
+ "neta": "雨宿り勘定",
+ "scenes": [
+  {
+   "id": "scene-01",
+   "title": "枕",
+   "order": 1,
+   "koza_id": "2026-01-01-dummy-hall",
+   "segs": [
+    "seg-0001",
+    "seg-0003"
+   ]
+  },
+  {
+   "id": "scene-02",
+   "title": "傘を借りる",
+   "order": 2,
+   "koza_id": "2026-01-01-dummy-hall",
+   "segs": [
+    "seg-0004",
+    "seg-0009"
+   ]
+  },
+  {
+   "id": "scene-03",
+   "title": "傘を返す",
+   "order": 3,
+   "koza_id": "2026-01-01-dummy-hall",
+   "segs": [
+    "seg-0010",
+    "seg-0012"
+   ]
+  }
+ ],
+ "characters": [
+  {
+   "id": "char-01",
+   "name": "太助",
+   "note": "傘を借りる男"
+  },
+  {
+   "id": "char-02",
+   "name": "ご隠居",
+   "note": "傘を貸す"
+  }
+ ],
+ "items": [
+  {
+   "id": "item-0001",
+   "kind": "場面",
+   "priority": 1,
+   "text": "太助がご隠居の家へ傘を借りに行く",
+   "basis": "heard",
+   "source": {
+    "koza_id": "2026-01-01-dummy-hall",
+    "segs": [
+     "seg-0004",
+     "seg-0007"
+    ],
+    "t0": 18.6,
+    "t1": 36.0,
+    "quote": "ご隠居さん、こんちは。おう太助か、ひどい降りだな。傘を貸しておくんなさい。貸すのはいいが、利息を付けて返すんだぞ。"
+   },
+   "edited_by": "tool",
+   "drafted_by": "writer",
+   "history": []
+  },
+  {
+   "id": "item-0002",
+   "kind": "人物",
+   "priority": 2,
+   "text": "ご隠居は貸した傘に利息を求める",
+   "basis": "heard",
+   "source": {
+    "koza_id": "2026-01-01-dummy-hall",
+    "segs": [
+     "seg-0007",
+     "seg-0007"
+    ],
+    "t0": 31.5,
+    "t1": 36.0,
+    "quote": "貸すのはいいが、利息を付けて返すんだぞ。"
+   },
+   "edited_by": "tool",
+   "drafted_by": "writer",
+   "history": []
+  },
+  {
+   "id": "item-0003",
+   "kind": "サゲ",
+   "priority": 1,
+   "text": "傘の骨と骨折り賃を掛けて落とす",
+   "basis": "heard",
+   "source": {
+    "koza_id": "2026-01-01-dummy-hall",
+    "segs": [
+     "seg-0007",
+     "seg-0007"
+    ],
+    "t0": 31.5,
+    "t1": 36.0,
+    "quote": "貸すのはいいが、利息を付けて返すんだぞ。"
+   },
+   "edited_by": "tool",
+   "drafted_by": "writer",
+   "history": [],
+   "payoff": {
+    "segs": [
+     "seg-0012",
+     "seg-0012"
+    ],
+    "t0": 54.5,
+    "t1": 59.0,
+    "quote": "へえ、ですから骨折り賃をいただきに来ました。"
+   }
+  },
+  {
+   "id": "item-0004",
+   "kind": "知らない物",
+   "priority": 3,
+   "text": "番傘は竹と油紙の傘",
+   "basis": "knowledge",
+   "source": {
+    "koza_id": "2026-01-01-dummy-hall",
+    "segs": [
+     "seg-0002",
+     "seg-0002"
+    ],
+    "t0": 4.8,
+    "t1": 11.0,
+    "quote": "昔の番傘というのは、今と違って高いものでございまして。"
+   },
+   "edited_by": "tool",
+   "drafted_by": "writer",
+   "history": []
+  }
+ ]
+}

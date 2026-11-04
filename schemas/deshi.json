@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "deshi",
+  "description": "弟子役の出力。id、round、resolved はスクリプトが付ける",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "issues"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "scene_id",
+          "item_id",
+          "attempt",
+          "what_is_missing"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "missing_step",
+              "unclear_scene",
+              "no_makura",
+              "no_sage",
+              "ask_performer"
+            ]
+          },
+          "scene_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "指す場面。item を指すときは null"
+          },
+          "item_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "指す項目。場面を指すときは null"
+          },
+          "attempt": {
+            "type": "string",
+            "description": "どこを演ろうとしたか"
+          },
+          "what_is_missing": {
+            "type": "string",
+            "description": "何が書いていないから演れないか"
+          }
+        }
+      }
+    }
+  }
+}

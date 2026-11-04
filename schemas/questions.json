@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "questions",
+  "description": "演者への質問。answer は演者の言葉のまま",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "performer_id",
+    "neta",
+    "questions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "performer_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "neta": {
+      "type": "string",
+      "minLength": 1
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "issue_id",
+          "scene_id",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^q-\\d{4,}$"
+          },
+          "issue_id": {
+            "type": "string",
+            "pattern": "^issue-\\d{4,}$"
+          },
+          "scene_id": {
+            "type": "string",
+            "pattern": "^scene-\\d{2,}$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "answer": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "speaker",
+              "recorded_at",
+              "words"
+            ],
+            "properties": {
+              "speaker": {
+                "type": "string",
+                "minLength": 1
+              },
+              "recorded_at": {
+                "type": "string",
+                "minLength": 1
+              },
+              "words": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

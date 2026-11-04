@@ -1,0 +1,31 @@
+{
+ "schema_version": 1,
+ "performer_id": "performer-dummy",
+ "neta": "雨宿り勘定",
+ "issues": [
+  {
+   "id": "issue-0001",
+   "role": "deshi",
+   "kind": "ask_performer",
+   "anchor": {
+    "scene_id": "scene-02"
+   },
+   "attempt": "行列の見立てを演ろうとした",
+   "what_is_missing": "なぜ間を詰めるのかが書いていない",
+   "round": 1,
+   "resolved": true
+  },
+  {
+   "id": "issue-0002",
+   "role": "deshi",
+   "kind": "missing_step",
+   "anchor": {
+    "item_id": "item-0003"
+   },
+   "attempt": "サゲへの運びを演ろうとした",
+   "what_is_missing": "傘の骨が折れた理由が書いていない",
+   "round": 1,
+   "resolved": false
+  }
+ ]
+}

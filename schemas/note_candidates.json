@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "note_candidates",
+  "description": "スクリプトが選んだ「薄い」候補。選ぶのはスクリプトだけ",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "koza_id",
+    "candidates"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "koza_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "item_id",
+          "payoff_t",
+          "window",
+          "reaction_ids",
+          "why"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^cand-\\d{4,}$"
+          },
+          "item_id": {
+            "type": "string",
+            "pattern": "^item-\\d{4,}$"
+          },
+          "payoff_t": {
+            "type": "number",
+            "minimum": 0
+          },
+          "window": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 0
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "reaction_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^react-\\d{4,}$"
+            }
+          },
+          "why": {
+            "enum": [
+              "no_candidate",
+              "low_rank"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

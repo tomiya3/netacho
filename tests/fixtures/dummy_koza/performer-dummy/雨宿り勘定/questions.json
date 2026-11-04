@@ -1,0 +1,18 @@
+{
+ "schema_version": 1,
+ "performer_id": "performer-dummy",
+ "neta": "雨宿り勘定",
+ "questions": [
+  {
+   "id": "q-0001",
+   "issue_id": "issue-0001",
+   "scene_id": "scene-02",
+   "text": "行列の見立てを演ろうとした。なぜ間を詰めるのかが書いていない。",
+   "answer": {
+    "speaker": "performer-dummy",
+    "recorded_at": "2026-01-02T10:05:00+09:00",
+    "words": "行列のところは間を詰めて次へ行く"
+   }
+  }
+ ]
+}

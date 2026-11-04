@@ -1,0 +1,78 @@
+{
+ "schema_version": 1,
+ "koza_id": "2026-01-01-dummy-hall",
+ "segments": [
+  {
+   "seg_id": "seg-0001",
+   "scene_id": "scene-01",
+   "speaker": null,
+   "confidence": null
+  },
+  {
+   "seg_id": "seg-0002",
+   "scene_id": "scene-01",
+   "speaker": null,
+   "confidence": null
+  },
+  {
+   "seg_id": "seg-0003",
+   "scene_id": "scene-01",
+   "speaker": null,
+   "confidence": null
+  },
+  {
+   "seg_id": "seg-0004",
+   "scene_id": "scene-02",
+   "speaker": null,
+   "confidence": null
+  },
+  {
+   "seg_id": "seg-0005",
+   "scene_id": "scene-02",
+   "speaker": null,
+   "confidence": null
+  },
+  {
+   "seg_id": "seg-0006",
+   "scene_id": "scene-02",
+   "speaker": null,
+   "confidence": null
+  },
+  {
+   "seg_id": "seg-0007",
+   "scene_id": "scene-02",
+   "speaker": null,
+   "confidence": null
+  },
+  {
+   "seg_id": "seg-0008",
+   "scene_id": "scene-02",
+   "speaker": null,
+   "confidence": null
+  },
+  {
+   "seg_id": "seg-0009",
+   "scene_id": "scene-02",
+   "speaker": null,
+   "confidence": null
+  },
+  {
+   "seg_id": "seg-0010",
+   "scene_id": "scene-03",
+   "speaker": null,
+   "confidence": null
+  },
+  {
+   "seg_id": "seg-0011",
+   "scene_id": "scene-03",
+   "speaker": null,
+   "confidence": null
+  },
+  {
+   "seg_id": "seg-0012",
+   "scene_id": "scene-03",
+   "speaker": null,
+   "confidence": null
+  }
+ ]
+}

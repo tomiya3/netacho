@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "guide",
+  "description": "開演前の案内の札。copied_fields はスクリプトが item から写す欄、llm_fields は LLM が書く欄（今回は空）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "performer_id",
+    "neta",
+    "cards"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "performer_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "neta": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "order",
+          "scene_id",
+          "item_id",
+          "text",
+          "copied_fields",
+          "llm_fields"
+        ],
+        "properties": {
+          "order": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "scene_id": {
+            "type": "string",
+            "pattern": "^scene-\\d{2,}$"
+          },
+          "item_id": {
+            "type": "string",
+            "pattern": "^item-\\d{4,}$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "copied_fields": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "card_text",
+              "reason",
+              "position",
+              "scene_title",
+              "edited_by"
+            ],
+            "properties": {
+              "card_text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "position": {
+                "enum": [
+                  "before",
+                  "after",
+                  "within"
+                ]
+              },
+              "scene_title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "edited_by": {
+                "const": "performer"
+              }
+            }
+          },
+          "llm_fields": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          }
+        }
+      }
+    }
+  }
+}

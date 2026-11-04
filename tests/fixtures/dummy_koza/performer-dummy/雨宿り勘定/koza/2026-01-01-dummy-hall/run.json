@@ -1,0 +1,30 @@
+{
+ "schema_version": 1,
+ "koza_id": "2026-01-01-dummy-hall",
+ "roles": [],
+ "total_cost_usd": 0.0,
+ "total_seconds": 0.0,
+ "evidence": {
+  "kept": 8,
+  "dropped": {
+   "bad_seg": 1
+  }
+ },
+ "checker": {
+  "supported": 6,
+  "weak": 1,
+  "unsupported": 1,
+  "unchecked_knowledge": 1
+ },
+ "deshi": {
+  "round1": 3,
+  "round2": 1,
+  "dropped_no_anchor": 0
+ },
+ "questions": 1,
+ "guide_performer_cards": 1,
+ "notes": {
+  "candidates": 1,
+  "fallback": 0
+ }
+}

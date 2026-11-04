@@ -1,0 +1,9 @@
+{
+ "schema_version": 1,
+ "id": "2026-01-01-dummy-hall",
+ "date": "2026-01-01",
+ "venue": "dummy-hall",
+ "neta": "雨宿り勘定",
+ "performer_id": "performer-dummy",
+ "audio_sha256": "b5a2c96250612366ea272ffac6d9744aaf4b45aacd96aa7cfcb931ee3b558259"
+}

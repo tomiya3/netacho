@@ -1,0 +1,15 @@
+{
+ "schema_version": 1,
+ "verdicts": [
+  {
+   "item_id": "item-0007",
+   "verdict": "supported",
+   "reason": "引用に行列と雨がある"
+  },
+  {
+   "item_id": "item-0008",
+   "verdict": "unsupported",
+   "reason": "引用に歌が無い"
+  }
+ ]
+}

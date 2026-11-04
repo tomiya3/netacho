@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "timeline",
+  "description": "区間と場面の対応。話者は確度の高いものだけ入れる",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "koza_id",
+    "segments"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "koza_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "seg_id",
+          "scene_id",
+          "speaker",
+          "confidence"
+        ],
+        "properties": {
+          "seg_id": {
+            "type": "string",
+            "pattern": "^seg-\\d{4,}$"
+          },
+          "scene_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^scene-\\d{2,}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "speaker": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

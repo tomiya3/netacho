@@ -1,0 +1,81 @@
+{
+ "schema_version": 1,
+ "scenes": [
+  {
+   "id": "scene-01",
+   "title": "枕",
+   "order": 1,
+   "segs": [
+    "seg-0001",
+    "seg-0003"
+   ]
+  },
+  {
+   "id": "scene-02",
+   "title": "傘を借りる",
+   "order": 2,
+   "segs": [
+    "seg-0004",
+    "seg-0009"
+   ]
+  },
+  {
+   "id": "scene-03",
+   "title": "傘を返す",
+   "order": 3,
+   "segs": [
+    "seg-0010",
+    "seg-0012"
+   ]
+  }
+ ],
+ "characters": [
+  {
+   "id": "char-01",
+   "name": "太助",
+   "note": "傘を借りる男"
+  },
+  {
+   "id": "char-02",
+   "name": "ご隠居",
+   "note": "傘を貸す"
+  }
+ ],
+ "items": [
+  {
+   "id": null,
+   "kind": "見立て",
+   "book": "kata",
+   "priority": 2,
+   "text": "雨の長さを殿様の行列に見立てる",
+   "basis": "heard",
+   "source": {
+    "segs": [
+     "seg-0008",
+     "seg-0008"
+    ]
+   },
+   "payoff": {
+    "segs": [
+     "seg-0009",
+     "seg-0009"
+    ]
+   }
+  },
+  {
+   "id": null,
+   "kind": "場面",
+   "book": "hanashi",
+   "priority": 1,
+   "text": "太助がご隠居の家へ傘を借りに行く",
+   "basis": "heard",
+   "source": {
+    "segs": [
+     "seg-0004",
+     "seg-0007"
+    ]
+   },
+   "payoff": null
+  }
+ ]
+}

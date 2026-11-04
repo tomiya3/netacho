@@ -1,0 +1,21 @@
+{
+ "schema_version": 1,
+ "performer_id": "performer-dummy",
+ "neta": "雨宿り勘定",
+ "cards": [
+  {
+   "order": 1,
+   "scene_id": "scene-01",
+   "item_id": "item-0009",
+   "text": "番傘は、昔はたいへん高価な品でした。",
+   "copied_fields": {
+    "card_text": "番傘は、昔はたいへん高価な品でした。",
+    "reason": "値段が分からないと利息の話が通じないから",
+    "position": "before",
+    "scene_title": "枕",
+    "edited_by": "performer"
+   },
+   "llm_fields": {}
+  }
+ ]
+}
