@@ -36,7 +36,7 @@ has() { grep -qE -- "${AT}$1" <<<"$cmd"; }
 # cd・サブシェル・{ }・! などが混ざる、引用符・$・~・`・\・{・..・/./・// を含む、シンボリックリンクを通る、
 # といった判定しきれない形は、全部承認制に倒す
 rm_ok() {
-  local root proj seg w rel low comp p words paths=0
+  local root proj seg w tmp rel low comp p words paths=0
   [[ "$cmd" =~ [\"\'\$~\`\\{}()!\<\>] || "$cmd" == *..* || "$cmd" == */./* || "$cmd" == *//* ]] && return 1
   [[ "$cmd" == *"||"* || "$cmd" =~ (^|[^&])\&([^&]|$) ]] && return 1  # || とバックグラウンドの & は扱わない
   root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || root=
@@ -45,6 +45,9 @@ rm_ok() {
     [ "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" = \
       "$(git -C "$proj" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ] || root=
   fi
+  # macOS の /tmp は /private/tmp へのリンクで、git の root も /private/tmp で始まる。そのときだけ揃える
+  tmp=$(cd -P /tmp 2>/dev/null && pwd)
+  [ "$tmp" = /private/tmp ] || tmp=/tmp
   while IFS= read -r seg; do
     read -ra words <<<"$seg"
     [ "${#words[@]}" -gt 0 ] || continue
@@ -54,8 +57,8 @@ rm_ok() {
       paths=$((paths + 1))
       [[ "$w" =~ [*?\[][^/]*/ ]] && return 1                     # ワイルドカードは最後の成分だけ（リンクを辿らない）
       [[ "$w" =~ (^|/)\.[^/]*[*?\[] || "$w" =~ (^|/)\.$ ]] && return 1  # .* や末尾の . は扱わない
-      w=${w/#\/tmp\//\/private\/tmp\/}  # macOS の /tmp は /private/tmp へのリンク（Linux では /private/tmp が無いのでリンク検査は素通り）
-      if [[ "$w" =~ ^/private/tmp/claude-[^/*?\[]+/. ]]; then
+      [ "$tmp" = /tmp ] || w=${w/#\/tmp\//\/private\/tmp\/}
+      if [[ "$w" == "$tmp"/claude-* && "${w#"$tmp"/}" =~ ^claude-[^/*?\[]+/. ]]; then
         p=""
       else
         [ -n "$root" ] || return 1
@@ -105,7 +108,8 @@ while IFS= read -r line; do
   n=$((n + 1))
   pat=${line%%$'\t'*} why=${line#*$'\t'}
   [[ "$pat" == rm@N@* ]] && rm_ok && continue  # 一時フォルダと out/ の下の rm -r / -f は承認なし
-  pat=${pat//@GIT@/$GIT} pat=${pat//@GH@/$GH} pat=${pat//@N@/$N}
+  # 置換先は引用符で囲む（bash 5.2 以降は、囲まないと & が「一致した文字列」になる。patsub_replacement）
+  pat=${pat//@GIT@/"$GIT"} pat=${pat//@GH@/"$GH"} pat=${pat//@N@/"$N"}
   has "$pat" && decide ask "承認が要るコマンド：${why}（CLAUDE.md「承認を得てから実行するコマンド」）"
 done <<'EOF'
 @GIT@ +push@N@( --delete| --mirror| --force| -[a-zA-Z]*[df][a-zA-Z]*( |$)| :[^ ]| \+[^ ])	リモートのブランチを消す・履歴を上書きする push
