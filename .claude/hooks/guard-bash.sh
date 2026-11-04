@@ -56,7 +56,7 @@ rm_ok() {
       [[ "$w" =~ (^|/)\.[^/]*[*?\[] || "$w" =~ (^|/)\.$ ]] && return 1  # .* や末尾の . は扱わない
       # macOS の /tmp は /private/tmp へのリンクで、git の root も /private/tmp で始まる。そのときだけ揃える
       tmp=/tmp
-      if [ -L /tmp ] && [ -d /private/tmp ]; then
+      if [ -L /tmp ] && [ "$(cd -P /tmp 2>/dev/null && pwd)" = /private/tmp ]; then
         tmp=/private/tmp
         w=${w/#\/tmp\//\/private\/tmp\/}
       fi
