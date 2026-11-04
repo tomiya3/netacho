@@ -352,8 +352,7 @@ def build_parser() -> argparse.ArgumentParser:
     guide.set_defaults(func=cmd_guide)
 
     reread = sub.add_parser("reread", help="弟子役に読み直させる")
-    reread.add_argument("--performer", required=True)
-    reread.add_argument("--neta", required=True)
+    _who(reread)
     reread.add_argument("--koza", required=True)
     reread.add_argument("--reuse", action="store_true")
     reread.set_defaults(func=cmd_reread)
