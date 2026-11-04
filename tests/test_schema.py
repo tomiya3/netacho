@@ -125,6 +125,14 @@ def test_dummy_refs_ok(docs):
         (lambda d: d["note_candidates"]["candidates"][0].update(payoff_t=99.0), "窓の外"),
         (lambda d: d["transcript"]["segments"][0].update(end=-0.0, start=1.0), "end が start より前"),
         (
+            lambda d: d["note_candidates"]["candidates"][0].update(payoff_t=46.0, window=[45.0, 51.0]),
+            "回収の区間の外",
+        ),
+        (lambda d: d["kata"]["items"][2]["source"].update(koza_id="2026-02-02-other") or None, "別の高座"),
+        (lambda d: d["hanashi"]["scenes"][0].update(koza_id="other"), "高座が無い"),
+        (lambda d: d["timeline"]["segments"].append(d["timeline"]["segments"][0]), "区間が重複"),
+        (lambda d: d["guide"].update(neta="別の演目"), "guide と kata"),
+        (
             lambda d: (
                 d["kata"]["items"][2]["source"].update(segs=["seg-0009", "seg-0009"])
                 or d["kata"]["items"][2]["payoff"].update(segs=["seg-0008", "seg-0008"])

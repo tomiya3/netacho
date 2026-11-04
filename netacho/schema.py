@@ -110,6 +110,9 @@ def _check_books(hanashi: dict, kata: dict, koza_ids: set[str] | None, errors: l
     if {s["id"] for s in hanashi["scenes"]} != {s["id"] for s in kata["scenes"]}:
         errors.append("hanashi と kata で場面が違う")
     scene_ids = {s["id"] for s in hanashi["scenes"]}
+    for scene in hanashi["scenes"]:
+        if koza_ids is not None and scene["koza_id"] not in koza_ids:
+            errors.append(f"{scene['id']}: 高座が無い {scene['koza_id']}")
     for book, wrong in ((hanashi, KATA_KINDS), (kata, HANASHI_KINDS)):
         for it in book["items"]:
             where = f"{book['book']}/{it['id']}"
@@ -170,6 +173,8 @@ def _check_koza_files(
         if doc is not None and koza_id is not None and doc["koza_id"] != koza_id:
             errors.append(f"{name}: 高座が違う {doc['koza_id']}")
     if timeline is not None:
+        if dup := _duplicates([s["seg_id"] for s in timeline["segments"]]):
+            errors.append(f"timeline: 区間が重複: {sorted(dup)}")
         for s in timeline["segments"]:
             if seg_ids is not None and s["seg_id"] not in seg_ids:
                 errors.append(f"timeline: 区間が無い {s['seg_id']}")
@@ -194,6 +199,12 @@ def _check_koza_files(
                 errors.append(f"{where}: item が無い {c['item_id']}")
             elif "payoff" not in items[c["item_id"]]:
                 errors.append(f"{where}: 回収の無い item を指している")
+            else:
+                item = items[c["item_id"]]
+                if item["source"].get("koza_id") != note_candidates["koza_id"]:
+                    errors.append(f"{where}: 別の高座の item を指している")
+                if not item["payoff"]["t0"] <= c["payoff_t"] <= item["payoff"]["t1"]:
+                    errors.append(f"{where}: payoff_t が回収の区間の外")
             for r in c["reaction_ids"]:
                 if reaction_ids is not None and r not in reaction_ids:
                     errors.append(f"{where}: 反応が無い {r}")
@@ -262,6 +273,8 @@ def _check_guide(guide: dict, hanashi: dict, kata: dict, review: dict | None, er
     """札が item の写しで、出すべきものが場面順に過不足なく並んでいること。"""
     scenes = {s["id"]: s for s in hanashi["scenes"]}
     items = {i["id"]: i for i in kata["items"]}
+    if (guide["performer_id"], guide["neta"]) != (kata["performer_id"], kata["neta"]):
+        errors.append("guide と kata で演者か演目が違う")
     shown = [c["item_id"] for c in guide["cards"]]
     if dup := _duplicates(shown):
         errors.append(f"guide: 同じ item の札が重複: {sorted(dup)}")
