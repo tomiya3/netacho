@@ -222,6 +222,65 @@ def test_rebuild_keeps_performer_items_and_ids(data, tmp_path):
     )
 
 
+def test_build_keeps_prep_measurement(data, tmp_path):
+    neta = store.Neta(P, N, data)
+    measured = {"audio_seconds": 60.0, "transcribe_seconds": 30.0, "reactions_seconds": 0.1}
+    run = {
+        "schema_version": 1,
+        "koza_id": K,
+        "roles": [],
+        "total_cost_usd": 0.0,
+        "total_seconds": 0.0,
+        "prep": measured,
+    }
+    store.write(neta.koza_dir(K) / "run.json", run, "run")
+    client = ScriptedClient(writer=[draft(draft_item())], checker=[verdicts(("item-0001", "supported"))])
+    assert build(client, data, tmp_path)["prep"] == measured
+
+
+def test_markdown_has_no_recording_quotes(data, tmp_path):
+    """弟子役が読む .md に録音の引用を出さない（plan §3）。"""
+    client = ScriptedClient(writer=[draft(*ITEMS[:3])], checker=[verdicts()])
+    client.replies["checker"] = [
+        verdicts(("item-0001", "supported"), ("item-0002", "supported"), ("item-0003", "supported"))
+    ]
+    build(client, data, tmp_path)
+    neta = store.Neta(P, N, data)
+    for path in (neta.hanashi, neta.kata):
+        text = path.with_suffix(".md").read_text(encoding="utf-8")
+        assert "おう太助か" not in text and "殿様の行列" not in text
+
+
+def test_second_koza_keeps_first_timeline_and_anchor(data, tmp_path):
+    """二席目を足しても、一席目の timeline と演者の項目が指す場面は保たれる。"""
+    first = ScriptedClient(writer=[draft(draft_item())], checker=[verdicts(("item-0001", "supported"))])
+    build(first, data, tmp_path)
+    neta = store.Neta(P, N, data)
+    _, kata = books(data)
+    kata["items"].append(_performer_item())
+    store.write(neta.kata, kata, "book")
+    before = (neta.koza_dir(K) / "timeline.json").read_text(encoding="utf-8")
+
+    k2 = "2026-03-03-dummy-hall"
+    shutil.copytree(neta.koza_dir(K), neta.koza_dir(k2))
+    (neta.koza_dir(k2) / "timeline.json").unlink()
+    for name, schema in (("koza.json", "koza"), ("transcript.json", "transcript")):
+        doc = store.read(neta.koza_dir(k2) / name, schema)
+        doc["id" if name == "koza.json" else "koza_id"] = k2
+        store.write(neta.koza_dir(k2) / name, doc, schema)
+    second = ScriptedClient(
+        writer=[draft(draft_item(text="二席目の項目"))], checker=[verdicts(("item-0003", "supported"))]
+    )
+    budget = Budget(tmp_path / "ledger.json")
+    pipeline.build(P, N, k2, client=second, budget=budget, root=data)
+    assert (neta.koza_dir(K) / "timeline.json").read_text(encoding="utf-8") == before
+    hanashi, kata = books(data)
+    assert hanashi["items"][0]["source"]["koza_id"] == K
+    assert hanashi["items"][1]["source"]["koza_id"] == k2
+    assert "scene-01" in {s["id"] for s in kata["scenes"]}
+    assert (neta.kata.with_suffix(".md")).exists()
+
+
 def test_rebuild_with_new_scene_keeps_anchor_of_old_scene(data, tmp_path):
     """下書きから場面が消えても、演者の項目が指す場面は残る。"""
     first = ScriptedClient(writer=[draft(draft_item())], checker=[verdicts(("item-0001", "supported"))])

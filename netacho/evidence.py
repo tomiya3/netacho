@@ -10,7 +10,7 @@ from collections import Counter
 from .schema import HANASHI_KINDS, KATA_KINDS, PAYOFF_KINDS
 
 MAX_SPAN_SEC = 180.0  # 1 項目の根拠の長さの上限。暫定
-MIN_PAUSE_SEC = 1.0  # 間の根拠に使える pause_after の下限。暫定
+MIN_PAUSE_SEC = 0.5  # 間の根拠に使える pause_after の下限。構成作家役にもこの長さから見せる。暫定
 
 
 class Segments:
@@ -85,10 +85,14 @@ def verify_items(
     segs = Segments(transcript)
     kept = []
     dropped: Counter = Counter()
+    seen: set[str] = set()
     for item in draft["items"]:
-        if problem := _problem(item, segs, tool_ids, performer_ids):
+        problem = "duplicate_id" if item["id"] in seen else _problem(item, segs, tool_ids, performer_ids)
+        if problem:
             dropped[problem] += 1
             continue
+        if item["id"] is not None:
+            seen.add(item["id"])
         out = {
             "id": item["id"],
             "book": _book(item),

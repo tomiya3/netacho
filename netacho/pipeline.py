@@ -12,8 +12,6 @@ from .budget import Budget
 from .runner import RoleCache, Usage, call_role
 from .schema import check_refs
 
-SHOW_PAUSE_SEC = 0.5  # 構成作家役に見せる間の下限
-
 
 @dataclass
 class Context:
@@ -58,7 +56,7 @@ def transcript_text(transcript: dict) -> str:
     lines = []
     for s in transcript["segments"]:
         pause = s["pause_after"]
-        tail = f"（間 {pause:.1f} 秒）" if pause is not None and pause >= SHOW_PAUSE_SEC else ""
+        tail = f"（間 {pause:.1f} 秒）" if pause is not None and pause >= evidence.MIN_PAUSE_SEC else ""
         lines.append(f"{s['id']} {s['text']}{tail}")
     return "\n".join(lines)
 
@@ -194,10 +192,14 @@ def _context(
     koza = store.read(kdir / "koza.json", "koza")
     transcript = store.read(kdir / "transcript.json", "transcript")
     hanashi, kata = load_books(neta)
-    usage = Usage(kdir / "run.json", {"schema_version": 1, "koza_id": koza_id})
     run_path = kdir / "run.json"
-    if reuse and run_path.exists():
-        usage.restore(store.read(run_path, "run"))
+    usage = Usage(run_path, {"schema_version": 1, "koza_id": koza_id})
+    if run_path.exists():
+        previous = store.read(run_path, "run")
+        if "prep" in previous:  # prep の実測は作り直しても残す
+            usage.extra["prep"] = previous["prep"]
+        if reuse:
+            usage.restore(previous)
     cache = RoleCache((root or store.data_root()) / ".cache" / "roles", reuse=reuse)
     return Context(neta, koza, transcript, client, budget or Budget(), usage, cache, hanashi, kata)
 

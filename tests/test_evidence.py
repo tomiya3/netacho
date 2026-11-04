@@ -57,7 +57,7 @@ def test_time_and_quote_come_from_segments(transcript):
         (item(kind="サゲ"), "no_payoff"),
         (item(kind="サゲ", payoff={"segs": ["seg-0012", "seg-9999"]}), "bad_payoff_seg"),
         (item(kind="サゲ", payoff={"segs": ["seg-0001", "seg-0001"]}), "payoff_before_source"),
-        (item(kind="間", book="kata", source={"segs": ["seg-0004", "seg-0005"]}), "ma_no_pause"),
+        (item(kind="間", book="kata", source={"segs": ["seg-0004", "seg-0004"]}), "ma_no_pause"),
         (item(kind="上下", book="kata"), "kind_not_allowed"),
         (item(kind="staging", book="kata"), "kind_not_allowed"),
         (item(id="item-0099"), "unknown_id"),
@@ -68,6 +68,14 @@ def test_dropped_with_reason(transcript, bad, reason):
     kept, dropped = run(transcript, bad, performer=["item-0050"])
     assert kept == []
     assert dropped == {reason: 1}
+
+
+def test_same_id_twice_keeps_the_first(transcript):
+    kept, dropped = run(
+        transcript, item(id="item-0001", text="先"), item(id="item-0001", text="後"), tool=["item-0001"]
+    )
+    assert [k["text"] for k in kept] == ["先"]
+    assert dropped == {"duplicate_id": 1}
 
 
 def test_kata_knowledge_is_never_kept_even_if_writer_says_hanashi(transcript):

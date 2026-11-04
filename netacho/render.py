@@ -1,8 +1,10 @@
-"""噺・型の .md。弟子役はこれだけを読む。保留の項目は出さない。"""
+"""噺・型の .md。弟子役はこれだけを読む。
+
+保留の項目は出さない。録音の引用も出さない（弟子役に transcript を読ませず、書かれていない物を
+補わせないため）。根拠は JSON と視聴画面で見る。
+"""
 
 from __future__ import annotations
-
-QUOTE_MAX = 60
 
 
 def scene_lookup(timelines: list[dict]) -> dict[tuple[str, str], str]:
@@ -24,10 +26,6 @@ def scene_of_item(item: dict, lookup: dict[tuple[str, str], str]) -> str | None:
     return None
 
 
-def _short(text: str) -> str:
-    return text if len(text) <= QUOTE_MAX else text[:QUOTE_MAX] + "…"
-
-
 def _line(item: dict) -> list[str]:
     src = item["source"]
     if "words" in src:  # 演者の言葉は切らずにそのまま
@@ -41,11 +39,7 @@ def _line(item: dict) -> list[str]:
             lines.append(f"  - 札：{item['card_text']}")
         return lines
     mark = "（暫定）" if item["basis"] == "knowledge" else ""
-    lines = [f"- `{item['id']}` 【{item['kind']}】{item['text']}{mark}"]
-    lines.append(f"  - 根拠：「{_short(src['quote'])}」")
-    if "payoff" in item:
-        lines.append(f"  - 回収：「{_short(item['payoff']['quote'])}」")
-    return lines
+    return [f"- `{item['id']}` 【{item['kind']}】{item['text']}{mark}"]
 
 
 def to_markdown(book: dict, lookup: dict[tuple[str, str], str]) -> str:
