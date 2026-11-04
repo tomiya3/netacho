@@ -239,7 +239,7 @@ def cmd_run(args: argparse.Namespace) -> None:
     if not args.reuse:  # --reuse はキャッシュだけで済むことがあるので、鍵を要求しない
         try:
             runner.check_auth(runner.make_client())  # 長い文字起こしの後で落ちないように、先に確かめる
-        except anthropic.AuthenticationError as e:
+        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
             raise SystemExit("API の鍵が通らない。ANTHROPIC_API_KEY を確かめる") from e
         except TypeError as e:
             if "authentication" not in str(e).lower():  # 別のバグを認証の問題と言わない
@@ -374,7 +374,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--to", dest="end", type=float)
     run.add_argument("--terms", help="演目の語（カンマ区切り）")
     run.add_argument("--force", action="store_true", help="手で付けた反応があっても作り直す")
-    run.add_argument("--reuse", action="store_true", help="同じ入力の役の出力を使い回す")
+    run.add_argument(
+        "--reuse", action="store_true", help="同じ入力の役の出力を使い回す。外れると prep の後で鍵が要る"
+    )
     run.set_defaults(func=cmd_run)
 
     decide = sub.add_parser("decide", help="演者の決定を型に入れる（LLM 0 回）")
@@ -408,8 +410,7 @@ def build_parser() -> argparse.ArgumentParser:
     show.set_defaults(func=cmd_view)
 
     reread = sub.add_parser("reread", help="弟子役に読み直させる")
-    reread.add_argument("--performer", required=True)
-    reread.add_argument("--neta", required=True)
+    _who(reread)
     reread.add_argument("--koza", required=True)
     reread.add_argument("--reuse", action="store_true")
     reread.set_defaults(func=cmd_reread)

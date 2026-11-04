@@ -41,8 +41,9 @@ def test_reaction_after_the_end_goes_to_the_last_line():
     assert lines([seg("一", 0, 2)], react(9.0)) == ["一（笑い）"]
 
 
-def test_same_mark_is_not_repeated():
-    assert lines([seg("一", 0, 10)], react(1.0), react(3.0), react(4.0, "applause")) == ["一（笑い）（拍手）"]
+def test_close_marks_are_merged_and_far_marks_are_not():
+    assert lines([seg("一", 0, 30)], react(1.0), react(3.0), react(4.0, "applause")) == ["一（笑い）（拍手）"]
+    assert lines([seg("一", 0, 30)], react(1.0), react(20.0)) == ["一（笑い）（笑い）"]
 
 
 def test_empty_segment_keeps_its_mark():
@@ -51,7 +52,7 @@ def test_empty_segment_keeps_its_mark():
 
 def test_says_unproofed_and_position_is_rough():
     text = render.sokki_markdown(KOZA, {"segments": [seg("一", 0, 2)]}, {"reactions": [react(1.0)]})
-    assert "未校正" in text and "目安" in text
+    assert "未校正" in text and "目安" in text and "種類も外れる" in text
 
 
 def test_no_reaction_does_not_read_as_none():
