@@ -69,6 +69,21 @@ def test_held_items_reach_the_screen(doc):
     assert any(i.get("held") for i in doc["kata"])
 
 
+def test_broken_other_koza_does_not_stop_the_view(tmp_path):
+    neta, k2 = _two_koza(tmp_path)
+    for broken in ("{壊れた", '{"schema_version": 1}'):
+        (neta.koza_dir(k2) / "timeline.json").write_text(broken, encoding="utf-8")
+        assert view.payload(neta, K)["koza"]["id"] == K
+
+
+def test_failed_write_removes_old_view(tmp_path):
+    out = tmp_path / "view"
+    view.write(store.Neta(P, N, DATA), K, out)
+    with pytest.raises(FileNotFoundError):
+        view.write(store.Neta(P, "無い噺", DATA), K, out)
+    assert not (out / "view.json").exists()
+
+
 def test_only_out_view_is_served():
     make = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "-d out/view" in make and "-d ." not in make

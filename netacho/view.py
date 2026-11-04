@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 from . import render, store
@@ -21,12 +22,24 @@ def _with_scene(items: list[dict], lookup: dict) -> list[dict]:
     return [{**i, "scene_id": render.scene_of_item(i, lookup)} for i in items]
 
 
+def _timelines(neta: store.Neta, koza_id: str) -> list[dict]:
+    """全高座の timeline。作りかけの別の高座があっても、見たい高座は開けるように読み飛ばす。"""
+    rows = []
+    for path in sorted((neta.base / "koza").glob("*/timeline.json")):
+        try:
+            rows.append(store.read(path, "timeline"))
+        except ValueError:
+            if path.parent.name == koza_id:
+                raise
+            print(f"読み飛ばした：{path.parent.name} の timeline.json", file=sys.stderr)
+    return rows
+
+
 def payload(neta: store.Neta, koza_id: str) -> dict:
     """1 つの高座を見るのに要る物を 1 つの JSON にまとめる。"""
     kdir = neta.koza_dir(koza_id)
     # 正本は演目全体の物。別の高座が出所の項目も場面を引けるように、全高座の timeline を読む
-    timelines = [store.read(p, "timeline") for p in sorted((neta.base / "koza").glob("*/timeline.json"))]
-    lookup = render.scene_lookup(timelines)
+    lookup = render.scene_lookup(_timelines(neta, koza_id))
     hanashi = store.read(neta.hanashi, "book")
     kata = store.read(neta.kata, "book")
     note = kdir / "note.md"
@@ -49,6 +62,7 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
 def write(neta: store.Neta, koza_id: str, out: Path = OUT) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     path = out / "view.json"
+    path.unlink(missing_ok=True)  # 失敗したとき、前の高座の画面を残さない
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(payload(neta, koza_id), ensure_ascii=False), encoding="utf-8")
     tmp.replace(path)

@@ -468,7 +468,6 @@ def note(
         reactions=reactions,
         note_candidates=cands,
     )
-    store.write(kdir / "note_candidates.json", cands, "note_candidates")
     items = {i["id"]: i for i in all_items}
     doc = None
     if cands["candidates"]:
@@ -485,7 +484,7 @@ def note(
     for c in cands["candidates"]:
         c["note"] = notes[c["id"]]
         c["note_source"] = "fixed" if c["id"] in fixed else "claude"
-    store.write(kdir / "note_candidates.json", cands, "note_candidates")  # 視聴画面が読む
+    store.write(kdir / "note_candidates.json", cands, "note_candidates")  # 文が揃ってから 1 回だけ書く
     scene_of = {s["seg_id"]: s["scene_id"] for s in tl["segments"]}
     titles = {s["id"]: s["title"] for s in ctx.hanashi["scenes"]}
     item_scene = {
