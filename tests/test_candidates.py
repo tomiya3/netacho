@@ -35,13 +35,26 @@ def test_no_reaction_in_window_is_no_candidate():
     r = candidates.select([item(1, 10.0)], doc(react(1, 17.0, 18.0, 1)))
     assert whys(r) == [("item-0001", "no_candidate")]
     c = r["candidates"][0]
-    assert c["window"] == [10.0, 16.0] and c["payoff_t"] == 10.0 and c["reaction_ids"] == []
+    assert c["window"] == [9.0, 16.0] and c["payoff_t"] == 10.0 and c["reaction_ids"] == []
 
 
 def test_reaction_overlapping_window_counts():
     """笑いが回収の途中から始まっていても、窓にかかれば候補がある。"""
     r = candidates.select([item(1, 10.0)], doc(react(1, 9.0, 10.5, 1)))
     assert whys(r) == []
+
+
+def test_laugh_ending_inside_the_payoff_segment_counts():
+    """Whisper の区間の途中でサゲが来て、笑いが区間の中で終わっても候補がある。"""
+    r = candidates.select([item(1, 10.0)], doc(react(1, 9.2, 9.8, 1)))
+    assert whys(r) == []
+
+
+def test_boundary_tie_is_left_out():
+    """近い回収が同じ反応を指して境目が同順位なら、時刻で片方だけ選ばない。"""
+    items = [item(i, 10.0 * i) for i in range(1, 5)] + [item(5, 41.0)]
+    rows = [react(i, 10.0 * i + 1, 10.0 * i + 2, rank=i) for i in range(1, 5)]
+    assert whys(candidates.select(items, doc(*rows))) == []
 
 
 def test_lower_quarter_is_low_rank():
@@ -111,9 +124,12 @@ def test_few_payoffs_notice():
     assert any("強さは比べていません" in n for n in r["notices"])
 
 
-def test_clipped_window_still_finds_reaction():
-    r = candidates.select([item(1, 58.0)], doc(react(1, 59.0, 59.5, 1), seconds=60))
-    assert r["candidates"] == []
+def test_clipped_window_is_not_ranked():
+    """窓が切れた回収は短い窓で弱く出るので、順位の比較に入れない。"""
+    items = [item(i, 10.0 * i) for i in range(1, 5)] + [item(5, 58.0)]
+    rows = [react(i, 10.0 * i + 1, 10.0 * i + 2, rank=i) for i in range(1, 5)]
+    rows.append(react(5, 59.0, 59.5, 9))
+    assert whys(candidates.select(items, doc(*rows, seconds=60))) == [("item-0004", "low_rank")]
 
 
 def test_manual_reaction_without_rank_is_presence_only():

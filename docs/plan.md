@@ -254,8 +254,9 @@ netacho build   --performer ID --neta 演目 --koza KOZA [--reuse]   # 噺・型
 netacho note    --performer ID --neta 演目 --koza KOZA [--reuse]   # 候補、ノート役、速記
 netacho run     （prep + build + note）
 netacho mark    --koza KOZA --tsv FILE                             # 手で付けた反応の時刻
-netacho decide  --candidate C --speaker S --words W --card T --why Y --scene ID
-netacho answer  --question Q --speaker S --words W
+netacho decide  --performer ID --neta 演目 --speaker S --words W --card T --why Y --scene ID [--candidate C --koza KOZA] [--position before|within|after]
+netacho answer  --performer ID --neta 演目 --question Q --speaker S --words W
+netacho reread  --performer ID --neta 演目 --koza KOZA             # 演者の判断が入った型を弟子役に読み直させる
 netacho guide   --performer ID --neta 演目                         # LLM 0 回
 netacho view    --performer ID --neta 演目 --koza KOZA             # out/view/ へ書き出す
 ```

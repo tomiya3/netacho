@@ -260,7 +260,11 @@ def card_items(kata: dict, review: dict | None) -> list[dict]:
     return [
         i
         for i in kata["items"]
-        if i["kind"] == "staging" and i["approved"] and not i.get("held") and i["id"] not in blocked
+        if i["kind"] == "staging"
+        and i["approved"]
+        and i.get("card_text")
+        and not i.get("held")
+        and i["id"] not in blocked
     ]
 
 

@@ -5,7 +5,8 @@
 
 from __future__ import annotations
 
-from .schema import card_items, card_sort_key
+from . import store
+from .schema import card_items, card_sort_key, check_refs
 
 
 def build(hanashi: dict, kata: dict, review: dict | None) -> dict:
@@ -39,3 +40,23 @@ def build(hanashi: dict, kata: dict, review: dict | None) -> dict:
         "neta": hanashi["neta"],
         "cards": cards,
     }
+
+
+def write(neta: store.Neta) -> dict:
+    """正本から札を作り、参照を確かめて保存する。"""
+    hanashi, kata = store.read(neta.hanashi, "book"), store.read(neta.kata, "book")
+    review = store.read(neta.review, "review") if neta.review.exists() else None
+    doc = build(hanashi, kata, review)
+    check_refs(hanashi, kata, review=review, guide=doc)
+    store.write(neta.guide, doc, "guide")
+    for path in (neta.base / "koza").glob("*/run.json"):
+        run = store.read(path, "run")
+        run["guide_performer_cards"] = len(doc["cards"])
+        store.write(path, run, "run")
+    return doc
+
+
+def refresh(neta: store.Neta) -> None:
+    """札が既にあるときだけ作り直す（古い札が画面に残らないように）。"""
+    if neta.guide.exists():
+        write(neta)

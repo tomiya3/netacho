@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
+import os
 import re
 import shutil
 import subprocess
@@ -25,7 +27,6 @@ PREP_OUTPUTS = (
     "note_candidates.json",
     "note.md",
     "sokki.md",
-    "run.json",
 )
 
 
@@ -88,13 +89,34 @@ def _check_excerpt(args: argparse.Namespace, seconds: float) -> None:
         raise SystemExit(f"--from が音声の長さ（{seconds:.0f} 秒）を超えている")
 
 
-def _clear_outputs(kdir: Path, force: bool) -> None:
+def _has_manual_marks(path: Path) -> bool:
+    """手の反応があるか。schema に合わない古い物でも、やり直せるように生の JSON で見る。"""
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8")).get("reactions", [])
+        return any(r.get("method") == "manual" for r in rows)
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def _books_cite(neta: store.Neta, koza_id: str) -> bool:
+    """噺・型がこの高座の区間を指しているか。文字起こしをやり直すと区間 ID がずれる。"""
+    for path in (neta.hanashi, neta.kata):
+        if path.exists() and koza_id in path.read_text(encoding="utf-8"):
+            return True
+    return False
+
+
+def _clear_outputs(neta: store.Neta, kdir: Path, force: bool) -> None:
     """やり直す前に古い生成物を消す（途中で落ちても、新しい wav に古い結果が並ばないように）。"""
     path = kdir / "reactions.json"
-    if path.exists() and any(r["method"] == "manual" for r in store.read(path, "reactions")["reactions"]):
-        if not force:
+    manual = path.exists() and _has_manual_marks(path)
+    if not force:
+        if manual:
             raise SystemExit("手で付けた反応がある。作り直すなら --force を付ける")
-        shutil.copy2(path, kdir / "reactions.manual.bak.json")  # 長い処理の途中で落ちても戻せるように
+        if _books_cite(neta, kdir.name):
+            raise SystemExit("噺・型がこの高座の区間を指している。作り直すなら --force を付ける")
+    if path.exists():
+        shutil.copy2(path, kdir / "reactions.bak.json")  # 長い処理の途中で落ちても戻せるように
     for name in PREP_OUTPUTS:
         (kdir / name).unlink(missing_ok=True)
 
@@ -109,7 +131,7 @@ def cmd_prep(args: argparse.Namespace) -> None:
     neta = store.Neta(args.performer, args.neta)
     koza = _koza_meta(args)
     kdir = neta.koza_dir(args.koza)
-    _clear_outputs(kdir, args.force)
+    _clear_outputs(neta, kdir, args.force)
     wav = audio.extract_wav(source, kdir / "audio.wav", start=args.start, end=args.end)
     terms = [t for t in args.terms.split(",") if t] if args.terms else None
     t0 = time.time()
@@ -124,15 +146,18 @@ def cmd_prep(args: argparse.Namespace) -> None:
         "transcribe_seconds": round(t1 - t0, 1),
         "reactions_seconds": round(t2 - t1, 1),
     }
+    run_path = kdir / "run.json"
     run = {
         "schema_version": SCHEMA_VERSION,
         "koza_id": args.koza,
         "roles": [],
         "total_cost_usd": 0.0,
         "total_seconds": 0.0,
-        "prep": measured,
     }
-    store.write(kdir / "run.json", run, "run")
+    if run_path.exists():  # 役の費用の実測は消さない
+        run = store.read(run_path, "run")
+    run["prep"] = measured
+    store.write(run_path, run, "run")
     store.write(kdir / "koza.json", koza, "koza")  # 最後に書く。これがあれば prep は完了している
     print(f"区間 {len(transcript['segments'])}、VAD {len(transcript['vad'])}、手がかり {len(doc['hints'])}")
     print(f"音声 {measured['audio_seconds']:.0f} 秒、文字起こし {measured['transcribe_seconds']:.0f} 秒")
@@ -152,6 +177,7 @@ def _within_wave(doc: dict, marks: list[dict]) -> None:
 
 def cmd_mark(args: argparse.Namespace) -> None:
     kdir = store.find_koza(args.koza, performer=args.performer, neta=args.neta)
+    koza_doc = store.read(kdir / "koza.json", "koza")  # prep が最後まで済んだ高座だけ
     path = kdir / "reactions.json"
     doc = store.read(path, "reactions")
     marks = reactions.manual_reactions(reactions.parse_marks(Path(args.tsv)))
@@ -159,12 +185,14 @@ def cmd_mark(args: argparse.Namespace) -> None:
     backup = kdir / "reactions.auto.json"
     if not backup.exists():  # 自動の結果は別に残す（prep をやり直さなくて済むように）
         shutil.copy2(path, backup)
+    if any(r["method"] == "manual" for r in doc["reactions"]):
+        shutil.copy2(path, kdir / "reactions.manual.bak.json")  # 前の手の反応も残す
     doc["reactions"] = marks
     store.write(path, doc, "reactions")
     for name in STALE_AFTER_MARK:  # 反応から作った物は古くなる
         (kdir / name).unlink(missing_ok=True)
     print(f"手で付けた反応 {len(marks)} 件を入れた（自動の結果は {backup.name} に残した）")
-    excerpt = store.read(kdir / "koza.json", "koza").get("excerpt")
+    excerpt = koza_doc.get("excerpt")
     if excerpt:
         print(
             f"この高座は抜粋で、時刻は抜粋の先頭（元の録音の {excerpt['from'] or 0} 秒）からの秒として入れた"
@@ -225,25 +253,18 @@ def cmd_answer(args: argparse.Namespace) -> None:
     from . import performer
 
     neta = store.Neta(args.performer, args.neta)
+    from . import guide
+
     item = performer.answer(neta, question=args.question, speaker=args.speaker, words=args.words)
     _rewrite_markdown(neta)
+    guide.refresh(neta)
     print(f"型に入れた：{item['id']}")
 
 
 def cmd_guide(args: argparse.Namespace) -> None:
     from . import guide
-    from .schema import check_refs
 
-    neta = store.Neta(args.performer, args.neta)
-    hanashi, kata = store.read(neta.hanashi, "book"), store.read(neta.kata, "book")
-    review = store.read(neta.review, "review") if neta.review.exists() else None
-    doc = guide.build(hanashi, kata, review)
-    check_refs(hanashi, kata, review=review, guide=doc)
-    store.write(neta.guide, doc, "guide")
-    for path in (neta.base / "koza").glob("*/run.json"):
-        run = store.read(path, "run")
-        run["guide_performer_cards"] = len(doc["cards"])
-        store.write(path, run, "run")
+    doc = guide.write(store.Neta(args.performer, args.neta))
     print(f"札 {len(doc['cards'])} 枚（LLM の呼び出し 0 回）")
     for card in doc["cards"]:
         print(f"  {card['order']}. {card['copied_fields']['scene_title']}：{card['text']}")
@@ -255,6 +276,13 @@ def cmd_reread(args: argparse.Namespace) -> None:
     client = runner.make_client()
     current = pipeline.reread(args.performer, args.neta, args.koza, client=client, reuse=args.reuse)
     print(f"弟子役の指摘 {len(current)} 件")
+
+
+def _who(parser: argparse.ArgumentParser) -> None:
+    """演者の前で打つコマンドは、演者と演目を環境変数でも渡せる。"""
+    for flag, env in (("--performer", "NETACHO_PERFORMER"), ("--neta", "NETACHO_NETA")):
+        default = os.environ.get(env)
+        parser.add_argument(flag, default=default, required=default is None)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -301,8 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
     note.set_defaults(func=cmd_note)
 
     decide = sub.add_parser("decide", help="演者の決定を型に入れる（LLM 0 回）")
-    decide.add_argument("--performer", required=True)
-    decide.add_argument("--neta", required=True)
+    _who(decide)
     decide.add_argument("--speaker", required=True)
     decide.add_argument("--words", required=True, help="演者の言葉のまま")
     decide.add_argument("--card", required=True, help="札の文。演者の言葉のまま")
@@ -314,16 +341,14 @@ def build_parser() -> argparse.ArgumentParser:
     decide.set_defaults(func=cmd_decide)
 
     answer = sub.add_parser("answer", help="質問への演者の答えを入れる（LLM 0 回）")
-    answer.add_argument("--performer", required=True)
-    answer.add_argument("--neta", required=True)
+    _who(answer)
     answer.add_argument("--question", required=True)
     answer.add_argument("--speaker", required=True)
     answer.add_argument("--words", required=True, help="演者の言葉のまま")
     answer.set_defaults(func=cmd_answer)
 
     guide = sub.add_parser("guide", help="案内の札（LLM 0 回）")
-    guide.add_argument("--performer", required=True)
-    guide.add_argument("--neta", required=True)
+    _who(guide)
     guide.set_defaults(func=cmd_guide)
 
     reread = sub.add_parser("reread", help="弟子役に読み直させる")

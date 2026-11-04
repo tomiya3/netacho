@@ -278,6 +278,97 @@ def test_answer_rejects(built, data, tmp_path):
         performer.answer(built, question=q, speaker="s", words="")
 
 
+def test_decide_same_candidate_twice_is_refused(built):
+    decide(built, candidate="cand-0001", koza=K)
+    with pytest.raises(PerformerError, match="決定済み"):
+        decide(built, candidate="cand-0001", koza=K)
+
+
+def test_decide_reread_answer_reread_brings_the_card_back(built, data, tmp_path):
+    """演者の項目への指摘で札が止まり、答えると戻り、読み直しても止まらない。"""
+    item = decide(built)
+    cli.main(GUIDE)
+    assert len(store.read(built.guide, "guide")["cards"]) == 1
+    point = {
+        "kind": "missing_step",
+        "scene_id": None,
+        "item_id": item["id"],
+        "attempt": "枕の説明を演ろうとした",
+        "what_is_missing": "どの値段を言うのか",
+    }
+    budget = Budget(tmp_path / "ledger.json")
+    pipeline.reread(
+        P,
+        N,
+        K,
+        client=ScriptedClient(deshi=[{"schema_version": 1, "issues": [point]}]),
+        budget=budget,
+        root=data,
+    )
+    assert store.read(built.guide, "guide")["cards"] == []  # 古い札を残さない
+    q = store.read(built.questions, "questions")["questions"][-1]
+    cli.main(
+        [
+            "answer",
+            "--performer",
+            P,
+            "--neta",
+            N,
+            "--question",
+            q["id"],
+            "--speaker",
+            "s",
+            "--words",
+            "一分銀",
+        ]
+    )
+    assert len(store.read(built.guide, "guide")["cards"]) == 1  # 答えると戻る
+    pipeline.reread(
+        P,
+        N,
+        K,
+        client=ScriptedClient(deshi=[{"schema_version": 1, "issues": [point]}]),
+        budget=budget,
+        root=data,
+    )
+    assert len(store.read(built.guide, "guide")["cards"]) == 1  # 聞き直して止めない
+    assert len(store.read(built.questions, "questions")["questions"]) == 1
+
+
+def test_answer_retried_after_a_crash_does_not_double(built, data, tmp_path, monkeypatch):
+    q = _with_question(built, data, tmp_path)
+    real = store.write
+
+    def crash_on_questions(path, obj, schema):
+        if schema == "questions":
+            raise OSError("途中で落ちた")
+        real(path, obj, schema)
+
+    monkeypatch.setattr(store, "write", crash_on_questions)
+    with pytest.raises(OSError):
+        performer.answer(built, question=q, speaker="s", words="答え")
+    monkeypatch.setattr(store, "write", real)
+    performer.answer(built, question=q, speaker="s", words="答え")
+    kata = store.read(built.kata, "book")
+    assert sum(1 for i in kata["items"] if i["text"] == "答え") == 1
+    assert store.read(built.review, "review")["issues"][-1]["resolved"] is True
+
+
+def test_approved_card_without_text_is_skipped_by_builder(built):
+    hanashi, kata = store.read(built.hanashi, "book"), store.read(built.kata, "book")
+    item = decide(built)
+    kata = store.read(built.kata, "book")
+    next(i for i in kata["items"] if i["id"] == item["id"])["card_text"] = ""
+    assert guide.build(hanashi, kata, None)["cards"] == []
+
+
+def test_performer_and_neta_from_env(built, monkeypatch, capsys):
+    monkeypatch.setenv("NETACHO_PERFORMER", P)
+    monkeypatch.setenv("NETACHO_NETA", N)
+    cli.main(["guide"])
+    assert "札 0 枚" in capsys.readouterr().out
+
+
 def test_card_count_goes_to_run_json(built):
     decide(built)
     cli.main(GUIDE)
@@ -296,5 +387,5 @@ def test_bad_guide_never_saved(built, monkeypatch):
 
     monkeypatch.setattr(guide, "build", tampered)
     with pytest.raises(RefError):
-        cli.cmd_guide(cli.build_parser().parse_args(GUIDE))
+        guide.write(built)
     assert not built.guide.exists()

@@ -79,6 +79,8 @@ def decide(
         cands = store.read(neta.koza_dir(koza) / "note_candidates.json", "note_candidates")
         if candidate not in {c["id"] for c in cands["candidates"]}:
             raise PerformerError(f"候補が無い: {candidate}")
+        if any(i["source"].get("candidate_id") == candidate for i in kata["items"]):
+            raise PerformerError(f"{candidate} は決定済み（別の札にするなら --candidate を外す）")
     item = _staging(
         hanashi,
         kata,
@@ -116,7 +118,19 @@ def answer(neta: store.Neta, *, question: str, speaker: str, words: str, now: st
     for issue in review["issues"]:
         if issue["id"] == q["issue_id"]:
             issue["resolved"] = True
-    item = _staging(
+    # 途中で落ちた答えのやり直しなら、型に二重に入れない
+    done = next(
+        (
+            i
+            for i in kata["items"]
+            if i["kind"] == "staging"
+            and i["source"]["speaker"] == speaker
+            and i["source"]["words"] == words
+            and i["anchor"]["scene_id"] == q["scene_id"]
+        ),
+        None,
+    )
+    item = done or _staging(
         hanashi,
         kata,
         speaker=speaker,
@@ -128,9 +142,11 @@ def answer(neta: store.Neta, *, question: str, speaker: str, words: str, now: st
         approved=False,
         at=at,
     )
-    kata["items"].append(item)
+    if done is None:
+        kata["items"].append(item)
     check_refs(hanashi, kata, review=review, questions=questions)
+    # kata → questions → review の順。途中で落ちても、やり直せば揃う
     store.write(neta.kata, kata, "book")
-    store.write(neta.review, review, "review")
     store.write(neta.questions, questions, "questions")
+    store.write(neta.review, review, "review")
     return item
