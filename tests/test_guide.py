@@ -284,6 +284,56 @@ def test_decide_same_candidate_twice_is_refused(built):
         decide(built, candidate="cand-0001", koza=K)
 
 
+def test_decide_same_card_twice_without_candidate_is_refused(built):
+    decide(built)
+    with pytest.raises(PerformerError, match="同じ札"):
+        decide(built)
+
+
+def test_reread_keeps_cost_when_it_crashes(built, data, tmp_path):
+    bad = ScriptedClient(deshi=[lambda kw: '{"schema_version": 1}'])  # schema に合わない
+    with pytest.raises(ValueError):
+        pipeline.reread(P, N, K, client=bad, budget=Budget(tmp_path / "ledger.json"), root=data)
+    run = store.read(built.koza_dir(K) / "run.json", "run")
+    assert next(r for r in run["roles"] if r["name"] == "deshi")["calls"] >= 2
+
+
+def test_suppressed_answers_are_counted(built, data, tmp_path):
+    q = _with_question(built, data, tmp_path)
+    performer.answer(built, question=q, speaker="s", words="答え")
+    ask = {
+        "kind": "ask_performer",
+        "scene_id": "scene-02",
+        "item_id": None,
+        "attempt": "また聞きたい",
+        "what_is_missing": "同じこと",
+    }
+    c = ScriptedClient(deshi=[{"schema_version": 1, "issues": [ask]}])
+    pipeline.reread(P, N, K, client=c, budget=Budget(tmp_path / "ledger.json"), root=data)
+    run = store.read(built.koza_dir(K) / "run.json", "run")
+    assert run["deshi"]["suppressed_answered"] == 1
+
+
+def test_rebuild_after_answer_can_save_review(built, data, tmp_path):
+    """作り直しで答え済みの指摘が出ても、review.json の形を壊さない。"""
+    q = _with_question(built, data, tmp_path)
+    performer.answer(built, question=q, speaker="s", words="答え")
+    ask = {
+        "kind": "ask_performer",
+        "scene_id": "scene-02",
+        "item_id": None,
+        "attempt": "また聞きたい",
+        "what_is_missing": "同じこと",
+    }
+    c = ScriptedClient(
+        writer=[draft(draft_item(id="item-0001", kind="見立て", book="kata"))],
+        checker=[verdicts()],
+        deshi=[{"schema_version": 1, "issues": [ask]}],
+    )
+    pipeline.build(P, N, K, client=c, budget=Budget(tmp_path / "ledger.json"), root=data)
+    assert store.read(built.review, "review")["issues"]
+
+
 def test_decide_reread_answer_reread_brings_the_card_back(built, data, tmp_path):
     """演者の項目への指摘で札が止まり、答えると戻り、読み直しても止まらない。"""
     item = decide(built)

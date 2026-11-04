@@ -47,6 +47,11 @@ def test_short_gap_is_merged_and_long_gap_is_not():
     assert len(apart) == 2
 
 
+def test_end_never_passes_the_audio_length():
+    s = {**scores(laugh=[0.0, 0.3]), "seconds": 5.0}
+    assert rx.auto_reactions(s)[0]["t1"] == 5.0
+
+
 def test_applause_ignores_music():
     """中手に出囃子が重なって Music が高くても、拍手として採用する。"""
     s = scores(applause=[0.0, 0.65, 0.5, 0.0], music=[0.0, 0.44, 0.9, 0.0])
