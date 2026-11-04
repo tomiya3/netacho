@@ -27,7 +27,8 @@
         ],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^scene-\\d{2,}$"
           },
           "title": {
             "type": "string"
@@ -60,7 +61,8 @@
         ],
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^char-\\d{2,}$"
           },
           "name": {
             "type": "string"
@@ -113,7 +115,11 @@
             ]
           },
           "priority": {
-            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3
+            ],
             "description": "1（要）から 3"
           },
           "text": {

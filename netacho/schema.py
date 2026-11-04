@@ -19,6 +19,7 @@ SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schemas"
 HANASHI_KINDS = frozenset({"場面", "人物", "サゲ"})
 KATA_KINDS = frozenset({"枕", "間", "上下", "staging"})
 PAYOFF_KINDS = frozenset({"見立て", "地口", "サゲ"})
+POSITION_ORDER = {"before": 0, "within": 1, "after": 2}
 
 
 class SchemaError(ValueError):
@@ -73,12 +74,13 @@ def validate(obj, name: str) -> None:
     """schema に合わなければ SchemaError（最初の数件をまとめて）。"""
     errors = sorted(Draft7Validator(load(name)).iter_errors(obj), key=lambda e: list(e.path))
     if errors:
-        msgs = [f"{'/'.join(str(p) for p in e.path) or '(root)'}: {e.message}" for e in errors[:5]]
+        # e.message は値（演者の言葉や引用）を含むので、場所と規則の名前だけを出す
+        msgs = [f"{'/'.join(str(p) for p in e.path) or '(root)'}: {e.validator}" for e in errors[:5]]
         raise SchemaError(f"{name}.json に合わない: " + " | ".join(msgs))
 
 
-def _duplicates(ids: list[str]) -> set[str]:
-    seen: set[str] = set()
+def _duplicates(ids: list) -> set:
+    seen: set = set()
     return {i for i in ids if i in seen or seen.add(i)}
 
 
@@ -101,6 +103,10 @@ def _check_books(hanashi: dict, kata: dict, koza_ids: set[str] | None, errors: l
     for book in (hanashi, kata):
         if dup := _duplicates([s["id"] for s in book["scenes"]]):
             errors.append(f"{book['book']}: 場面の id が重複: {sorted(dup)}")
+        if dup := _duplicates([s["order"] for s in book["scenes"]]):
+            errors.append(f"{book['book']}: 場面の order が重複: {sorted(dup)}")
+        if dup := _duplicates([c["id"] for c in book["characters"]]):
+            errors.append(f"{book['book']}: 人物の id が重複: {sorted(dup)}")
     if {s["id"] for s in hanashi["scenes"]} != {s["id"] for s in kata["scenes"]}:
         errors.append("hanashi と kata で場面が違う")
     scene_ids = {s["id"] for s in hanashi["scenes"]}
@@ -120,6 +126,8 @@ def _check_books(hanashi: dict, kata: dict, koza_ids: set[str] | None, errors: l
                 errors.append(f"{where}: {it['kind']} に回収は付けない")
             if "anchor" in it and it["anchor"]["scene_id"] not in scene_ids:
                 errors.append(f"{where}: 場面が無い {it['anchor']['scene_id']}")
+            if it.get("approved") and not it["source"].get("approved"):
+                errors.append(f"{where}: 演者が確かめていない言葉を札に出そうとしている")
 
 
 def _check_transcript(transcript: dict, books: list[dict], errors: list[str]) -> None:
@@ -128,6 +136,9 @@ def _check_transcript(transcript: dict, books: list[dict], errors: list[str]) ->
     if dup := _duplicates(seg_ids):
         errors.append(f"transcript: 区間の id が重複: {sorted(dup)}")
     order = {s: i for i, s in enumerate(seg_ids)}
+    for s in transcript["segments"]:
+        if s["end"] < s["start"]:
+            errors.append(f"transcript/{s['id']}: end が start より前")
     for book in books:
         for scene in book["scenes"]:
             if scene["koza_id"] == koza_id:
@@ -137,14 +148,18 @@ def _check_transcript(transcript: dict, books: list[dict], errors: list[str]) ->
             if it["source"].get("koza_id") == koza_id:
                 _check_span(it["source"]["segs"], order, where, errors)
                 if "payoff" in it:
-                    _check_span(it["payoff"]["segs"], order, f"{where}/payoff", errors)
+                    pay = it["payoff"]["segs"]
+                    _check_span(pay, order, f"{where}/payoff", errors)
+                    first = it["source"]["segs"][0]
+                    if order.get(pay[0], len(order)) < order.get(first, -1):
+                        errors.append(f"{where}: 回収が仕込みより前にある")
 
 
 def _check_koza_files(
     *,
     koza_id: str | None,
     scene_ids: set[str],
-    item_ids: set[str],
+    items: dict[str, dict],
     seg_ids: set[str] | None,
     timeline: dict | None,
     reactions: dict | None,
@@ -170,12 +185,23 @@ def _check_koza_files(
             if r["t0"] > r["t1"]:
                 errors.append(f"reactions/{r['id']}: t0 が t1 より後")
     if note_candidates is not None:
-        for c in note_candidates["candidates"]:
-            if c["item_id"] not in item_ids:
-                errors.append(f"note_candidates/{c['id']}: item が無い {c['item_id']}")
+        cands = note_candidates["candidates"]
+        if dup := _duplicates([c["id"] for c in cands]):
+            errors.append(f"note_candidates: id が重複: {sorted(dup)}")
+        for c in cands:
+            where = f"note_candidates/{c['id']}"
+            if c["item_id"] not in items:
+                errors.append(f"{where}: item が無い {c['item_id']}")
+            elif "payoff" not in items[c["item_id"]]:
+                errors.append(f"{where}: 回収の無い item を指している")
             for r in c["reaction_ids"]:
                 if reaction_ids is not None and r not in reaction_ids:
-                    errors.append(f"note_candidates/{c['id']}: 反応が無い {r}")
+                    errors.append(f"{where}: 反応が無い {r}")
+            # 「未検出」と「弱い」を混ぜない
+            if (c["why"] == "no_candidate") != (not c["reaction_ids"]):
+                errors.append(f"{where}: why と reaction_ids が合わない")
+            if not c["window"][0] <= c["payoff_t"] <= c["window"][1]:
+                errors.append(f"{where}: payoff_t が窓の外")
 
 
 def _check_review(
@@ -184,6 +210,8 @@ def _check_review(
     issues = {}
     if review is not None:
         issues = {i["id"]: i for i in review["issues"]}
+        if dup := _duplicates([i["id"] for i in review["issues"]]):
+            errors.append(f"review: id が重複: {sorted(dup)}")
         for i in review["issues"]:
             a = i["anchor"]
             if "scene_id" in a and a["scene_id"] not in scene_ids:
@@ -191,6 +219,8 @@ def _check_review(
             if "item_id" in a and a["item_id"] not in item_ids:
                 errors.append(f"review/{i['id']}: item が無い {a['item_id']}")
     if questions is not None:
+        if dup := _duplicates([q["id"] for q in questions["questions"]]):
+            errors.append(f"questions: id が重複: {sorted(dup)}")
         for q in questions["questions"]:
             if q["scene_id"] not in scene_ids:
                 errors.append(f"questions/{q['id']}: 場面が無い {q['scene_id']}")
@@ -200,12 +230,52 @@ def _check_review(
                     errors.append(f"questions/{q['id']}: 指摘が無い {q['issue_id']}")
                 elif issue["kind"] != "ask_performer":
                     errors.append(f"questions/{q['id']}: ask_performer でない指摘 {q['issue_id']}")
+                elif issue["anchor"].get("scene_id", q["scene_id"]) != q["scene_id"]:
+                    errors.append(f"questions/{q['id']}: 指摘と場面が違う")
 
 
-def _check_guide(guide: dict, hanashi: dict, kata: dict, errors: list[str]) -> None:
-    """札が item の写しになっていること（スクリプトの転記に余計な手が入っていないこと）。"""
+def unresolved_item_ids(review: dict | None) -> set[str]:
+    """解決していない弟子役の指摘が付いた item。札に出さない。"""
+    if review is None:
+        return set()
+    return {
+        i["anchor"]["item_id"] for i in review["issues"] if "item_id" in i["anchor"] and not i["resolved"]
+    }
+
+
+def card_items(kata: dict, review: dict | None) -> list[dict]:
+    """札に出す item。承認済みの staging で、保留でなく、解決していない指摘が付いていないもの。"""
+    blocked = unresolved_item_ids(review)
+    return [
+        i
+        for i in kata["items"]
+        if i["kind"] == "staging" and i["approved"] and not i.get("held") and i["id"] not in blocked
+    ]
+
+
+def card_sort_key(scene_order: dict[str, int], item: dict) -> tuple[int, int]:
+    """場面順。同じ場面の中は 前 → 途中 → 後。"""
+    return scene_order[item["anchor"]["scene_id"]], POSITION_ORDER[item["anchor"]["position"]]
+
+
+def _check_guide(guide: dict, hanashi: dict, kata: dict, review: dict | None, errors: list[str]) -> None:
+    """札が item の写しで、出すべきものが場面順に過不足なく並んでいること。"""
     scenes = {s["id"]: s for s in hanashi["scenes"]}
     items = {i["id"]: i for i in kata["items"]}
+    shown = [c["item_id"] for c in guide["cards"]]
+    if dup := _duplicates(shown):
+        errors.append(f"guide: 同じ item の札が重複: {sorted(dup)}")
+    wanted = card_items(kata, review)
+    if missing := {i["id"] for i in wanted} - set(shown):
+        errors.append(f"guide: 札に出ていない: {sorted(missing)}")
+    if extra := set(shown) & unresolved_item_ids(review):
+        errors.append(f"guide: 解決していない指摘が付いた項目が札に出ている: {sorted(extra)}")
+    scene_order = {s["id"]: s["order"] for s in hanashi["scenes"]}
+    known = [items[i] for i in shown if i in items and "anchor" in items[i]]
+    if all(i["anchor"]["scene_id"] in scene_order for i in known):
+        keys = [card_sort_key(scene_order, i) for i in known]
+        if keys != sorted(keys):
+            errors.append("guide: 札が場面順でない")
     for n, card in enumerate(guide["cards"], start=1):
         where = f"guide/{card['item_id']}"
         if card["order"] != n:
@@ -264,20 +334,20 @@ def check_refs(
             errors.append(f"transcript: 高座が違う {transcript['koza_id']}")
         _check_transcript(transcript, [hanashi, kata], errors)
     scene_ids = {s["id"] for s in hanashi["scenes"]}
-    item_ids = {i["id"] for b in (hanashi, kata) for i in b["items"]}
+    items = {i["id"]: i for b in (hanashi, kata) for i in b["items"]}
     _check_koza_files(
         koza_id=koza_id,
         scene_ids=scene_ids,
-        item_ids=item_ids,
+        items=items,
         seg_ids={s["id"] for s in transcript["segments"]} if transcript is not None else None,
         timeline=timeline,
         reactions=reactions,
         note_candidates=note_candidates,
         errors=errors,
     )
-    _check_review(review, questions, scene_ids, item_ids, errors)
+    _check_review(review, questions, scene_ids, set(items), errors)
     if guide is not None:
-        _check_guide(guide, hanashi, kata, errors)
+        _check_guide(guide, hanashi, kata, review, errors)
     if errors:
         more = f"（ほか {len(errors) - 5} 件）" if len(errors) > 5 else ""
         raise RefError(" | ".join(errors[:5]) + more)
