@@ -100,7 +100,13 @@ def test_build_writes_books_and_counts(data, tmp_path):
     )
     doc = build(client, data, tmp_path)
     assert doc["evidence"] == {"kept": 4, "dropped": {"bad_seg": 1}}
-    assert doc["checker"] == {"supported": 1, "weak": 1, "unsupported": 1, "unchecked_knowledge": 1}
+    assert doc["checker"] == {
+        "supported": 1,
+        "weak": 1,
+        "unsupported": 1,
+        "unchecked_knowledge": 1,
+        "no_verdict": 0,
+    }
     assert {r["name"]: r["calls"] for r in doc["roles"]} == {"writer": 1, "checker": 1}
     hanashi, kata = books(data)
     assert [i["id"] for i in hanashi["items"]] == ["item-0001", "item-0004"]
@@ -158,7 +164,7 @@ def test_checker_sees_only_text_and_quotes(data, tmp_path):
 def test_missing_verdict_is_held(data, tmp_path):
     client = ScriptedClient(writer=[draft(draft_item())], checker=[verdicts()])
     doc = build(client, data, tmp_path)
-    assert doc["checker"]["unsupported"] == 1
+    assert doc["checker"]["no_verdict"] == 1 and doc["checker"]["unsupported"] == 0
     assert books(data)[0]["items"][0]["held"] is True
 
 
@@ -295,6 +301,29 @@ def test_rebuild_with_new_scene_keeps_anchor_of_old_scene(data, tmp_path):
     )
     build(second, data, tmp_path)
     assert [s["id"] for s in books(data)[1]["scenes"]] == ["scene-01", "scene-02", "scene-03"]
+
+
+def test_rebuild_adds_up_measured_cost(data, tmp_path):
+    client = ScriptedClient(
+        writer=[draft(draft_item())] * 2, checker=[verdicts(("item-0001", "supported"))] * 2
+    )
+    first = build(client, data, tmp_path)
+    neta = store.Neta(P, N, data)
+    neta.hanashi.unlink()
+    neta.kata.unlink()
+    second = build(client, data, tmp_path)
+    assert second["total_cost_usd"] == pytest.approx(first["total_cost_usd"] * 2)
+
+
+def test_numbers_survive_a_crash(data, tmp_path):
+    client = ScriptedClient(
+        writer=[draft(draft_item(), draft_item(source={"segs": ["seg-9999", "seg-9999"]}))]
+    )
+    with pytest.raises(IndexError):  # 照合役の返事が無い = 途中で落ちた
+        build(client, data, tmp_path)
+    run = store.read(store.Neta(P, N, data).koza_dir(K) / "run.json", "run")
+    assert run["evidence"]["dropped"] == {"bad_seg": 1}
+    assert run["roles"][0]["name"] == "writer"
 
 
 def test_reuse_does_not_call_api_twice(data, tmp_path):
