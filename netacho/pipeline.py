@@ -290,6 +290,29 @@ def build(
     return _finish(ctx)
 
 
+def reread(
+    performer: str,
+    neta_name: str,
+    koza_id: str,
+    *,
+    client,
+    budget: Budget | None = None,
+    reuse: bool = False,
+    root: Path | None = None,
+) -> list[dict]:
+    """演者の判断が入った型を、弟子役にもう一度読ませる。足した指摘を返す。"""
+    ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
+    run_path = ctx.neta.koza_dir(koza_id) / "run.json"
+    if run_path.exists():
+        ctx.usage.restore(store.read(run_path, "run"))
+    write_markdown(ctx.neta, ctx.hanashi, ctx.kata)
+    doc, questions = read_review(ctx.neta)
+    added = deshi_pass(ctx, doc, questions, max((i["round"] for i in doc["issues"]), default=0) + 1)
+    save_review(ctx, doc, questions)
+    store.write(run_path, ctx.usage.to_json(), "run")
+    return added
+
+
 # ノート役の文の検査。断定、客の気持ち、直し方の提案、数字の羅列を通さない
 NOTE_ALLOWED = "反応候補"  # 「反応候補が少ない」は約束の言い方
 NOTE_BANNED = re.compile(

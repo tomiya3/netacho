@@ -196,6 +196,68 @@ def cmd_note(args: argparse.Namespace) -> None:
     print(f"候補 {doc['notes']['candidates']}、決まった文に置き換えた数 {doc['notes']['fallback']}")
 
 
+def _rewrite_markdown(neta: store.Neta) -> None:
+    from . import pipeline
+
+    pipeline.write_markdown(neta, store.read(neta.hanashi, "book"), store.read(neta.kata, "book"))
+
+
+def cmd_decide(args: argparse.Namespace) -> None:
+    from . import performer
+
+    neta = store.Neta(args.performer, args.neta)
+    item = performer.decide(
+        neta,
+        speaker=args.speaker,
+        words=args.words,
+        card=args.card,
+        why=args.why,
+        scene=args.scene,
+        position=args.position,
+        candidate=args.candidate,
+        koza=args.koza,
+    )
+    _rewrite_markdown(neta)
+    print(f"型に入れた：{item['id']}。札に写すには netacho guide")
+
+
+def cmd_answer(args: argparse.Namespace) -> None:
+    from . import performer
+
+    neta = store.Neta(args.performer, args.neta)
+    item = performer.answer(neta, question=args.question, speaker=args.speaker, words=args.words)
+    _rewrite_markdown(neta)
+    print(f"型に入れた：{item['id']}")
+
+
+def cmd_guide(args: argparse.Namespace) -> None:
+    from . import guide
+    from .schema import check_refs
+
+    neta = store.Neta(args.performer, args.neta)
+    hanashi, kata = store.read(neta.hanashi, "book"), store.read(neta.kata, "book")
+    review = store.read(neta.review, "review") if neta.review.exists() else None
+    doc = guide.build(hanashi, kata, review)
+    check_refs(hanashi, kata, review=review, guide=doc)
+    store.write(neta.guide, doc, "guide")
+    for path in (neta.base / "koza").glob("*/run.json"):
+        run = store.read(path, "run")
+        run["guide_performer_cards"] = len(doc["cards"])
+        store.write(path, run, "run")
+    print(f"札 {len(doc['cards'])} 枚（LLM の呼び出し 0 回）")
+    for card in doc["cards"]:
+        print(f"  {card['order']}. {card['copied_fields']['scene_title']}：{card['text']}")
+
+
+def cmd_reread(args: argparse.Namespace) -> None:
+    from . import pipeline, runner
+
+    added = pipeline.reread(
+        args.performer, args.neta, args.koza, client=runner.make_client(), reuse=args.reuse
+    )
+    print(f"弟子役の指摘 {len(added)} 件")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="netacho", description="一席の音声から演者の根多帳を作る")
     sub = p.add_subparsers(dest="command", required=True)
@@ -238,6 +300,39 @@ def build_parser() -> argparse.ArgumentParser:
     note.add_argument("--koza", required=True)
     note.add_argument("--reuse", action="store_true", help="同じ入力の役の出力を使い回す")
     note.set_defaults(func=cmd_note)
+
+    decide = sub.add_parser("decide", help="演者の決定を型に入れる（LLM 0 回）")
+    decide.add_argument("--performer", required=True)
+    decide.add_argument("--neta", required=True)
+    decide.add_argument("--speaker", required=True)
+    decide.add_argument("--words", required=True, help="演者の言葉のまま")
+    decide.add_argument("--card", required=True, help="札の文。演者の言葉のまま")
+    decide.add_argument("--why", required=True, help="理由。演者の言葉のまま")
+    decide.add_argument("--scene", required=True)
+    decide.add_argument("--position", choices=["before", "within", "after"], default="within")
+    decide.add_argument("--candidate")
+    decide.add_argument("--koza", help="--candidate の高座")
+    decide.set_defaults(func=cmd_decide)
+
+    answer = sub.add_parser("answer", help="質問への演者の答えを入れる（LLM 0 回）")
+    answer.add_argument("--performer", required=True)
+    answer.add_argument("--neta", required=True)
+    answer.add_argument("--question", required=True)
+    answer.add_argument("--speaker", required=True)
+    answer.add_argument("--words", required=True, help="演者の言葉のまま")
+    answer.set_defaults(func=cmd_answer)
+
+    guide = sub.add_parser("guide", help="案内の札（LLM 0 回）")
+    guide.add_argument("--performer", required=True)
+    guide.add_argument("--neta", required=True)
+    guide.set_defaults(func=cmd_guide)
+
+    reread = sub.add_parser("reread", help="弟子役に読み直させる")
+    reread.add_argument("--performer", required=True)
+    reread.add_argument("--neta", required=True)
+    reread.add_argument("--koza", required=True)
+    reread.add_argument("--reuse", action="store_true")
+    reread.set_defaults(func=cmd_reread)
     return p
 
 
