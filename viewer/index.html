@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>根多帳</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface: #fcfcfb; --panel: #f3f2ee; --line: #dddcd6;
+  --text: #0b0b0b; --text-2: #52514e;
+  --laugh: #2a78d6; --applause: #eb6834;
+  --claude: #6250d6; --performer: #eda100; --script: #1baf7a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --surface: #1a1a19; --panel: #262624; --line: #3b3a37;
+    --text: #f0efec; --text-2: #c3c2b7;
+    --laugh: #3987e5; --applause: #d95926;
+    --claude: #9085e9; --performer: #c98500; --script: #199e70;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--text);
+  font: 15px/1.7 "Hiragino Sans", "Yu Gothic", system-ui, sans-serif; }
+header { padding: 20px 28px 0; }
+h1 { font-size: 22px; margin: 0; letter-spacing: .04em; }
+.sub { color: var(--text-2); font-size: 13px; }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0 0; font-size: 13px; }
+nav { display: flex; gap: 4px; padding: 14px 28px 0; border-bottom: 1px solid var(--line); }
+nav button { all: unset; cursor: pointer; padding: 8px 14px; color: var(--text-2); border-bottom: 2px solid transparent; }
+nav button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
+nav button:focus-visible { outline: 2px solid var(--laugh); outline-offset: 2px; }
+main { padding: 20px 28px 48px; max-width: 1100px; }
+section[hidden] { display: none; }
+h2 { font-size: 16px; margin: 24px 0 8px; }
+.tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.tag::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--c); }
+.tag.claude, .card.claude { --c: var(--claude); }
+.tag.performer, .card.performer { --c: var(--performer); }
+.tag.script, .card.script { --c: var(--script); }
+.card { background: var(--panel); border-left: 4px solid var(--c, var(--line)); border-radius: 4px;
+  padding: 10px 14px; margin: 8px 0; }
+.card .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+.card p { margin: 4px 0; }
+.quote { color: var(--text-2); font-size: 13px; }
+.notice { background: var(--panel); border-radius: 4px; padding: 8px 14px; margin: 8px 0; font-size: 14px; }
+.big { font-size: 20px; font-weight: 600; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; touch-action: none; }
+.axis { fill: var(--text-2); font-size: 11px; }
+.grid { stroke: var(--line); stroke-width: 1; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 4px; padding: 4px 8px; font-size: 12px; white-space: nowrap; display: none; }
+table { border-collapse: collapse; font-size: 13px; }
+th, td { border-bottom: 1px solid var(--line); padding: 4px 12px 4px 0; text-align: left; }
+.held { opacity: .6; }
+details { margin-top: 12px; color: var(--text-2); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">根多帳</h1>
+  <div class="sub" id="sub"></div>
+  <div class="legend">
+    <span class="tag claude">Claude の候補</span>
+    <span class="tag performer">演者の決定</span>
+    <span class="tag script">スクリプトの転記</span>
+  </div>
+</header>
+<nav role="tablist" id="tabs"></nav>
+<main>
+  <section id="wave"></section>
+  <section id="kata" hidden></section>
+  <section id="cards" hidden></section>
+  <section id="deshi" hidden></section>
+  <div id="error"></div>
+</main>
+<script>
+"use strict";
+const TABS = [["wave", "反応の波と候補"], ["kata", "型"], ["cards", "札"], ["deshi", "弟子役の指摘と質問"]];
+const SVG = "http://www.w3.org/2000/svg";
+const POSITION = { before: "場面の前", within: "場面の中", after: "場面の後" };
+const WHY = { no_candidate: "回収の後に反応候補が見つからない", low_rank: "回収の後の反応候補が小さい方" };
+const ISSUE = { missing_step: "型が無くて演れない", unclear_scene: "どの場面か追えない", no_makura: "枕で何を説明するか不明",
+  no_sage: "サゲの運びが無い", ask_performer: "本人に聞くしかない" };
+const REACT = { laugh: "笑い", applause: "拍手", reaction: "手で付けた" };
+
+function el(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === "class" ? (e.className = v) : e.setAttribute(k, v);
+  for (const k of kids) if (k !== null && k !== undefined) e.append(k);
+  return e;
+}
+function svg(tag, attrs = {}, text) {
+  const e = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+const clock = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+const tag = (who, label) => el("span", { class: "tag " + who }, label);
+function card(who, label, head, ...body) {
+  return el("div", { class: "card " + who }, el("div", { class: "meta" }, tag(who, label), head), ...body);
+}
+function itemWho(i) { return i.edited_by === "performer" ? ["performer", "演者の決定"] : ["claude", "Claude の候補"]; }
+
+function drawWave(root, d) {
+  const s = d.reactions.scores;
+  if (!s || !s.laugh.length) { root.append(el("div", { class: "notice" }, "スコアがありません。")); return; }
+  const W = 1040, H = 280, L = 40, R = 12, T = 28, B = 26;
+  const end = (s.laugh.length - 1) * s.stride + s.window;
+  const x = t => L + (W - L - R) * t / end, y = v => T + (H - T - B) * (1 - v);
+  const center = i => i * s.stride + s.window / 2;
+  const box = el("div", { class: "chart" });
+  const g = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "笑いと拍手のスコアの推移" });
+  for (const v of [0, .25, .5, .75, 1]) {
+    g.append(svg("line", { class: "grid", x1: L, x2: W - R, y1: y(v), y2: y(v) }));
+    g.append(svg("text", { class: "axis", x: L - 6, y: y(v) + 4, "text-anchor": "end" }, v));
+  }
+  const step = end > 1200 ? 300 : end > 300 ? 60 : 10;
+  for (let t = 0; t <= end; t += step) g.append(svg("text", { class: "axis", x: x(t), y: H - 8, "text-anchor": "middle" }, clock(t)));
+  for (const r of d.reactions.reactions) {
+    const v = r.kind === "applause" ? "--applause" : "--laugh";
+    g.append(svg("rect", { x: x(r.t0), width: Math.max(x(r.t1) - x(r.t0), 2), y: T, height: H - T - B,
+      fill: `var(${v})`, opacity: .12 }));
+  }
+  for (const [key, v] of [["laugh", "--laugh"], ["applause", "--applause"]]) {
+    const pts = s[key].map((p, i) => `${x(center(i)).toFixed(1)},${y(p).toFixed(1)}`).join(" ");
+    g.append(svg("polyline", { points: pts, fill: "none", stroke: `var(${v})`, "stroke-width": 2, "stroke-linejoin": "round" }));
+  }
+  for (const c of (d.candidates?.candidates || [])) {
+    g.append(svg("path", { d: `M${x(c.payoff_t) - 6} ${T - 14} h12 l-6 10 z`, fill: "var(--claude)" }));
+    g.append(svg("line", { x1: x(c.payoff_t), x2: x(c.payoff_t), y1: T - 4, y2: H - B, stroke: "var(--claude)", "stroke-dasharray": "3 3" }));
+  }
+  const cross = svg("line", { y1: T, y2: H - B, stroke: "var(--text-2)", visibility: "hidden" });
+  g.append(cross);
+  const tip = el("div", { class: "tip" });
+  box.append(g, tip);
+  g.addEventListener("pointermove", ev => {
+    const rect = g.getBoundingClientRect();
+    const px = (ev.clientX - rect.left) * W / rect.width;
+    const t = (px - L) / (W - L - R) * end;
+    const i = Math.max(0, Math.min(s.laugh.length - 1, Math.round((t - s.window / 2) / s.stride)));
+    cross.setAttribute("x1", x(center(i))); cross.setAttribute("x2", x(center(i))); cross.setAttribute("visibility", "visible");
+    tip.textContent = `${clock(center(i))}  笑い ${s.laugh[i].toFixed(2)}  拍手 ${s.applause[i].toFixed(2)}`;
+    tip.style.display = "block";
+    tip.style.left = Math.min(ev.clientX - rect.left + 12, rect.width - 190) + "px";
+    tip.style.top = "6px";
+  });
+  g.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; });
+  root.append(box);
+  root.append(el("div", { class: "legend" },
+    el("span", { class: "tag", style: "--c: var(--laugh)" }, "笑いのスコア"),
+    el("span", { class: "tag", style: "--c: var(--applause)" }, "拍手のスコア"),
+    el("span", { class: "tag claude" }, "反応候補が少ない回収（破線）")));
+}
+
+function renderWave(d) {
+  const root = document.getElementById("wave");
+  const rows = d.reactions.reactions;
+  const manual = rows.some(r => r.method === "manual");
+  root.append(el("div", { class: "notice" }, manual
+    ? "この高座の反応は手で付けたものです。"
+    : "反応の候補は音声のスコアから機械的に拾ったものです。候補が無い所も、反応が無かったという意味ではありません。"));
+  drawWave(root, d);
+  for (const n of (d.candidates?.notices || [])) root.append(el("div", { class: "notice" }, n));
+  root.append(el("h2", {}, "ノート"));
+  const items = Object.fromEntries([...d.hanashi, ...d.kata].map(i => [i.id, i]));
+  const cands = d.candidates?.candidates || [];
+  if (!cands.length) root.append(el("p", {}, "今回は候補を選びませんでした。反応が十分だったという意味ではありません。"));
+  for (const c of cands) {
+    const it = items[c.item_id];
+    root.append(card("claude", "Claude の候補", `${c.id}  ${clock(c.payoff_t)}  ${WHY[c.why]}`,
+      el("p", {}, c.note || "（ノートはまだありません）"),
+      el("p", { class: "quote" }, `【${it.kind}】${it.text}`),
+      el("p", { class: "quote" }, `仕込み：「${it.source.quote}」`),
+      el("p", { class: "quote" }, `回収：「${it.payoff.quote}」`)));
+  }
+  const table = el("table", {}, el("tr", {}, ...["順位", "時刻", "種類"].map(h => el("th", {}, h))));
+  for (const r of rows) table.append(el("tr", {},
+    el("td", {}, r.strength_rank ?? "-"), el("td", {}, `${clock(r.t0)} - ${clock(r.t1)}`), el("td", {}, REACT[r.kind])));
+  root.append(el("details", {}, el("summary", {}, `反応の候補の一覧（${rows.length} 件）`), table));
+}
+
+function itemCard(i) {
+  const [who, label] = itemWho(i);
+  const body = [el("p", {}, i.text + (i.basis === "knowledge" ? "（暫定）" : ""))];
+  if (i.source.words) body.push(el("p", { class: "quote" }, `演者の言葉：「${i.source.words}」`));
+  if (i.reason) body.push(el("p", { class: "quote" }, `理由：${i.reason}`));
+  if (i.source.quote) body.push(el("p", { class: "quote" }, `根拠：「${i.source.quote}」`));
+  const c = card(who, i.held ? "保留（引用で言えない）" : label, `${i.id}  ${i.kind}`, ...body);
+  if (i.held) c.classList.add("held");
+  return c;
+}
+
+function renderKata(d) {
+  const root = document.getElementById("kata");
+  for (const [name, list] of [["型", d.kata], ["噺", d.hanashi]]) {
+    root.append(el("h2", {}, name));
+    for (const s of d.scenes) {
+      const rows = list.filter(i => i.scene_id === s.id);
+      if (!rows.length) continue;
+      root.append(el("h3", {}, s.title), ...rows.map(itemCard));
+    }
+    const rest = list.filter(i => !d.scenes.some(s => s.id === i.scene_id));
+    if (rest.length) root.append(el("h3", {}, "場面の分からない項目"), ...rest.map(itemCard));
+  }
+}
+
+function renderCards(d) {
+  const root = document.getElementById("cards");
+  root.append(el("div", { class: "notice" }, "札は演者の決定をスクリプトが写しただけです。LLM の呼び出しは 0 回です。"));
+  const cards = d.guide?.cards || [];
+  if (!d.guide) root.append(el("p", {}, "札はまだありません。netacho guide で作ります。"));
+  else if (!cards.length) root.append(el("p", {}, "札に出す項目はまだありません。"));
+  for (const c of cards) {
+    root.append(card("script", "スクリプトの転記", `${c.order}. ${c.copied_fields.scene_title}（${POSITION[c.copied_fields.position]}）`,
+      el("p", { class: "big" }, c.text),
+      el("div", { class: "meta" }, tag("performer", "演者の決定"), `理由：${c.copied_fields.reason}`)));
+  }
+}
+
+function renderDeshi(d) {
+  const root = document.getElementById("deshi");
+  const stat = d.run?.deshi;
+  if (stat) root.append(el("div", { class: "notice" },
+    `指摘の数：1 周目 ${stat.round1}` + (stat.round2 === null ? "" : ` → 2 周目 ${stat.round2}`)));
+  const titles = Object.fromEntries(d.scenes.map(s => [s.id, s.title]));
+  const issues = d.review?.issues || [];
+  root.append(el("h2", {}, "演者への質問"));
+  const questions = d.questions?.questions || [];
+  if (!questions.length) root.append(el("p", {}, "質問はありません。"));
+  for (const q of questions) {
+    const body = [el("p", {}, q.text)];
+    if (q.answer) body.push(el("div", { class: "meta" }, tag("performer", "演者の決定"), `「${q.answer.words}」`));
+    root.append(card("claude", "Claude の候補", `${q.id}  ${titles[q.scene_id] || ""}`, ...body));
+  }
+  root.append(el("h2", {}, "弟子役の指摘"));
+  if (!issues.length) root.append(el("p", {}, "指摘はありません。"));
+  for (const i of issues) {
+    const where = i.anchor.scene_id ? titles[i.anchor.scene_id] : i.anchor.item_id;
+    root.append(card("claude", "Claude の候補", `${where}  ${ISSUE[i.kind]}  ${i.round} 周目  ${i.resolved ? "解決" : "未解決"}`,
+      el("p", {}, i.attempt), el("p", { class: "quote" }, i.what_is_missing)));
+  }
+}
+
+function select(id) {
+  for (const [key] of TABS) {
+    document.getElementById(key).hidden = key !== id;
+    document.getElementById("tab-" + key).setAttribute("aria-selected", key === id);
+  }
+}
+
+async function main() {
+  const tabs = document.getElementById("tabs");
+  for (const [key, label] of TABS) {
+    const b = el("button", { id: "tab-" + key, role: "tab", "aria-selected": "false" }, label);
+    b.addEventListener("click", () => { select(key); history.replaceState(null, "", "#" + key); });
+    tabs.append(b);
+  }
+  const run = new URLSearchParams(location.search).get("run") || "../out/view";
+  try {
+    const res = await fetch(`${run}/view.json`);
+    if (!res.ok) throw new Error(String(res.status));
+    const d = await res.json();
+    document.getElementById("title").textContent = `根多帳：${d.koza.neta}`;
+    document.getElementById("sub").textContent = `${d.koza.id}  ${d.koza.performer_id}`;
+    renderWave(d); renderKata(d); renderCards(d); renderDeshi(d);
+    select(TABS.some(([k]) => "#" + k === location.hash) ? location.hash.slice(1) : "wave");
+  } catch (e) {
+    document.getElementById("error").append(el("div", { class: "notice" },
+      `読み込めません（${e.message}）。netacho view で書き出してから開きます。`));
+  }
+}
+main();
+</script>
+</body>
+</html>

@@ -304,6 +304,13 @@ def _who(parser: argparse.ArgumentParser) -> None:
         parser.add_argument(flag, default=default, required=default is None)
 
 
+def cmd_view(args: argparse.Namespace) -> None:
+    from . import view
+
+    path = view.write(store.Neta(args.performer, args.neta), args.koza)
+    print(f"書き出した：{path.name}。make viewer で開く")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="netacho", description="一席の音声から演者の根多帳を作る")
     sub = p.add_subparsers(dest="command", required=True)
@@ -381,6 +388,12 @@ def build_parser() -> argparse.ArgumentParser:
     guide = sub.add_parser("guide", help="案内の札（LLM 0 回）")
     _who(guide)
     guide.set_defaults(func=cmd_guide)
+
+    show = sub.add_parser("view", help="視聴画面の JSON を書き出す（LLM 0 回）")
+    show.add_argument("--performer", required=True)
+    show.add_argument("--neta", required=True)
+    show.add_argument("--koza", required=True)
+    show.set_defaults(func=cmd_view)
 
     reread = sub.add_parser("reread", help="弟子役に読み直させる")
     reread.add_argument("--performer", required=True)

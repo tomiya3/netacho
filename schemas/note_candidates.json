@@ -64,6 +64,10 @@
               "no_candidate",
               "low_rank"
             ]
+          },
+          "note": {
+            "type": "string",
+            "description": "演者向けの文。ノート役の文か、決まった文"
           }
         }
       }

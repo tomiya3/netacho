@@ -462,6 +462,9 @@ def note(
             raise
         store.write(ctx.neta.drafts / "noter.json", doc, "noter")
     notes, fallback = checked_notes(doc, cands)
+    for c in cands["candidates"]:
+        c["note"] = notes[c["id"]]
+    store.write(kdir / "note_candidates.json", cands, "note_candidates")  # 視聴画面が読む
     scene_of = {s["seg_id"]: s["scene_id"] for s in tl["segments"]}
     titles = {s["id"]: s["title"] for s in ctx.hanashi["scenes"]}
     item_scene = {
