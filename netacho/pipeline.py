@@ -114,7 +114,11 @@ def _check_items(ctx: Context, items: list[dict], draft_name: str) -> set[str]:
         ctx.client, "checker", [{"type": "text", "text": text}], "checker", ctx.usage, ctx.budget, ctx.cache
     )
     store.write(ctx.neta.drafts / draft_name, doc, "checker")
-    verdicts = {v["item_id"]: v["verdict"] for v in doc["verdicts"]}
+    verdicts: dict[str, str] = {}
+    severity = {"supported": 0, "weak": 1, "unsupported": 2}
+    for v in doc["verdicts"]:  # 同じ項目に複数の判定が返ったら、一番厳しいものを取る
+        current = verdicts.get(v["item_id"], "supported")
+        verdicts[v["item_id"]] = max(current, v["verdict"], key=severity.__getitem__)
     held = set()
     for it in heard:
         verdict = verdicts.get(it["id"], "no_verdict")
@@ -144,13 +148,13 @@ def write_pass(ctx: Context, *, rework: list[dict] | None = None, suffix: str = 
     ctx.dropped.update(dropped)
     if bad_scenes:
         ctx.dropped["scene_bad_seg"] += bad_scenes
-    ctx.kept += len(items)
     merge.assign_ids(items, ctx.hanashi, ctx.kata)
     held = _check_items(ctx, items, f"checker{suffix}.json")
     merge.merge(
         ctx.hanashi, ctx.kata, items=items, scenes=scenes, characters=draft["characters"], held_ids=held
     )
     save_books(ctx)
+    ctx.kept += len(items)  # 正本に入ってから数える
 
 
 def save_books(ctx: Context) -> None:
