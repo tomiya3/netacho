@@ -316,9 +316,8 @@ def test_rebuild_adds_up_measured_cost(data, tmp_path):
 
 
 def test_numbers_survive_a_crash(data, tmp_path):
-    client = ScriptedClient(
-        writer=[draft(draft_item(), draft_item(source={"segs": ["seg-9999", "seg-9999"]}))]
-    )
+    broken = draft_item(source={"segs": ["seg-9999", "seg-9999"]})
+    client = ScriptedClient(writer=[draft(draft_item(), broken)], checker=[])
     with pytest.raises(IndexError):  # 照合役の返事が無い = 途中で落ちた
         build(client, data, tmp_path)
     run = store.read(store.Neta(P, N, data).koza_dir(K) / "run.json", "run")
