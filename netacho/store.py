@@ -63,11 +63,23 @@ class Neta:
         return self.base / "drafts"
 
 
-def find_koza(koza_id: str, root: Path | None = None) -> Path:
-    """高座 ID からフォルダを探す。無い、または複数あれば止める。"""
-    hits = sorted((root or data_root()).glob(f"*/*/koza/{_safe(koza_id, '高座 ID')}"))
+def find_koza(
+    koza_id: str, root: Path | None = None, *, performer: str | None = None, neta: str | None = None
+) -> Path:
+    """高座 ID からフォルダを探す。同じ ID が別の演者や演目にあれば、performer と neta で絞る。"""
+    _safe(koza_id, "高座 ID")
+    base = root or data_root()
+    if not base.is_dir():
+        raise StoreError(f"高座 {koza_id} のフォルダが無い")
+    hits = [
+        n / "koza" / koza_id
+        for p in sorted(base.iterdir())
+        if p.is_dir() and performer in (None, p.name)
+        for n in sorted(p.iterdir())
+        if n.is_dir() and neta in (None, n.name) and (n / "koza" / koza_id).is_dir()
+    ]
     if len(hits) != 1:
-        raise StoreError(f"高座 {koza_id} のフォルダが {len(hits)} 個ある（1 個のはず）")
+        raise StoreError(f"高座 {koza_id} のフォルダが {len(hits)} 個ある（--performer と --neta で絞る）")
     return hits[0]
 
 

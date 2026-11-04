@@ -8,11 +8,13 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from . import reactions, store
 
 SCHEMA_VERSION = 1
+STALE_AFTER_MARK = ("note_candidates.json", "note.md", "sokki.md")
 # prep をやり直すと意味を失う物
 PREP_OUTPUTS = (
     "koza.json",
@@ -89,9 +91,10 @@ def _check_excerpt(args: argparse.Namespace, seconds: float) -> None:
 def _clear_outputs(kdir: Path, force: bool) -> None:
     """やり直す前に古い生成物を消す（途中で落ちても、新しい wav に古い結果が並ばないように）。"""
     path = kdir / "reactions.json"
-    if path.exists() and not force:
-        if any(r["method"] == "manual" for r in store.read(path, "reactions")["reactions"]):
+    if path.exists() and any(r["method"] == "manual" for r in store.read(path, "reactions")["reactions"]):
+        if not force:
             raise SystemExit("手で付けた反応がある。作り直すなら --force を付ける")
+        shutil.copy2(path, kdir / "reactions.manual.bak.json")  # 長い処理の途中で落ちても戻せるように
     for name in PREP_OUTPUTS:
         (kdir / name).unlink(missing_ok=True)
 
@@ -109,31 +112,70 @@ def cmd_prep(args: argparse.Namespace) -> None:
     _clear_outputs(kdir, args.force)
     wav = audio.extract_wav(source, kdir / "audio.wav", start=args.start, end=args.end)
     terms = [t for t in args.terms.split(",") if t] if args.terms else None
+    t0 = time.time()
     transcript = _to_transcript(speech.detect(wav, terms=terms), args.koza)
+    t1 = time.time()
     store.write(kdir / "transcript.json", transcript, "transcript")
     doc = reactions.build(speech.load_wav(wav), transcript)
+    t2 = time.time()
     store.write(kdir / "reactions.json", doc, "reactions")
+    measured = {
+        "audio_seconds": audio.duration(wav),
+        "transcribe_seconds": round(t1 - t0, 1),
+        "reactions_seconds": round(t2 - t1, 1),
+    }
+    run = {
+        "schema_version": SCHEMA_VERSION,
+        "koza_id": args.koza,
+        "roles": [],
+        "total_cost_usd": 0.0,
+        "total_seconds": 0.0,
+        "prep": measured,
+    }
+    store.write(kdir / "run.json", run, "run")
     store.write(kdir / "koza.json", koza, "koza")  # 最後に書く。これがあれば prep は完了している
     print(f"区間 {len(transcript['segments'])}、VAD {len(transcript['vad'])}、手がかり {len(doc['hints'])}")
+    print(f"音声 {measured['audio_seconds']:.0f} 秒、文字起こし {measured['transcribe_seconds']:.0f} 秒")
     _print_top(doc)
 
 
+def _within_wave(doc: dict, marks: list[dict]) -> None:
+    """時刻がこの wav の中にあること。抜粋なら、元の録音の時刻で付けるとずれる。"""
+    wave = doc.get("wave")
+    if wave is None:
+        return
+    length = wave["hop"] * len(wave["db"])
+    over = [m for m in marks if m["t1"] > length + wave["hop"]]
+    if over:
+        raise ValueError(f"wav の長さ {length:.0f} 秒を超える時刻が {len(over)} 件ある")
+
+
 def cmd_mark(args: argparse.Namespace) -> None:
-    kdir = store.find_koza(args.koza)
+    kdir = store.find_koza(args.koza, performer=args.performer, neta=args.neta)
     path = kdir / "reactions.json"
     doc = store.read(path, "reactions")
+    marks = reactions.manual_reactions(reactions.parse_marks(Path(args.tsv)))
+    _within_wave(doc, marks)
     backup = kdir / "reactions.auto.json"
     if not backup.exists():  # 自動の結果は別に残す（prep をやり直さなくて済むように）
         shutil.copy2(path, backup)
-    doc["reactions"] = reactions.manual_reactions(reactions.parse_marks(Path(args.tsv)))
+    doc["reactions"] = marks
     store.write(path, doc, "reactions")
-    print(f"手で付けた反応 {len(doc['reactions'])} 件を入れた（自動の結果は {backup.name} に残した）")
+    for name in STALE_AFTER_MARK:  # 反応から作った物は古くなる
+        (kdir / name).unlink(missing_ok=True)
+    print(f"手で付けた反応 {len(marks)} 件を入れた（自動の結果は {backup.name} に残した）")
+    excerpt = store.read(kdir / "koza.json", "koza").get("excerpt")
+    if excerpt:
+        print(
+            f"この高座は抜粋で、時刻は抜粋の先頭（元の録音の {excerpt['from'] or 0} 秒）からの秒として入れた"
+        )
 
 
 def cmd_top(args: argparse.Namespace) -> None:
     if args.n < 1:
         raise SystemExit("-n は 1 以上で")
-    _print_top(store.read(store.find_koza(args.koza) / "reactions.json", "reactions"), args.n)
+    kdir = store.find_koza(args.koza, performer=args.performer, neta=args.neta)
+    _print_top(store.read(kdir / "reactions.json", "reactions"), args.n)
 
 
 def cmd_build(args: argparse.Namespace) -> None:
@@ -164,11 +206,15 @@ def build_parser() -> argparse.ArgumentParser:
     mark = sub.add_parser("mark", help="手で付けた反応の時刻を入れる")
     mark.add_argument("--koza", required=True)
     mark.add_argument("--tsv", required=True)
+    mark.add_argument("--performer")
+    mark.add_argument("--neta")
     mark.set_defaults(func=cmd_mark)
 
     top = sub.add_parser("top", help="強い順の反応の時刻（耳で確かめる用）")
     top.add_argument("--koza", required=True)
     top.add_argument("-n", type=int, default=10)
+    top.add_argument("--performer")
+    top.add_argument("--neta")
     top.set_defaults(func=cmd_top)
 
     build = sub.add_parser("build", help="噺・型（構成作家役、根拠の検証、照合役、マージ）")

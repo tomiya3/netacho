@@ -205,6 +205,66 @@ def test_mark_replaces_reactions_and_keeps_auto(data, tmp_path, capsys):
     assert "0:07.0 - 0:08.0" in capsys.readouterr().out
 
 
+def test_mark_rejects_times_outside_wav(data, tmp_path):
+    cli.main([*PREP, "--audio", str(data), "--from", "8", "--to", "20"])
+    tsv = tmp_path / "m.tsv"
+    tsv.write_text("100\t101\n", encoding="utf-8")  # 元の録音の時刻で付けた間違い
+    with pytest.raises(SystemExit):
+        cli.main(["mark", "--koza", "2026-02-03-hall", "--tsv", str(tsv)])
+    kdir = store.find_koza("2026-02-03-hall")
+    assert store.read(kdir / "reactions.json", "reactions")["reactions"][0]["method"] == "auto"
+
+
+def test_mark_says_excerpt_base_and_removes_stale(data, tmp_path, capsys):
+    cli.main([*PREP, "--audio", str(data), "--from", "8", "--to", "20"])
+    kdir = store.find_koza("2026-02-03-hall")
+    (kdir / "note.md").write_text("古いノート", encoding="utf-8")
+    tsv = tmp_path / "m.tsv"
+    tsv.write_text("1\t2\n", encoding="utf-8")
+    cli.main(["mark", "--koza", "2026-02-03-hall", "--tsv", str(tsv)])
+    assert "抜粋の先頭" in capsys.readouterr().out
+    assert not (kdir / "note.md").exists()
+
+
+def test_force_keeps_a_copy_of_manual_marks(data, tmp_path, monkeypatch):
+    cli.main([*PREP, "--audio", str(data)])
+    tsv = tmp_path / "m.tsv"
+    tsv.write_text("5\t6\n", encoding="utf-8")
+    cli.main(["mark", "--koza", "2026-02-03-hall", "--tsv", str(tsv)])
+
+    def boom(*a, **k):
+        raise ValueError("文字起こしに失敗")
+
+    monkeypatch.setattr(speech, "detect", boom)
+    with pytest.raises(SystemExit):
+        cli.main([*PREP, "--audio", str(data), "--force"])
+    kdir = store.find_koza("2026-02-03-hall")
+    bak = store.read(kdir / "reactions.manual.bak.json", "reactions")
+    assert bak["reactions"][0]["method"] == "manual"
+
+
+def test_prep_measures_seconds(data):
+    cli.main([*PREP, "--audio", str(data)])
+    run = store.read(store.find_koza("2026-02-03-hall") / "run.json", "run")
+    assert run["prep"]["audio_seconds"] == pytest.approx(30.0, abs=0.05)
+    assert run["prep"]["transcribe_seconds"] >= 0
+
+
+def test_same_koza_id_on_two_netas(data, tmp_path):
+    cli.main([*PREP, "--audio", str(data)])
+    other = ["prep", "--performer", "performer-x", "--neta", "別の噺", "--koza", "2026-02-03-hall"]
+    cli.main([*other, "--audio", str(data)])
+    with pytest.raises(SystemExit):
+        cli.main(["top", "--koza", "2026-02-03-hall"])
+    cli.main(["top", "--koza", "2026-02-03-hall", "--neta", "別の噺"])
+
+
+def test_find_koza_takes_id_literally(data, tmp_path):
+    cli.main([*PREP, "--audio", str(data)])
+    with pytest.raises(store.StoreError):
+        store.find_koza("2026-*")
+
+
 def test_find_koza_errors(tmp_path, monkeypatch):
     monkeypatch.setenv("NETACHO_DATA", str(tmp_path))
     with pytest.raises(SystemExit):
