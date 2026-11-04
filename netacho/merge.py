@@ -78,7 +78,8 @@ def merge(
                     *old["history"],
                     {"at": at, "before": old["text"], "after": row["text"], "by": "writer"},
                 ]
-        if it["id"] in held_ids:
+        # knowledge は照合を通らないので、保留の項目を knowledge に書き換えても保留は外れない
+        if it["id"] in held_ids or (old is not None and old.get("held") and row["basis"] == "knowledge"):
             row["held"] = True
         target = books[it["book"]]
         other = books["kata" if it["book"] == "hanashi" else "hanashi"]

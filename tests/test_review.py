@@ -153,6 +153,25 @@ def test_rebuild_keeps_answered_questions(data, tmp_path):
     assert doc["issues"][0]["resolved"] is True
 
 
+def test_rephrased_kind_on_same_scene_is_not_resolved(data, tmp_path):
+    """2 周目に同じ場面を別の kind で指されたら、直っていない。"""
+    c = client(deshi(issue(scene="scene-02")), deshi(issue("unclear_scene", scene="scene-02")))
+    run(c, data, tmp_path)
+    assert saved(data)[0]["issues"][0]["resolved"] is False
+
+
+def test_skipped_question_leaves_no_issue_behind(data, tmp_path):
+    """聞かなかった 2 周目の ask は残さない。質問の無い指摘は answer で解決できない。"""
+    ask1 = issue("ask_performer", scene="scene-02", missing="なぜ")
+    ask2 = issue("ask_performer", item="item-0001", missing="なぜ（言い直し）")
+    c = client(deshi(ask1, issue(scene="scene-03")), deshi(ask2))
+    run(c, data, tmp_path)
+    issues, questions = saved(data)
+    has_question = {q["issue_id"] for q in questions["questions"]}
+    asks = [i for i in issues["issues"] if i["kind"] == "ask_performer"]
+    assert [i["id"] in has_question for i in asks] == [True]
+
+
 def test_rework_without_real_change_is_not_resolved(data, tmp_path):
     """構成作家役が何も直さず、弟子役が 2 周目に言わなかっただけなら解決にしない。"""
     c = client(
