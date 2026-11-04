@@ -236,10 +236,15 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     from . import runner
 
-    try:
-        runner.check_auth(runner.make_client())  # 長い文字起こしの後で落ちないように、先に確かめる
-    except (anthropic.AuthenticationError, TypeError) as e:  # 鍵が無いと TypeError
-        raise SystemExit("API の認証が無い。ANTHROPIC_API_KEY を用意する") from e
+    if not args.reuse:  # --reuse はキャッシュだけで済むことがあるので、鍵を要求しない
+        try:
+            runner.check_auth(runner.make_client())  # 長い文字起こしの後で落ちないように、先に確かめる
+        except anthropic.AuthenticationError as e:
+            raise SystemExit("API の鍵が通らない。ANTHROPIC_API_KEY を確かめる") from e
+        except TypeError as e:
+            if "authentication" not in str(e).lower():  # 別のバグを認証の問題と言わない
+                raise
+            raise SystemExit("API の認証が無い。ANTHROPIC_API_KEY を用意する") from e
     where = f"--performer {args.performer} --neta {args.neta} --koza {args.koza}"
     print("1/3 prep")
     cmd_prep(args)

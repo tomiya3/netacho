@@ -100,12 +100,42 @@ def test_run_checks_auth_before_long_prep(monkeypatch):
             self.messages = self
 
         def count_tokens(self, **kw):
-            raise TypeError("認証が無い")
+            raise TypeError("Could not resolve authentication method")
 
     monkeypatch.setattr(runner, "make_client", NoAuth)
     with pytest.raises(SystemExit, match="ANTHROPIC_API_KEY"):
         cli.main(["run", "--audio", "x", "--performer", P, "--neta", N, "--koza", K])
     assert called == []
+
+
+def test_run_does_not_hide_other_type_errors(monkeypatch):
+    class Bug:
+        def __init__(self):
+            self.messages = self
+
+        def count_tokens(self, **kw):
+            raise TypeError("別のバグ")
+
+    monkeypatch.setattr(runner, "make_client", Bug)
+    with pytest.raises(TypeError, match="別のバグ"):
+        cli.main(["run", "--audio", "x", "--performer", P, "--neta", N, "--koza", K])
+
+
+def test_run_with_reuse_needs_no_key(monkeypatch):
+    calls = []
+    for name in ("cmd_prep", "cmd_build", "cmd_note"):
+        monkeypatch.setattr(cli, name, lambda a, n=name: calls.append(n))
+    monkeypatch.setattr(runner, "check_auth", lambda c: pytest.fail("確かめない"))
+    cli.main(["run", "--audio", "x", "--performer", P, "--neta", N, "--koza", K, "--reuse"])
+    assert len(calls) == 3
+
+
+def test_mark_on_the_boundary_of_a_segment_goes_to_that_segment():
+    assert lines([seg("一", 0, 2), seg("二", 3, 5)], react(3.0)) == ["一", "二（笑い）"]
+
+
+def test_long_segment_keeps_the_mark_at_its_end():
+    assert lines([seg("長い台詞", 0, 25), seg("次", 26, 27)], react(10.0)) == ["長い台詞（笑い）", "次"]
 
 
 def test_run_reports_other_errors_as_they_are(monkeypatch):
