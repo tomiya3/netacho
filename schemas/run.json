@@ -179,6 +179,30 @@
           "minimum": 0
         }
       }
+    },
+    "prep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "audio_seconds",
+        "transcribe_seconds",
+        "reactions_seconds"
+      ],
+      "properties": {
+        "audio_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "transcribe_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reactions_seconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "description": "prep の実測。文字起こしと反応の検出にかかった秒数"
     }
   }
 }
