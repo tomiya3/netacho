@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -67,6 +68,27 @@ def test_rm_judged_by_location(repo):
     (other / "out").mkdir()
     assert _decide("rm -rf out/x", repo, other) == "ask"
     assert _decide("rm -rf out/x", repo, other, project=other) == "allow"
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="jq が必要")
+def test_rm_in_repo_under_tmp():
+    """/tmp の下の repo でも判定が同じ（macOS は /tmp がリンク、Linux は実体。git の root の形が違う）。"""
+    with tempfile.TemporaryDirectory(dir="/tmp") as d:
+        subprocess.run(["git", "init", "-q", "-b", "t-branch", d], check=True)
+        root = Path(d)
+        (root / "out").mkdir()
+        assert _decide(f"rm -rf {d}/out/test_c", root) == "allow"
+        assert _decide(f"rm -rf {d}/out/demo", root) == "ask"
+        assert _decide(f"rm -rf {d}/src", root) == "ask"
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="jq が必要")
+def test_rm_through_link_in_claude_tmp_asks(repo):
+    """Claude の一時フォルダでも、リンクを通る rm は承認制（OS によらず、リンク先を消すため）。"""
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix="claude-test-") as d:
+        (Path(d) / "link").symlink_to(repo)
+        assert _decide(f"rm -rf {d}/plain/x", repo) == "allow"
+        assert _decide(f"rm -rf {d}/link/x", repo) == "ask"
 
 
 @pytest.mark.skipif(shutil.which("jq") is None, reason="jq が必要")
