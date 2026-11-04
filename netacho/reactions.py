@@ -55,7 +55,7 @@ def _times(span: tuple[int, int], scores: dict) -> tuple[float, float]:
     half = scores["window"] / 2
     start = span[0] * scores["stride"] + half - scores["stride"] / 2
     end = (span[1] - 1) * scores["stride"] + half + scores["stride"] / 2
-    return start, min(end, scores["seconds"])  # 末尾の切れた窓で音声の長さを超えない
+    return min(start, scores["seconds"]), min(end, scores["seconds"])  # 切れた窓で音声の長さを超えない
 
 
 def _strength(value: float, kind: str, scores: dict) -> float:
@@ -117,6 +117,7 @@ def build(scores: dict, transcript: dict) -> dict:
             "stride": scores["stride"],
             "laugh_peak_ratio": LAUGH_PEAK_RATIO,
             "laugh_floor": LAUGH_FLOOR,
+            "laugh_threshold": round(laugh_threshold(scores["laugh"]), 4),
             "applause_min": APPLAUSE_MIN,
             "music_min": MUSIC_MIN,
             "merge_steps": MERGE_STEPS,
