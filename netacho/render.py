@@ -79,6 +79,8 @@ def note_markdown(
         "受けなかったという意味ではありません。原音で確かめてください。",
         "",
     ]
+    if candidates.get("notices"):
+        out += [*candidates["notices"], ""]
     if not candidates["candidates"]:
         out += ["今回は候補を選びませんでした。反応が十分だったという意味ではありません。", ""]
     for c in candidates["candidates"]:

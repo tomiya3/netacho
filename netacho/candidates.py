@@ -32,9 +32,13 @@ def select(items: list[dict], reactions: dict) -> dict:
     - 窓に候補があれば、その中で最も強い順位をその回収の強さとし、下位 4 分の 1 を low_rank
     - 音声の末尾で窓が切れていて、候補も無ければ判定しない（録音が足りないだけかもしれない）
     - 順位の無い手の反応は、窓にあっても順位の計算に入れない
+    - 自動の反応が 1 件も無い高座では no_candidate を出さない（手の印は聞いた所だけで、
+      拾えなかった高座は回収が全部「候補が少ない」になってしまう）
     """
     koza_id = reactions["koza_id"]
     end = audio_end(reactions)
+    has_auto = any(r["method"] == "auto" for r in reactions["reactions"])
+    has_manual = any(r["method"] == "manual" for r in reactions["reactions"])
     silent: list[tuple[dict, list[float]]] = []
     ranked: list[tuple[int, dict, list[float], list[str]]] = []
     for it in payoff_items(items, koza_id):
@@ -44,7 +48,7 @@ def select(items: list[dict], reactions: dict) -> dict:
         window = [t0, round(min(t1, end), 3) if clipped else round(t1, 3)]
         hits = _overlapping(reactions["reactions"], window[0], window[1])
         if not hits:
-            if not clipped:
+            if not clipped and has_auto:
                 silent.append((it, window))
             continue
         ranks = [r["strength_rank"] for r in hits if r["strength_rank"] is not None]
@@ -55,9 +59,17 @@ def select(items: list[dict], reactions: dict) -> dict:
     rows = [(it, w, [], "no_candidate") for it, w in silent]
     rows += [(it, w, ids, "low_rank") for _, it, w, ids in weakest]
     rows.sort(key=lambda r: r[0]["payoff"]["t1"])
+    notices = []
+    if has_manual:
+        notices.append("この高座の反応は手で付けたものです。")
+    if not has_auto:
+        notices.append("自動で拾った反応の候補が無いので、回収の後に候補が無いかどうかは判定していません。")
+    if ranked and low_count == 0:
+        notices.append("順位のある回収が 4 件未満なので、強さは比べていません。")
     return {
         "schema_version": 1,
         "koza_id": koza_id,
+        "notices": notices,
         "candidates": [
             {
                 "id": f"cand-{n:04d}",

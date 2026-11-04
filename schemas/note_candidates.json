@@ -67,6 +67,13 @@
           }
         }
       }
+    },
+    "notices": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "候補を選ばなかった理由など。スクリプトが書く"
     }
   }
 }

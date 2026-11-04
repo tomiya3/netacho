@@ -98,6 +98,70 @@ def test_bad_note_is_replaced_and_counted(data, tmp_path, bad):
     assert "反応なしでした" not in text
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "回収の後に、反応候補が少ない所です。",
+        "見立ての回収の後は、反応候補が見つからない所です。原音で確かめてください。",
+        "サゲの後の反応候補が、この高座の中では小さい方です。",
+    ],
+)
+def test_allowed_note_wording(text):
+    assert pipeline.note_is_ok(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "ここは受け無かったようです。",
+        "ｳｹなかった所です。",
+        "笑いが起きなかった所です。",
+        "反応がありませんでした。",
+        "無反応でした。",
+        "盛り上がらなかった所です。",
+        "お客さんは退屈していたようです。",
+        "間を長くした方がよいでしょう。",
+        "枕で説明してみてはどうでしょう。",
+        "回収の後 6 秒に候補がありません。",
+        "一文目。二文目。三文目。",
+        "",
+    ],
+)
+def test_rejected_note_wording(text):
+    assert not pipeline.note_is_ok(text)
+
+
+def test_failed_note_leaves_no_old_note(data, tmp_path):
+    built(data, tmp_path)
+    run_note(data, tmp_path, note_doc(("cand-0001", "文です。")))
+    kdir = store.Neta(P, N, data).koza_dir(K)
+    assert (kdir / "note.md").exists()
+    with pytest.raises(IndexError):  # 偽の client の返事が尽きる = API の失敗の代わり
+        run_note(data, tmp_path)
+    assert not (kdir / "note.md").exists()
+
+
+def test_after_quote_is_capped(data, tmp_path):
+    built(data, tmp_path)
+    kdir = store.Neta(P, N, data).koza_dir(K)
+    doc = store.read(kdir / "transcript.json", "transcript")
+    doc["segments"][9]["text"] = "あ" * 500
+    store.write(kdir / "transcript.json", doc, "transcript")
+    client, _ = run_note(data, tmp_path, note_doc(("cand-0001", "文です。")))
+    assert len(json.loads(text_of(client.calls["noter"][0]))[0]["after_quote"]) == pipeline.AFTER_QUOTE_MAX
+
+
+def test_manual_marks_are_shown_in_note(data, tmp_path):
+    built(data, tmp_path)
+    kdir = store.Neta(P, N, data).koza_dir(K)
+    doc = store.read(kdir / "reactions.json", "reactions")
+    doc["reactions"] = [{**doc["reactions"][0], "method": "manual", "strength_rank": None}]
+    store.write(kdir / "reactions.json", doc, "reactions")
+    client, _ = run_note(data, tmp_path)
+    assert client.calls["noter"] == []
+    assert "手で付けたもの" in (kdir / "note.md").read_text(encoding="utf-8")
+
+
 def test_no_candidates_skips_noter_and_says_so(data, tmp_path):
     built(data, tmp_path)
     kdir = store.Neta(P, N, data).koza_dir(K)

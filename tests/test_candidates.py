@@ -16,8 +16,8 @@ def item(i, t1, *, held=False, koza="k"):
     return it
 
 
-def react(i, t0, t1, rank):
-    return {"id": f"react-{i:04d}", "t0": t0, "t1": t1, "strength_rank": rank}
+def react(i, t0, t1, rank, method="auto"):
+    return {"id": f"react-{i:04d}", "t0": t0, "t1": t1, "strength_rank": rank, "method": method}
 
 
 def doc(*rows, seconds=None):
@@ -85,10 +85,30 @@ def test_silent_payoffs_are_not_in_rank_population():
 
 def test_clipped_window_at_end_of_audio_is_not_judged():
     """録音の末尾で窓が切れるなら、候補が無くても判定しない。"""
-    r = candidates.select([item(1, 58.0)], doc(seconds=60))
+    far = react(9, 1.0, 2.0, 1)
+    r = candidates.select([item(1, 58.0)], doc(far, seconds=60))
     assert r["candidates"] == []
-    r = candidates.select([item(1, 50.0)], doc(seconds=60))
+    r = candidates.select([item(1, 50.0)], doc(far, seconds=60))
     assert whys(r) == [("item-0001", "no_candidate")]
+
+
+def test_nothing_detected_is_not_judged():
+    """自動で 1 件も拾えなかった高座では、全部の回収を「候補が少ない」にしない。"""
+    r = candidates.select([item(1, 10.0), item(2, 20.0)], doc())
+    assert r["candidates"] == []
+    assert any("判定していません" in n for n in r["notices"])
+
+
+def test_manual_only_koza_does_not_judge_unmarked_payoffs():
+    """手の印は聞いた所だけなので、印の無い回収を no_candidate にしない。手で付けたことも出す。"""
+    r = candidates.select([item(1, 10.0), item(2, 20.0)], doc(react(1, 11.0, 12.0, None, "manual")))
+    assert r["candidates"] == []
+    assert "この高座の反応は手で付けたものです。" in r["notices"]
+
+
+def test_few_payoffs_notice():
+    r = candidates.select([item(1, 10.0)], doc(react(1, 11.0, 12.0, 1)))
+    assert any("強さは比べていません" in n for n in r["notices"])
 
 
 def test_clipped_window_still_finds_reaction():
@@ -105,12 +125,12 @@ def test_manual_reaction_without_rank_is_presence_only():
 
 def test_held_and_other_koza_are_skipped():
     items = [item(1, 10.0, held=True), item(2, 20.0, koza="other"), item(3, 30.0)]
-    assert whys(candidates.select(items, doc())) == [("item-0003", "no_candidate")]
+    assert whys(candidates.select(items, doc(react(9, 1.0, 2.0, 1)))) == [("item-0003", "no_candidate")]
 
 
 def test_ids_follow_time_order():
     items = [item(2, 50.0), item(1, 10.0)]
-    r = candidates.select(items, doc())
+    r = candidates.select(items, doc(react(9, 1.0, 2.0, 1)))
     assert [(c["id"], c["item_id"]) for c in r["candidates"]] == [
         ("cand-0001", "item-0001"),
         ("cand-0002", "item-0002"),
