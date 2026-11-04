@@ -51,6 +51,14 @@ def test_short_gap_is_merged_and_long_gap_is_not():
     assert len(apart) == 2
 
 
+def test_two_clicks_with_a_gap_are_not_a_reaction():
+    """基準を超えたのが 0.1 秒ずつの 2 点なら、つないでも候補にしない（超えた長さは 0.2 秒）。"""
+    db = np.full(200, -30.0)
+    base = np.full(200, -30.0)
+    db[50] = db[54] = -20.0
+    assert rx.find_spans(db, base) == []
+
+
 def test_chopped_laugh_survives():
     """切れ切れの笑い（0.2 秒ずつ）は、つないでから長さを見るので残る。"""
     bursts = [(20.0 + i * 0.4, 0.2, -18.0) for i in range(6)]
@@ -158,6 +166,22 @@ def test_hints():
     ]
 
 
+def test_hint_keeps_vad_with_a_small_overlap():
+    """台詞の端と少し重なるだけの VAD 区間は、文字の無い部分が長ければ手がかりに残す。"""
+    t = _transcript(
+        [_seg(1, 0.0, 2.0, pause=None)],
+        vad=[{"start": 1.9, "end": 5.0}, {"start": 0.0, "end": 2.0}],
+    )
+    assert [(h["kind"], h["t0"]) for h in rx.hints(t)] == [("vad_no_text", 1.9)]
+
+
+@pytest.mark.parametrize(
+    ("t", "text"), [(59.96, "1:00.0"), (0.0, "0:00.0"), (61.25, "1:01.2"), (3599.99, "60:00.0")]
+)
+def test_clock_rounds_before_splitting(t, text):
+    assert rx.clock(t) == text
+
+
 def test_build_validates_against_schema():
     from netacho.schema import validate
 
@@ -184,7 +208,18 @@ def test_parse_marks(tmp_path):
 
 @pytest.mark.parametrize(
     "text",
-    ["", "# だけ\n", "1\n", "1\t2\t3\t4\n", "abc\t2\n", "5\t3\n", "1:2:3:4\t5\n"],
+    [
+        "",
+        "# だけ\n",
+        "1\n",
+        "1\t2\t3\t4\n",
+        "abc\t2\n",
+        "5\t3\n",
+        "1:2:3:4\t5\n",
+        "1:75\t2:00\n",
+        "1:75:00\t2:00:00\n",
+        "１\t２\n",
+    ],
 )
 def test_parse_marks_rejects(tmp_path, text):
     f = tmp_path / "m.tsv"

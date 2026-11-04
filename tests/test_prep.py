@@ -239,8 +239,58 @@ def test_force_keeps_a_copy_of_manual_marks(data, tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         cli.main([*PREP, "--audio", str(data), "--force"])
     kdir = store.find_koza("2026-02-03-hall")
-    bak = store.read(kdir / "reactions.manual.bak.json", "reactions")
+    bak = store.read(kdir / "reactions.bak.json", "reactions")
     assert bak["reactions"][0]["method"] == "manual"
+
+
+def test_mark_twice_keeps_previous_marks(data, tmp_path):
+    cli.main([*PREP, "--audio", str(data)])
+    tsv = tmp_path / "m.tsv"
+    tsv.write_text("5\t6\n", encoding="utf-8")
+    cli.main(["mark", "--koza", "2026-02-03-hall", "--tsv", str(tsv)])
+    tsv.write_text("7\t8\n", encoding="utf-8")
+    cli.main(["mark", "--koza", "2026-02-03-hall", "--tsv", str(tsv)])
+    kdir = store.find_koza("2026-02-03-hall")
+    assert store.read(kdir / "reactions.manual.bak.json", "reactions")["reactions"][0]["t0"] == 5.0
+
+
+def test_mark_needs_finished_prep(data, tmp_path):
+    cli.main([*PREP, "--audio", str(data)])
+    kdir = store.find_koza("2026-02-03-hall")
+    (kdir / "koza.json").unlink()
+    before = (kdir / "reactions.json").read_text(encoding="utf-8")
+    tsv = tmp_path / "m.tsv"
+    tsv.write_text("5\t6\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        cli.main(["mark", "--koza", "2026-02-03-hall", "--tsv", str(tsv)])
+    assert (kdir / "reactions.json").read_text(encoding="utf-8") == before
+
+
+def test_force_works_on_broken_reactions(data):
+    cli.main([*PREP, "--audio", str(data)])
+    kdir = store.find_koza("2026-02-03-hall")
+    (kdir / "reactions.json").write_text("{壊れた", encoding="utf-8")
+    cli.main([*PREP, "--audio", str(data), "--force"])
+    assert store.read(kdir / "reactions.json", "reactions")["reactions"]
+
+
+def test_prep_keeps_role_costs_in_run_json(data):
+    cli.main([*PREP, "--audio", str(data)])
+    kdir = store.find_koza("2026-02-03-hall")
+    run = store.read(kdir / "run.json", "run")
+    run["total_cost_usd"] = 1.5
+    store.write(kdir / "run.json", run, "run")
+    cli.main([*PREP, "--audio", str(data)])
+    assert store.read(kdir / "run.json", "run")["total_cost_usd"] == 1.5
+
+
+def test_prep_refuses_when_books_cite_the_koza(data):
+    cli.main([*PREP, "--audio", str(data)])
+    neta = store.Neta("performer-x", "架空の噺")
+    neta.kata.write_text('{"source": "2026-02-03-hall"}', encoding="utf-8")
+    with pytest.raises(SystemExit):
+        cli.main([*PREP, "--audio", str(data)])
+    cli.main([*PREP, "--audio", str(data), "--force"])
 
 
 def test_prep_measures_seconds(data):
