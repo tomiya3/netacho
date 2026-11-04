@@ -71,8 +71,11 @@ def _problem(item: dict, segs: Segments, tool_ids: set[str], performer_ids: set[
         pay = item["payoff"]["segs"]
         if not segs.ok(pay):
             return "bad_payoff_seg"
-        if segs.resolve(pay) is None:
+        payoff = segs.resolve(pay)
+        if payoff is None:
             return "empty_payoff"
+        if payoff["t1"] - payoff["t0"] > MAX_SPAN_SEC:
+            return "payoff_too_long"
         if segs.index[pay[0]] < segs.index[span[0]]:
             return "payoff_before_source"
     return None
