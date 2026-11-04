@@ -99,6 +99,12 @@ def test_book_is_forced_by_kind(transcript):
     assert [k["book"] for k in kept] == ["kata", "hanashi", "kata"]
 
 
+def test_ma_pause_must_follow_the_last_segment(transcript):
+    """長い範囲のどこかに間があるだけでは、間の根拠にならない。"""
+    _, dropped = run(transcript, item(kind="間", book="kata", source={"segs": ["seg-0003", "seg-0004"]}))
+    assert dropped == {"ma_no_pause": 1}
+
+
 def test_ma_needs_a_real_pause(transcript):
     kept, dropped = run(transcript, item(kind="間", book="kata", source={"segs": ["seg-0003", "seg-0003"]}))
     assert kept and not dropped  # seg-0003 の後に 1.6 秒
