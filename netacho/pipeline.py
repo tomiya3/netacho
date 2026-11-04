@@ -337,6 +337,9 @@ def reread(
     ctx.asked_scenes |= {q["scene_id"] for q in questions["questions"] if "answer" in q}
     current, _ = deshi_pass(ctx, doc, questions, max((i["round"] for i in doc["issues"]), default=0) + 1)
     save_review(ctx, doc, questions)
+    deshi_stats = ctx.usage.extra.get("deshi", {"round1": 0, "round2": None, "dropped_no_anchor": 0})
+    ctx.usage.extra["deshi"] = {**deshi_stats, "reread": len(current)}
+    ctx.usage.extra["questions"] = len(questions["questions"])
     store.write(run_path, ctx.usage.to_json(), "run")
     guide.refresh(ctx.neta)  # 指摘が増えて札から外れる項目があれば反映する（LLM 0 回）
     return current

@@ -180,6 +180,10 @@
         "candidate_id": {
           "type": "string",
           "pattern": "^cand-\\d{4,}$"
+        },
+        "question_id": {
+          "type": "string",
+          "pattern": "^q-\\d{4,}$"
         }
       },
       "description": "演者の追記。words は演者の言葉のまま"
