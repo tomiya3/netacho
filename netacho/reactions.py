@@ -20,6 +20,7 @@ MIN_DURATION = 0.4  # つないだ後の長さの下限（秒）
 MERGE_GAP = 0.5  # これより短い隙間はつなぐ（秒）
 FLOOR_DB = -60.0  # これより小さい音は候補にしない（無音の部分の基準が下がるため）
 LONG_PAUSE = 1.5  # 手がかりとして残す間（秒）
+VAD_NO_TEXT_SEC = 1.0  # VAD の区間のうち、文字の無い長さがこれ以上なら手がかりにする
 WAVE_HOP = 0.5  # 画面の波の間隔（秒）
 
 
@@ -53,7 +54,10 @@ def find_spans(
     min_duration: float = MIN_DURATION,
     merge_gap: float = MERGE_GAP,
 ) -> list[tuple[int, int]]:
-    """基準を超えたフレームの区間 [i, j)。隙間をつないでから長さで落とす（笑いは波が切れ切れになる）。"""
+    """基準を超えたフレームの区間 [i, j)。隙間をつないでから、超えた長さの合計で落とす。
+
+    笑いは波が切れ切れになるので先につなぐ。長さに隙間は数えない（子音やクリックの 2 点を候補にしない）。
+    """
     idx = np.flatnonzero((db - base >= threshold) & (db >= FLOOR_DB))
     if len(idx) == 0:
         return []
@@ -63,7 +67,10 @@ def find_spans(
             spans[-1][1] = int(i) + 1
         else:
             spans.append([int(i), int(i) + 1])
-    return [(a, b) for a, b in spans if (b - a) * hop >= min_duration - 1e-9]
+    over = np.zeros(len(db) + 1, dtype=int)  # 基準を超えたフレーム数の累積
+    over[idx + 1] = 1
+    over = np.cumsum(over)
+    return [(a, b) for a, b in spans if (over[b] - over[a]) * hop >= min_duration - 1e-9]
 
 
 def _reaction(n: int, t0: float, t1: float, rank: int | None, method: str) -> dict:
@@ -97,7 +104,8 @@ def hints(transcript: dict) -> list[dict]:
             out.append({"kind": "long_pause", "t0": s["end"], "t1": round(t1, 3), "seg_id": s["id"]})
     spoken = [(s["start"], s["end"]) for s in segs if s["text"].strip()]
     for v in transcript["vad"]:
-        if not any(a < v["end"] and v["start"] < b for a, b in spoken):
+        covered = sum(max(0.0, min(b, v["end"]) - max(a, v["start"])) for a, b in spoken)
+        if v["end"] - v["start"] - covered >= VAD_NO_TEXT_SEC or not covered:
             out.append({"kind": "vad_no_text", "t0": v["start"], "t1": v["end"], "seg_id": None})
     return sorted(out, key=lambda h: h["t0"])
 
@@ -143,16 +151,20 @@ def top(doc: dict, n: int = 10) -> list[dict]:
 
 
 def clock(t: float) -> str:
-    return f"{int(t // 60)}:{t % 60:04.1f}"
+    tenths = round(t * 10)  # 先に丸める（59.96 が 0:60.0 にならないように）
+    return f"{tenths // 600}:{(tenths % 600) / 10:04.1f}"
 
 
 def _seconds(text: str) -> float:
     """秒か m:ss(.f) か h:mm:ss。"""
     text = text.strip()
-    if not re.fullmatch(r"\d+(\.\d+)?|(\d+:)?\d+:\d+(\.\d+)?", text):
+    if not re.fullmatch(r"[0-9]+(\.[0-9]+)?|([0-9]+:)?[0-9]+:[0-5]?[0-9](\.[0-9]+)?", text):
+        raise ValueError(f"時刻として読めない: {text!r}")
+    parts = text.split(":")
+    if len(parts) == 3 and int(parts[1]) >= 60:
         raise ValueError(f"時刻として読めない: {text!r}")
     value = 0.0
-    for part in text.split(":"):
+    for part in parts:
         value = value * 60 + float(part)
     return value
 
