@@ -56,9 +56,8 @@ def _to_transcript(detected: dict, koza_id: str) -> dict:
 def _print_top(doc: dict, n: int = 10) -> None:
     print(f"反応の候補 {len(doc['reactions'])} 件。強い順に {n} 件（時刻はこの wav の先頭から）：")
     for r in reactions.top(doc, n):
-        print(
-            f"  {r['strength_rank']:>3}  {reactions.clock(r['t0'])} - {reactions.clock(r['t1'])}  {r['id']}"
-        )
+        rank = "-" if r["strength_rank"] is None else r["strength_rank"]
+        print(f"  {rank:>3}  {reactions.clock(r['t0'])} - {reactions.clock(r['t1'])}  {r['id']}")
 
 
 def cmd_prep(args: argparse.Namespace) -> None:

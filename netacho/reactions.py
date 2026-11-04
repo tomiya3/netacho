@@ -65,7 +65,7 @@ def find_spans(
     return [(a, b) for a, b in spans if (b - a) * hop >= min_duration - 1e-9]
 
 
-def _reaction(n: int, t0: float, t1: float, rank: int, method: str) -> dict:
+def _reaction(n: int, t0: float, t1: float, rank: int | None, method: str) -> dict:
     return {
         "id": f"react-{n:04d}",
         "t0": round(t0, 2),
@@ -136,8 +136,9 @@ def build(audio: np.ndarray, transcript: dict) -> dict:
 
 
 def top(doc: dict, n: int = 10) -> list[dict]:
-    """強い順に n 件（耳で確かめる一覧）。"""
-    return sorted(doc["reactions"], key=lambda r: r["strength_rank"])[:n]
+    """強い順に n 件（耳で確かめる一覧）。順位の無いものは時刻順で後ろに。"""
+    rank = lambda r: (r["strength_rank"] is None, r["strength_rank"] or 0, r["t0"])  # noqa: E731
+    return sorted(doc["reactions"], key=rank)[:n]
 
 
 def clock(t: float) -> str:
@@ -156,7 +157,7 @@ def _seconds(text: str) -> float:
 
 
 def parse_marks(path: Path) -> list[dict]:
-    """耳で付けた時刻の TSV。列は 始まり、終わり、順位（省略可。省くと書いた順）。# は注釈。"""
+    """耳で付けた時刻の TSV。列は 始まり、終わり、順位（省略可）。# は注釈。"""
     rows = []
     for no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip() or line.lstrip().startswith("#"):
@@ -174,9 +175,9 @@ def parse_marks(path: Path) -> list[dict]:
 
 
 def manual_reactions(rows: list) -> list[dict]:
-    """時刻順に並べて ID を振る。順位を書いていなければ書いた順を順位にする。"""
-    ranks = [r if r is not None else n for n, (_, _, r) in enumerate(rows, start=1)]
+    """時刻順に並べて ID を振る。順位は書いてあるときだけ入れる（無ければ null。偽の順位を作らない）。"""
+    ranks = [r for _, _, r in rows if r is not None]
     if len(set(ranks)) != len(ranks) or any(r < 1 for r in ranks):
         raise ValueError("順位は 1 以上で重ならないこと")
-    ordered = sorted(zip(rows, ranks, strict=True), key=lambda x: x[0][0])
-    return [_reaction(n, t0, t1, rank, "manual") for n, ((t0, t1, _), rank) in enumerate(ordered, start=1)]
+    ordered = sorted(rows, key=lambda x: x[0])
+    return [_reaction(n, t0, t1, rank, "manual") for n, (t0, t1, rank) in enumerate(ordered, start=1)]

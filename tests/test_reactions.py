@@ -136,8 +136,9 @@ def test_parse_marks(tmp_path):
     assert [(r["t0"], r["strength_rank"], r["method"]) for r in got] == [
         (10.0, 1, "manual"),
         (62.5, 2, "manual"),
-        (3600.0, 3, "manual"),
+        (3600.0, None, "manual"),  # 順位を書かなければ空（偽の順位を作らない）
     ]
+    assert [r["id"] for r in rx.top({"reactions": got}, 2)] == ["react-0001", "react-0002"]
     assert [r["id"] for r in got] == ["react-0001", "react-0002", "react-0003"]
 
 
