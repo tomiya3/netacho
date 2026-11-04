@@ -12,6 +12,19 @@
    ],
    "reaction_ids": [],
    "why": "no_candidate"
+  },
+  {
+   "id": "cand-0002",
+   "item_id": "item-0003",
+   "payoff_t": 59.0,
+   "window": [
+    59.0,
+    65.0
+   ],
+   "reaction_ids": [
+    "react-0002"
+   ],
+   "why": "low_rank"
   }
  ]
 }

@@ -51,8 +51,12 @@
             "const": "reaction"
           },
           "strength_rank": {
-            "type": "integer",
-            "minimum": 1
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "同じ高座の中の順位。手で付けて順位を書かなければ null"
           },
           "method": {
             "enum": [

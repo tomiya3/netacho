@@ -105,12 +105,99 @@ def test_dummy_refs_ok(docs):
         (lambda d: d["guide"]["cards"][0].update(text="書き換えた札"), "写しになっていない"),
         (lambda d: d["guide"]["cards"][0]["copied_fields"].update(reason="書き換えた"), "写しになっていない"),
         (lambda d: d["guide"]["cards"][0].update(order=2), "order"),
+        (lambda d: d["guide"]["cards"].clear(), "札に出ていない"),
+        (lambda d: d["guide"]["cards"].append(d["guide"]["cards"][0]), "重複"),
+        (lambda d: d["review"]["issues"][1].update(anchor={"item_id": "item-0009"}), "解決していない指摘"),
+        (lambda d: d["kata"]["items"][4]["source"].update(approved=False), "確かめていない"),
+        (lambda d: d["kata"]["scenes"].append({**d["kata"]["scenes"][0]}), "場面の id が重複"),
+        (lambda d: d["hanashi"]["scenes"][1].update(order=1), "order が重複"),
+        (lambda d: d["kata"]["characters"].append(d["kata"]["characters"][0]), "人物の id が重複"),
+        (lambda d: d["review"]["issues"].append(d["review"]["issues"][0]), "review: id が重複"),
+        (
+            lambda d: d["questions"]["questions"].append(d["questions"]["questions"][0]),
+            "questions: id が重複",
+        ),
+        (lambda d: d["questions"]["questions"][0].update(scene_id="scene-01"), "指摘と場面が違う"),
+        (lambda d: d["note_candidates"]["candidates"].append(d["note_candidates"]["candidates"][0]), "重複"),
+        (lambda d: d["note_candidates"]["candidates"][0].update(reaction_ids=["react-0001"]), "why と"),
+        (lambda d: d["note_candidates"]["candidates"][1].update(reaction_ids=[]), "why と"),
+        (lambda d: d["note_candidates"]["candidates"][0].update(item_id="item-0001"), "回収の無い"),
+        (lambda d: d["note_candidates"]["candidates"][0].update(payoff_t=99.0), "窓の外"),
+        (lambda d: d["transcript"]["segments"][0].update(end=-0.0, start=1.0), "end が start より前"),
+        (
+            lambda d: (
+                d["kata"]["items"][2]["source"].update(segs=["seg-0009", "seg-0009"])
+                or d["kata"]["items"][2]["payoff"].update(segs=["seg-0008", "seg-0008"])
+            ),
+            "回収が仕込みより前",
+        ),
     ],
 )
 def test_broken_refs_raise(docs, break_it, match):
     break_it(docs)
     with pytest.raises(RefError, match=match):
         check_refs(docs.pop("hanashi"), docs.pop("kata"), **docs)
+
+
+def test_cards_must_be_in_scene_order(docs):
+    second = {**docs["kata"]["items"][4], "id": "item-0011"}
+    second["anchor"] = {"scene_id": "scene-02", "position": "before"}
+    docs["kata"]["items"].append(second)
+    cards = docs["guide"]["cards"]
+    extra = copy.deepcopy(cards[0])
+    extra.update(item_id="item-0011", scene_id="scene-02")
+    extra["copied_fields"]["scene_title"] = "傘を借りる"
+    extra["copied_fields"]["position"] = "before"
+    cards.insert(0, extra)
+    cards[0]["order"], cards[1]["order"] = 1, 2
+    with pytest.raises(RefError, match="場面順でない"):
+        check_refs(docs.pop("hanashi"), docs.pop("kata"), **docs)
+
+
+def test_unresolved_issue_keeps_item_off_the_cards(docs):
+    docs["review"]["issues"][1]["anchor"] = {"item_id": "item-0009"}
+    docs["guide"]["cards"] = []
+    check_refs(docs.pop("hanashi"), docs.pop("kata"), **docs)
+
+
+def test_real_data_shapes_pass(docs):
+    """実データで起きる形：空の区間、重なる区間、手で付けた反応、札 0 枚、項目 0 件。"""
+    segs = docs["transcript"]["segments"]
+    segs[0]["text"] = ""
+    segs[0]["words"] = []
+    segs[1]["start"] = segs[0]["end"] - 0.5  # 区間の重なり
+    segs[-1]["pause_after"] = None
+    docs["reactions"]["reactions"][0].update(method="manual", strength_rank=None)
+    validate(docs["transcript"], "transcript")
+    validate(docs["reactions"], "reactions")
+    check_refs(
+        docs["hanashi"],
+        docs["kata"],
+        koza=docs["koza"],
+        transcript=docs["transcript"],
+        reactions=docs["reactions"],
+    )
+    kata = {**docs["kata"], "items": []}
+    empty_guide = {**docs["guide"], "cards": []}
+    validate(kata, "book")
+    validate(empty_guide, "guide")
+    check_refs(docs["hanashi"], kata, guide=empty_guide)
+
+
+def test_answer_item_is_on_the_book_but_not_on_the_cards(docs):
+    """演者の答えは、札に出さない staging として型に入る（source は確認済み、札は未承認）。"""
+    answer = _item(docs["kata"], "item-0010")
+    assert answer["source"]["approved"] is True and answer["approved"] is False
+    assert "item-0010" not in [c["item_id"] for c in docs["guide"]["cards"]]
+
+
+def test_error_message_does_not_show_values():
+    """エラーの文に演者の言葉を出さない（ログに残るため）。"""
+    kata = _load(BASE / "kata.json")
+    kata["items"][4]["source"] = {"words": "演者の言葉そのもの"}
+    with pytest.raises(SchemaError) as e:
+        validate(kata, "book")
+    assert "演者の言葉そのもの" not in str(e.value)
 
 
 def test_second_koza_does_not_check_first_koza_spans(docs):
@@ -190,6 +277,23 @@ def test_api_schema_does_not_touch_local_schema():
     api_schema("writer")
     assert schema.load("writer") == before
     assert "minItems" in json.dumps(before)  # 手元の検証では長さ 2 を見る
+
+
+@pytest.mark.parametrize(
+    "break_it",
+    [
+        lambda w: w["items"][0].update(priority=4),
+        lambda w: w["scenes"][0].update(id="s1"),
+        lambda w: w["characters"][0].update(id="c1"),
+        lambda w: w["items"][0].update(kind="staging"),
+        lambda w: w["items"][0].update(kind="上下"),
+    ],
+)
+def test_writer_schema_rejects(break_it):
+    doc = _load(BASE / "drafts" / "writer.json")
+    break_it(doc)
+    with pytest.raises(SchemaError):
+        validate(doc, "writer")
 
 
 def test_writer_span_length_checked_locally():
