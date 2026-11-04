@@ -23,8 +23,7 @@ def react(i, t0, t1, rank, method="auto"):
 def doc(*rows, seconds=None):
     d = {"koza_id": "k", "reactions": list(rows)}
     if seconds is not None:
-        n = int((seconds - 5) / 2) + 1
-        d["scores"] = {"window": 5.0, "stride": 2.0, "laugh": [0.0] * n}
+        d["scores"] = {"seconds": float(seconds)}
     return d
 
 
