@@ -6,13 +6,10 @@
 
 from __future__ import annotations
 
+from .reactions import covered_seconds
+
 WINDOW_SEC = 6.0  # 回収の終わりから見る長さ。暫定
 LOW_FRACTION = 4  # 下位 4 分の 1
-
-
-def audio_end(reactions: dict) -> float | None:
-    wave = reactions.get("wave")
-    return wave["hop"] * len(wave["db"]) if wave else None
 
 
 def payoff_items(items: list[dict], koza_id: str) -> list[dict]:
@@ -36,7 +33,7 @@ def select(items: list[dict], reactions: dict) -> dict:
       拾えなかった高座は回収が全部「候補が少ない」になってしまう）
     """
     koza_id = reactions["koza_id"]
-    end = audio_end(reactions)
+    end = covered_seconds(reactions)
     has_auto = any(r["method"] == "auto" for r in reactions["reactions"])
     has_manual = any(r["method"] == "manual" for r in reactions["reactions"])
     silent: list[tuple[dict, list[float]]] = []

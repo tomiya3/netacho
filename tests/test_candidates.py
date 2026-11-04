@@ -23,7 +23,8 @@ def react(i, t0, t1, rank, method="auto"):
 def doc(*rows, seconds=None):
     d = {"koza_id": "k", "reactions": list(rows)}
     if seconds is not None:
-        d["wave"] = {"hop": 1.0, "db": [0.0] * seconds, "baseline_db": [0.0] * seconds}
+        n = int((seconds - 5) / 2) + 1
+        d["scores"] = {"window": 5.0, "stride": 2.0, "laugh": [0.0] * n}
     return d
 
 

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from netacho import cli, store
-from netacho.preprocess import audio, speech
+from netacho.preprocess import ast_scores, audio, speech
 from netacho.schema import validate
 
 SR = 16000
@@ -49,10 +49,21 @@ def fake_detect(wav, *, terms=None, **_):
     }
 
 
+def fake_predictor():
+    """音の大きい窓を笑いとみなす偽物。AST は呼ばない。"""
+
+    def predict(batch):
+        loud = np.array([float(np.sqrt(np.mean(b**2))) > 0.08 for b in batch], dtype=float) * 0.3
+        return {"laugh": loud, "applause": loud * 0, "music": loud * 0}
+
+    return predict
+
+
 @pytest.fixture
 def data(tmp_path, monkeypatch):
     monkeypatch.setenv("NETACHO_DATA", str(tmp_path / "data"))
     monkeypatch.setattr(speech, "detect", fake_detect)
+    monkeypatch.setattr(ast_scores, "load_predictor", fake_predictor)
     src = tmp_path / "src.wav"
     write_wav(src)
     return src
@@ -74,7 +85,8 @@ def test_prep_writes_koza_transcript_reactions(data, capsys):
     assert fake_detect.terms == ["番傘", "利息"]
     doc = store.read(kdir / "reactions.json", "reactions")
     assert len(doc["reactions"]) == 1
-    assert doc["reactions"][0]["t0"] == pytest.approx(10.0, abs=0.2)
+    assert doc["reactions"][0]["t0"] == pytest.approx(8.0, abs=2.0)  # 窓は 5 秒
+    assert doc["reactions"][0]["kind"] == "laugh"
     assert "反応の候補 1 件" in capsys.readouterr().out
 
 
@@ -85,7 +97,7 @@ def test_prep_excerpt_times_start_at_excerpt(data):
     koza = store.read(kdir / "koza.json", "koza")
     assert koza["excerpt"] == {"from": 8.0, "to": 20.0}
     doc = store.read(kdir / "reactions.json", "reactions")
-    assert doc["reactions"][0]["t0"] == pytest.approx(2.0, abs=0.2)  # 抜粋の先頭からの秒
+    assert doc["reactions"][0]["t0"] <= 4.0  # 抜粋の先頭からの秒（元の録音の 10 秒ではない）
 
 
 def test_prep_rejects_bad_koza_and_missing_audio(data, tmp_path):
@@ -193,7 +205,8 @@ def test_mark_replaces_reactions_and_keeps_auto(data, tmp_path, capsys):
     kdir = store.find_koza("2026-02-03-hall")
     doc = store.read(kdir / "reactions.json", "reactions")
     assert [r["method"] for r in doc["reactions"]] == ["manual", "manual"]
-    assert "wave" in doc  # 波は残す
+    assert "scores" in doc  # 波は残す
+    assert doc["reactions"][0]["kind"] == "reaction"
     auto = store.read(kdir / "reactions.auto.json", "reactions")
     assert [r["method"] for r in auto["reactions"]] == ["auto"]
     tsv.write_text("7\t8\n", encoding="utf-8")

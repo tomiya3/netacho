@@ -48,7 +48,12 @@
             "minimum": 0
           },
           "kind": {
-            "const": "reaction"
+            "enum": [
+              "laugh",
+              "applause",
+              "reaction"
+            ],
+            "description": "自動は laugh か applause。手で付けたものは reaction"
           },
           "strength_rank": {
             "type": [
@@ -107,32 +112,69 @@
         }
       }
     },
-    "wave": {
+    "music": {
+      "type": "array",
+      "description": "音楽の候補。判定には使わず、別に残すだけ",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "t0",
+          "t1",
+          "score"
+        ],
+        "properties": {
+          "t0": {
+            "type": "number",
+            "minimum": 0
+          },
+          "t1": {
+            "type": "number",
+            "minimum": 0
+          },
+          "score": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "scores": {
       "type": "object",
       "additionalProperties": false,
+      "description": "AST の窓ごとのスコア。画面の波に使う",
       "required": [
-        "hop",
-        "db",
-        "baseline_db"
+        "window",
+        "stride",
+        "laugh",
+        "applause",
+        "music"
       ],
       "properties": {
-        "hop": {
+        "window": {
           "type": "number"
         },
-        "db": {
+        "stride": {
+          "type": "number"
+        },
+        "laugh": {
           "type": "array",
           "items": {
             "type": "number"
           }
         },
-        "baseline_db": {
+        "applause": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "music": {
           "type": "array",
           "items": {
             "type": "number"
           }
         }
-      },
-      "description": "画面の波。hop 秒ごとの RMS（dB）と基準"
+      }
     }
   }
 }
