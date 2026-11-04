@@ -155,6 +155,7 @@ def test_failed_note_leaves_no_old_note(data, tmp_path):
     with pytest.raises(IndexError):  # 偽の client の返事が尽きる = API の失敗の代わり
         run_note(data, tmp_path)
     assert not (kdir / "note.md").exists()
+    assert not (kdir / "note_candidates.json").exists()  # 文の無い候補を残さない
 
 
 def test_after_quote_is_capped(data, tmp_path):

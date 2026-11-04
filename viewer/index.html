@@ -112,7 +112,8 @@ function drawWave(root, d) {
   const W = 1040, H = 280, L = 40, R = 24, T = 28, B = 26;
   const end = (s.laugh.length - 1) * s.stride + s.window;
   // 笑いは最大でも約 0.3 で、拍手と同じ高さで描くと潰れる。種類ごとに、この高座の最大を 1 とする
-  const top = { laugh: Math.max(...s.laugh, 1e-6), applause: Math.max(...s.applause, 1e-6) };
+  // 下限は検出の下限と同じ。山の無い高座で、雑音を天井まで伸ばさない
+  const top = { laugh: Math.max(...s.laugh, 0.08), applause: Math.max(...s.applause, 0.3) };
   const x = t => L + (W - L - R) * t / end, y = v => T + (H - T - B) * (1 - v);
   const center = i => i * s.stride + s.window / 2;
   const box = el("div", { class: "chart" });
@@ -154,8 +155,8 @@ function drawWave(root, d) {
   g.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; });
   root.append(box);
   root.append(el("div", { class: "legend" },
-    el("span", { class: "tag", style: "--c: var(--laugh)" }, `笑い（高座の最大 ${top.laugh.toFixed(2)} を 1 とする）`),
-    el("span", { class: "tag", style: "--c: var(--applause)" }, `拍手（高座の最大 ${top.applause.toFixed(2)} を 1 とする）`),
+    el("span", { class: "tag", style: "--c: var(--laugh)" }, `笑い（${top.laugh.toFixed(2)} を 1 とする）`),
+    el("span", { class: "tag", style: "--c: var(--applause)" }, `拍手（${top.applause.toFixed(2)} を 1 とする）`),
     el("span", { class: "tag claude" }, "反応候補が少ない回収（破線）")));
 }
 
@@ -179,8 +180,8 @@ function renderWave(d) {
       if (it.payoff?.quote) body.push(el("p", { class: "quote" }, `回収：「${it.payoff.quote}」`));
     }
     // 候補を選ぶのはスクリプト。文はノート役か、スクリプトの決まった文
-    const fixed = c.note_source === "fixed";
-    root.append(card(fixed ? "script" : "claude", fixed ? "スクリプトの決まった文" : "Claude の文",
+    const fixed = c.note_source !== "claude";
+    root.append(card(fixed ? "script" : "claude", c.note ? (fixed ? "スクリプトの決まった文" : "Claude の文") : "ノートなし",
       `候補はスクリプトが選択  ${c.id}  ${clock(c.payoff_t)}  ${WHY[c.why] || ""}`, ...body));
   }
   const table = el("table", {}, el("tr", {}, ...["順位", "時刻", "種類"].map(h => el("th", {}, h))));
@@ -194,7 +195,7 @@ function itemCard(i) {
   const body = [el("p", {}, i.text + (i.basis === "knowledge" ? "（暫定）" : ""))];
   if (i.source.words) body.push(el("p", { class: "quote" }, `演者の言葉：「${i.source.words}」`));
   if (i.reason) body.push(el("p", { class: "quote" }, `理由：${i.reason}`));
-  if (i.source.quote) body.push(el("p", { class: "quote" }, `根拠：「${i.source.quote}」`));
+  if (i.source.quote) body.push(el("p", { class: "quote" }, `${i.held ? "引用（照合で支えられなかった）" : "根拠"}：「${i.source.quote}」`));
   const c = card(who, i.held ? "保留（引用で言えない）" : label, `${i.id}  ${i.kind}`, ...body);
   if (i.held) c.classList.add("held");
   return c;
