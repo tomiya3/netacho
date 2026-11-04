@@ -154,6 +154,27 @@ def test_missing_verdict_is_held(data, tmp_path):
     assert books(data)[0]["items"][0]["held"] is True
 
 
+def test_duplicate_verdicts_take_the_strictest(data, tmp_path):
+    rows = {
+        "schema_version": 1,
+        "verdicts": [
+            {"item_id": "item-0001", "verdict": "unsupported", "reason": "言えない"},
+            {"item_id": "item-0001", "verdict": "supported", "reason": "言える"},
+        ],
+    }
+    client = ScriptedClient(writer=[draft(draft_item())], checker=[rows])
+    build(client, data, tmp_path)
+    assert books(data)[0]["items"][0]["held"] is True
+
+
+def test_held_item_stays_held_when_rewritten_as_knowledge(data, tmp_path):
+    first = ScriptedClient(writer=[draft(draft_item())], checker=[verdicts(("item-0001", "unsupported"))])
+    build(first, data, tmp_path)
+    again = ScriptedClient(writer=[draft(draft_item(id="item-0001", basis="knowledge"))])
+    build(again, data, tmp_path)
+    assert books(data)[0]["items"][0]["held"] is True
+
+
 def test_knowledge_only_skips_checker(data, tmp_path):
     client = ScriptedClient(writer=[draft(ITEMS[3])])
     doc = build(client, data, tmp_path)
