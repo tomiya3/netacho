@@ -144,13 +144,16 @@ def test_held_and_other_koza_are_skipped():
     assert whys(candidates.select(items, doc(react(9, 1.0, 2.0, 1)))) == [("item-0003", "no_candidate")]
 
 
-def test_ids_follow_time_order():
+def test_ids_come_from_the_item_and_rows_follow_time():
+    """番号を item から決める。note をやり直しても、decide の候補 ID が別の回収を指さない。"""
     items = [item(2, 50.0), item(1, 10.0)]
     r = candidates.select(items, doc(react(9, 1.0, 2.0, 1)))
     assert [(c["id"], c["item_id"]) for c in r["candidates"]] == [
         ("cand-0001", "item-0001"),
         ("cand-0002", "item-0002"),
     ]
+    later = candidates.select(items[:1], doc(react(9, 1.0, 2.0, 1)))
+    assert later["candidates"][0]["id"] == "cand-0002"
 
 
 @pytest.mark.parametrize("n", [0])

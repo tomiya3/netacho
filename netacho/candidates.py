@@ -79,13 +79,14 @@ def select(items: list[dict], reactions: dict) -> dict:
         "notices": notices,
         "candidates": [
             {
-                "id": f"cand-{n:04d}",
+                "id": "cand-"
+                + it["id"].split("-")[1],  # 回収から決める（note をやり直しても指す物が変わらない）
                 "item_id": it["id"],
                 "payoff_t": it["payoff"]["t1"],
                 "window": window,
                 "reaction_ids": ids,
                 "why": why,
             }
-            for n, (it, window, ids, why) in enumerate(rows, start=1)
+            for it, window, ids, why in rows
         ],
     }
