@@ -316,7 +316,9 @@ def cmd_view(args: argparse.Namespace) -> None:
     try:
         path = view.write(store.Neta(args.performer, args.neta), args.koza, out)
     except FileNotFoundError as e:
-        raise SystemExit(f"{Path(str(e.filename)).name} が無い。先に netacho prep と build を回す") from e
+        if not e.filename or Path(e.filename).suffix != ".json" or "schemas" in Path(e.filename).parts:
+            raise  # 手順の問題ではない
+        raise SystemExit(f"{Path(e.filename).name} が無い。先に netacho prep と build を回す") from e
     print(f"書き出した：{path.name}。make viewer で開く")
 
 

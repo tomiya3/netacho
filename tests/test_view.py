@@ -38,7 +38,40 @@ def test_items_know_their_scene(doc):
 def test_write_goes_to_out_dir(tmp_path):
     path = view.write(store.Neta(P, N, DATA), K, tmp_path / "view")
     assert json.loads(path.read_text(encoding="utf-8"))["koza"]["id"] == K
-    assert [p.name for p in path.parent.iterdir()] == ["view.json"]  # 録音を書き出さない
+    assert sorted(p.name for p in path.parent.iterdir()) == ["index.html", "view.json"]  # 録音は出さない
+
+
+def _two_koza(tmp_path):
+    """二席目に出所のある項目を持つ、ダミーの置き場。"""
+    import shutil
+
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    neta = store.Neta(P, N, root)
+    k2 = "2026-03-03-dummy-hall"
+    shutil.copytree(neta.koza_dir(K), neta.koza_dir(k2))
+    tl = store.read(neta.koza_dir(k2) / "timeline.json", "timeline")
+    tl["koza_id"] = k2
+    store.write(neta.koza_dir(k2) / "timeline.json", tl, "timeline")
+    hanashi = store.read(neta.hanashi, "book")
+    hanashi["items"][0]["source"]["koza_id"] = k2
+    store.write(neta.hanashi, hanashi, "book")
+    return neta, k2
+
+
+def test_items_of_another_koza_find_their_scene(tmp_path):
+    neta, _ = _two_koza(tmp_path)
+    doc = view.payload(neta, K)
+    assert next(i for i in doc["hanashi"] if i["id"] == "item-0001")["scene_id"] == "scene-02"
+
+
+def test_held_items_reach_the_screen(doc):
+    assert any(i.get("held") for i in doc["kata"])
+
+
+def test_only_out_view_is_served():
+    make = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "-d out/view" in make and "-d ." not in make
 
 
 def test_missing_later_files_are_ok(tmp_path):

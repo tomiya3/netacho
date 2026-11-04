@@ -263,7 +263,7 @@ netacho guide   --performer ID --neta 演目                         # LLM 0 回
 netacho view    --performer ID --neta 演目 --koza KOZA             # out/view/ へ書き出す
 ```
 
-`make viewer` で `http://localhost:8000/viewer/?run=../out/view`。画面は 4 枚：反応の波と候補、型、札、弟子役の指摘と質問。「Claude の候補」「演者の決定」「スクリプトの転記」を色とラベルで見分けられるようにする。
+`netacho view` の後、`make viewer` で `http://localhost:8000/`（配信は `out/view` だけ）。画面は 4 枚：反応の波と候補、型、札、弟子役の指摘と質問。「Claude の候補」「演者の決定」「スクリプトの転記」を色とラベルで見分けられるようにする。
 
 ### 費用の管理（`budget.py`）
 
