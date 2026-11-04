@@ -36,7 +36,7 @@ has() { grep -qE -- "${AT}$1" <<<"$cmd"; }
 # cd・サブシェル・{ }・! などが混ざる、引用符・$・~・`・\・{・..・/./・// を含む、シンボリックリンクを通る、
 # といった判定しきれない形は、全部承認制に倒す
 rm_ok() {
-  local root proj seg w rel low comp p words paths=0
+  local root proj seg w tmp rel low comp p words paths=0
   [[ "$cmd" =~ [\"\'\$~\`\\{}()!\<\>] || "$cmd" == *..* || "$cmd" == */./* || "$cmd" == *//* ]] && return 1
   [[ "$cmd" == *"||"* || "$cmd" =~ (^|[^&])\&([^&]|$) ]] && return 1  # || とバックグラウンドの & は扱わない
   root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || root=
@@ -54,9 +54,13 @@ rm_ok() {
       paths=$((paths + 1))
       [[ "$w" =~ [*?\[][^/]*/ ]] && return 1                     # ワイルドカードは最後の成分だけ（リンクを辿らない）
       [[ "$w" =~ (^|/)\.[^/]*[*?\[] || "$w" =~ (^|/)\.$ ]] && return 1  # .* や末尾の . は扱わない
-      # macOS の /tmp は /private/tmp へのリンクで、git の root も /private/tmp で始まる。リンクのときだけ揃える
-      [ -L /tmp ] && w=${w/#\/tmp\//\/private\/tmp\/}
-      if [[ "$w" =~ ^(/private)?/tmp/claude-[^/*?\[]+/. ]]; then
+      # macOS の /tmp は /private/tmp へのリンクで、git の root も /private/tmp で始まる。そのときだけ揃える
+      tmp=/tmp
+      if [ -L /tmp ] && [ -d /private/tmp ]; then
+        tmp=/private/tmp
+        w=${w/#\/tmp\//\/private\/tmp\/}
+      fi
+      if [[ "$w" == "$tmp"/claude-* && "${w#"$tmp"/}" =~ ^claude-[^/*?\[]+/. ]]; then
         p=""
       else
         [ -n "$root" ] || return 1

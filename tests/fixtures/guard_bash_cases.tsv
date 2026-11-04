@@ -65,7 +65,7 @@ ask	\rm -rf x
 allow	rm -f out/test_c/run.json
 allow	rm -rf ./out/test_c
 allow	rm -rf out/test_c/*
-allow	rm -rf /private/tmp/claude-501/abc/scratchpad/gt
+allow	rm -rf /tmp/claude-501/abc/scratchpad/gt
 allow	rm -rf out/a && rm -f out/b
 ask	rm -rf out
 ask	rm -rf out/

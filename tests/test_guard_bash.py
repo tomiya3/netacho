@@ -92,6 +92,14 @@ def test_rm_through_link_in_claude_tmp_asks(repo):
 
 
 @pytest.mark.skipif(shutil.which("jq") is None, reason="jq が必要")
+def test_private_tmp_only_where_tmp_links_to_it(repo):
+    """/private/tmp を一時フォルダとみなすのは、/tmp がそこへのリンクのとき（macOS）だけ。"""
+    linked = Path("/tmp").is_symlink() and Path("/private/tmp").is_dir()
+    want = "allow" if linked else "ask"
+    assert _decide("rm -rf /private/tmp/claude-501/abc/scratchpad/gt", repo) == want
+
+
+@pytest.mark.skipif(shutil.which("jq") is None, reason="jq が必要")
 def test_mark_reviewed_unblocks_pr_create(repo):
     git = ["git", "-c", "user.email=t@t", "-c", "user.name=t"]
     subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "x"], cwd=repo, check=True)
