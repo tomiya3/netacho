@@ -7,7 +7,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import evidence, merge, render, store
+from . import candidates, evidence, merge, render, store
 from .budget import Budget
 from .runner import RoleCache, Usage, call_role
 from .schema import check_refs
@@ -229,3 +229,123 @@ def build(
     ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
     write_pass(ctx)
     return _finish(ctx)
+
+
+# ノート役の文に出してはいけない語（断定）
+NOTE_BANNED = (
+    "受けなかった",
+    "ウケなかった",
+    "受けていない",
+    "反応なし",
+    "反応がなかった",
+    "反応が無かった",
+    "滑",
+    "スベ",
+)
+NOTE_FALLBACK = {
+    "no_candidate": "回収の後に、反応候補が少ない所です。",
+    "low_rank": "回収の後の反応候補が、この高座の中では小さい方です。",
+}
+
+
+def noter_rows(cands: dict, items: dict, transcript: dict, hanashi: dict, tl: dict) -> list[dict]:
+    """ノート役に見せる物：選ばれた候補、前後の引用、場面の尺だけ。"""
+    segs = evidence.Segments(transcript)
+    scenes = {s["id"]: s for s in hanashi["scenes"]}
+    scene_of = {s["seg_id"]: s["scene_id"] for s in tl["segments"]}
+    rows = []
+    for c in cands["candidates"]:
+        it = items[c["item_id"]]
+        t0, t1 = c["window"]
+        after = "".join(s["text"] for s in transcript["segments"] if t0 <= s["start"] < t1)
+        row = {
+            "candidate_id": c["id"],
+            "kind": it["kind"],
+            "item": it["text"],
+            "why": {
+                "no_candidate": "回収の後に反応候補が見つからない",
+                "low_rank": "回収の後の反応候補が小さい方",
+            }[c["why"]],
+            "setup_quote": it["source"]["quote"],
+            "payoff_quote": it["payoff"]["quote"],
+            "after_quote": after,
+        }
+        scene = scenes.get(scene_of.get(it["payoff"]["segs"][0]))
+        if scene is not None and scene["koza_id"] == transcript["koza_id"] and segs.ok(scene["segs"]):
+            part = segs.between(scene["segs"])
+            row["scene"] = scene["title"]
+            row["scene_seconds"] = round(part[-1]["end"] - part[0]["start"])
+        rows.append(row)
+    return rows
+
+
+def checked_notes(doc: dict | None, cands: dict) -> tuple[dict[str, str], int]:
+    """候補ごとに 1 件の文を返す。無い、重なる、断定の語があるものは決まった文に置き換えて数える。"""
+    written: dict[str, list[str]] = {}
+    for n in (doc or {"notes": []})["notes"]:
+        written.setdefault(n["candidate_id"], []).append(n["text"].strip())
+    out, fallback = {}, 0
+    for c in cands["candidates"]:
+        texts = written.get(c["id"], [])
+        if len(texts) == 1 and texts[0] and not any(w in texts[0] for w in NOTE_BANNED):
+            out[c["id"]] = texts[0]
+        else:
+            out[c["id"]] = NOTE_FALLBACK[c["why"]]
+            fallback += 1
+    return out, fallback
+
+
+def note(
+    performer: str,
+    neta_name: str,
+    koza_id: str,
+    *,
+    client,
+    budget: Budget | None = None,
+    reuse: bool = False,
+    root: Path | None = None,
+) -> dict:
+    """候補を選び、ノート役が文にして、note.md を書く。返すのは run.json の中身。"""
+    ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
+    kdir = ctx.neta.koza_dir(koza_id)
+    run_path = kdir / "run.json"
+    if run_path.exists():
+        ctx.usage.restore(store.read(run_path, "run"))  # build の分に積み足す
+    reactions = store.read(kdir / "reactions.json", "reactions")
+    tl = store.read(kdir / "timeline.json", "timeline")
+    all_items = ctx.hanashi["items"] + ctx.kata["items"]
+    cands = candidates.select(all_items, reactions)
+    check_refs(
+        ctx.hanashi,
+        ctx.kata,
+        koza=ctx.koza,
+        koza_ids=koza_ids(ctx.neta),
+        transcript=ctx.transcript,
+        timeline=tl,
+        reactions=reactions,
+        note_candidates=cands,
+    )
+    store.write(kdir / "note_candidates.json", cands, "note_candidates")
+    items = {i["id"]: i for i in all_items}
+    doc = None
+    if cands["candidates"]:
+        rows = noter_rows(cands, items, ctx.transcript, ctx.hanashi, tl)
+        text = json.dumps(rows, ensure_ascii=False, indent=1)
+        doc = call_role(
+            ctx.client, "noter", [{"type": "text", "text": text}], "noter", ctx.usage, ctx.budget, ctx.cache
+        )
+        store.write(ctx.neta.drafts / "noter.json", doc, "noter")
+    notes, fallback = checked_notes(doc, cands)
+    scene_of = {s["seg_id"]: s["scene_id"] for s in tl["segments"]}
+    titles = {s["id"]: s["title"] for s in ctx.hanashi["scenes"]}
+    item_scene = {
+        c["item_id"]: titles.get(scene_of.get(items[c["item_id"]]["payoff"]["segs"][0]), "場面不明")
+        for c in cands["candidates"]
+    }
+    (kdir / "note.md").write_text(
+        render.note_markdown(ctx.koza, cands, notes, items, item_scene), encoding="utf-8"
+    )
+    ctx.usage.extra["notes"] = {"candidates": len(cands["candidates"]), "fallback": fallback}
+    result = ctx.usage.to_json()
+    store.write(run_path, result, "run")
+    return result

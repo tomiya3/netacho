@@ -188,6 +188,13 @@ def cmd_build(args: argparse.Namespace) -> None:
     print(f"照合 {stats['checker']}")
 
 
+def cmd_note(args: argparse.Namespace) -> None:
+    from . import pipeline, runner
+
+    doc = pipeline.note(args.performer, args.neta, args.koza, client=runner.make_client(), reuse=args.reuse)
+    print(f"候補 {doc['notes']['candidates']}、決まった文に置き換えた数 {doc['notes']['fallback']}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="netacho", description="一席の音声から演者の根多帳を作る")
     sub = p.add_subparsers(dest="command", required=True)
@@ -223,6 +230,13 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--koza", required=True)
     build.add_argument("--reuse", action="store_true", help="同じ入力の役の出力を使い回す")
     build.set_defaults(func=cmd_build)
+
+    note = sub.add_parser("note", help="「薄い」候補とノート")
+    note.add_argument("--performer", required=True)
+    note.add_argument("--neta", required=True)
+    note.add_argument("--koza", required=True)
+    note.add_argument("--reuse", action="store_true", help="同じ入力の役の出力を使い回す")
+    note.set_defaults(func=cmd_note)
     return p
 
 

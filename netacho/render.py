@@ -62,3 +62,34 @@ def to_markdown(book: dict, lookup: dict[tuple[str, str], str]) -> str:
         out += [line for i in rest for line in _line(i)]
         out.append("")
     return "\n".join(out).rstrip() + "\n"
+
+
+def clock(t: float) -> str:
+    return f"{int(t // 60)}:{int(t % 60):02d}"
+
+
+def note_markdown(
+    koza: dict, candidates: dict, notes: dict[str, str], items: dict, scene_titles: dict
+) -> str:
+    """演者が読むノート。文はノート役、それ以外はスクリプトが写す。"""
+    out = [
+        f"# ノート：{koza['neta']}（{koza['id']}）",
+        "",
+        "反応の候補は音量から機械的に拾ったものです。候補が少ない所を挙げていますが、"
+        "受けなかったという意味ではありません。原音で確かめてください。",
+        "",
+    ]
+    if not candidates["candidates"]:
+        out += ["今回は候補を選びませんでした。反応が十分だったという意味ではありません。", ""]
+    for c in candidates["candidates"]:
+        it = items[c["item_id"]]
+        out += [
+            f"## `{c['id']}` {clock(c['payoff_t'])} {scene_titles.get(c['item_id'], '場面不明')}",
+            "",
+            f"- {notes[c['id']]}",
+            f"- 項目：【{it['kind']}】{it['text']}（`{it['id']}`）",
+            f"- 仕込み：「{it['source']['quote']}」",
+            f"- 回収：「{it['payoff']['quote']}」",
+            "",
+        ]
+    return "\n".join(out).rstrip() + "\n"
