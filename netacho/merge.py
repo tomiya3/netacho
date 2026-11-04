@@ -80,16 +80,17 @@ def merge(
                 ]
         if it["id"] in held_ids:
             row["held"] = True
-        for book in books.values():  # 帳面を移ったときに古い方を消す。位置は保つ
-            book["items"] = [
-                row if i["id"] == it["id"] and book is books[it["book"]] else i for i in book["items"]
-            ]
-            if book is not books[it["book"]]:
-                book["items"] = [i for i in book["items"] if i["id"] != it["id"]]
-        target = books[it["book"]]["items"]
-        if all(i["id"] != it["id"] for i in target):
-            target.append(row)
-    merged_scenes = sorted(_union(hanashi["scenes"], scenes), key=lambda s: s["order"])
+        target = books[it["book"]]
+        other = books["kata" if it["book"] == "hanashi" else "hanashi"]
+        other["items"] = [i for i in other["items"] if i["id"] != it["id"]]  # 帳面を移ったとき
+        for n, existing in enumerate(target["items"]):
+            if existing["id"] == it["id"]:
+                target["items"][n] = row  # 位置は保つ
+                break
+        else:
+            target["items"].append(row)
+    ordered = sorted(_union(hanashi["scenes"], scenes), key=lambda s: (s["order"], s["id"]))
+    merged_scenes = [{**s, "order": n} for n, s in enumerate(ordered, start=1)]
     merged_chars = _union(hanashi["characters"], characters)
     for book in books.values():
         book["scenes"] = merged_scenes
