@@ -29,7 +29,7 @@ def kinds(doc):
 def test_laugh_is_judged_within_the_koza():
     """絶対値では判定しない。最大が 0.3 の高座では 0.15 以上、0.2 の高座では 0.1 以上が山。"""
     low = [0.01, 0.12, 0.01, 0.01, 0.3, 0.01]
-    assert kinds(rx.auto_reactions(scores(laugh=low))) == [("laugh", 8.0, 13.0)]
+    assert kinds(rx.auto_reactions(scores(laugh=low))) == [("laugh", 9.5, 11.5)]
     high = [0.01, 0.12, 0.01, 0.01, 0.2, 0.01]
     assert len(rx.auto_reactions(scores(laugh=high))) == 2
 
@@ -41,7 +41,7 @@ def test_no_peak_means_no_laugh():
 
 def test_short_gap_is_merged_and_long_gap_is_not():
     merged = rx.auto_reactions(scores(laugh=[0.3, 0.0, 0.3]))
-    assert kinds(merged) == [("laugh", 0.0, 9.0)]
+    assert kinds(merged) == [("laugh", 1.5, 7.5)]
     apart = rx.auto_reactions(scores(laugh=[0.3, 0.0, 0.0, 0.3]))
     assert len(apart) == 2
 
@@ -49,7 +49,7 @@ def test_short_gap_is_merged_and_long_gap_is_not():
 def test_applause_ignores_music():
     """中手に出囃子が重なって Music が高くても、拍手として採用する。"""
     s = scores(applause=[0.0, 0.65, 0.5, 0.0], music=[0.0, 0.44, 0.9, 0.0])
-    assert kinds(rx.auto_reactions(s)) == [("applause", 2.0, 9.0)]
+    assert kinds(rx.auto_reactions(s)) == [("applause", 3.5, 7.5)]
 
 
 def test_applause_uses_an_absolute_line():
@@ -60,8 +60,8 @@ def test_music_never_becomes_a_reaction():
     s = scores(music=[0.5, 0.8, 0.5, 0.0, 0.0, 0.6])
     assert rx.auto_reactions(s) == []
     assert rx.music_candidates(s) == [
-        {"t0": 0.0, "t1": 9.0, "score": 0.8},
-        {"t0": 10.0, "t1": 15.0, "score": 0.6},
+        {"t0": 1.5, "t1": 7.5, "score": 0.8},
+        {"t0": 11.5, "t1": 13.5, "score": 0.6},
     ]
 
 
@@ -69,7 +69,14 @@ def test_rank_is_by_peak_and_ids_by_time():
     s = scores(laugh=[0.2, 0.0, 0.0, 0.3], applause=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.8])
     got = rx.auto_reactions(s)
     assert [r["id"] for r in got] == ["react-0001", "react-0002", "react-0003"]
-    assert [r["strength_rank"] for r in got] == [3, 2, 1]
+    assert [r["strength_rank"] for r in got] == [3, 1, 2]  # 種類ごとの最大が同じ強さ。同じなら早い方
+
+
+def test_rank_does_not_let_applause_always_win():
+    """笑いの最大（0.3）と弱い拍手（0.4、最大 0.8）では、笑いが上に来る。"""
+    s = scores(laugh=[0.3, 0.0, 0.0, 0.0], applause=[0.0, 0.0, 0.0, 0.4, 0.0, 0.0, 0.8])
+    got = rx.auto_reactions(s)
+    assert [(r["kind"], r["strength_rank"]) for r in got] == [("laugh", 1), ("applause", 3), ("applause", 2)]
 
 
 def test_same_peak_rank_goes_to_the_earlier():
@@ -94,7 +101,15 @@ def test_covered_seconds():
 
 @pytest.mark.parametrize(
     ("samples", "want"),
-    [(0, []), (16000, [0]), (80000, [0]), (80001, [0]), (112000, [0, 32000]), (144000, [0, 32000, 64000])],
+    [
+        (0, []),
+        (16000, [0]),
+        (80000, [0]),
+        (80001, [0, 32000]),  # 末尾の 1 サンプルも窓に入る
+        (112000, [0, 32000]),
+        (112001, [0, 32000, 64000]),
+        (144000, [0, 32000, 64000]),
+    ],
 )
 def test_window_starts(samples, want):
     assert ast_scores.window_starts(samples) == want
@@ -114,7 +129,8 @@ def test_score_batches_and_keeps_order():
     for i, s in enumerate(ast_scores.window_starts(len(audio))):
         audio[s] = i / 100
     got = ast_scores.score(audio, predict=predict)
-    assert seen[0] == ast_scores.BATCH and sum(seen) == len(got["laugh"]) == 28
+    assert seen[0] == ast_scores.BATCH and sum(seen) == len(got["laugh"]) == 29
+    assert got["model"].startswith("MIT/ast-finetuned-audioset-10-10-0.4593@")
     assert got["laugh"][:3] == [0.0, 0.01, 0.02]
     assert (got["window"], got["stride"]) == (5.0, 2.0)
 

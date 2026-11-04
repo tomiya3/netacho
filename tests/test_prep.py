@@ -85,7 +85,7 @@ def test_prep_writes_koza_transcript_reactions(data, capsys):
     assert fake_detect.terms == ["番傘", "利息"]
     doc = store.read(kdir / "reactions.json", "reactions")
     assert len(doc["reactions"]) == 1
-    assert doc["reactions"][0]["t0"] == pytest.approx(8.0, abs=2.0)  # 窓は 5 秒
+    assert doc["reactions"][0]["t0"] == pytest.approx(10.0, abs=2.5)  # 窓は 5 秒
     assert doc["reactions"][0]["kind"] == "laugh"
     assert "反応の候補 1 件" in capsys.readouterr().out
 

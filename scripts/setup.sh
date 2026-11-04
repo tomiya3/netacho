@@ -9,6 +9,6 @@ if ! command -v ffmpeg >/dev/null; then
   fi
 fi
 command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
-uv sync
+uv sync --locked
 # main への直 push を止めるフックを有効化（git repo のときだけ）
 git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true
