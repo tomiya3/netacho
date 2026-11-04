@@ -53,7 +53,7 @@ def test_note_writes_candidates_and_markdown(data, tmp_path):
     assert "受けなかったという意味ではありません" in text
     assert "行列なら頭を下げて待つしかねえな。" in text  # 根拠が確かめられる
     assert run["notes"] == {"candidates": 1, "fallback": 0}
-    assert {r["name"] for r in run["roles"]} == {"writer", "checker", "noter"}  # build の分に積み足す
+    assert {r["name"] for r in run["roles"]} == {"writer", "checker", "deshi", "noter"}  # build に積み足す
 
 
 def test_noter_sees_only_candidate_quotes_and_scene_length(data, tmp_path):

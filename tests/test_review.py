@@ -8,9 +8,7 @@ from netacho import pipeline, review, store
 from netacho.budget import Budget
 
 
-def issue(
-    kind="missing_step", scene=None, item=None, attempt="場面を演ろうとした", missing="運びが書いていない"
-):
+def issue(kind="missing_step", scene=None, item=None, attempt="場面を演ろうとした", missing="運びが無い"):
     return {"kind": kind, "scene_id": scene, "item_id": item, "attempt": attempt, "what_is_missing": missing}
 
 
@@ -52,7 +50,7 @@ def test_rework_goes_to_writer_once_and_second_round_measures(data, tmp_path):
     assert len(c.calls["writer"]) == 2 and len(c.calls["deshi"]) == 2
     assert doc["deshi"] == {"round1": 2, "round2": 1, "dropped_no_anchor": 0}
     text = text_of(c.calls["writer"][1])
-    assert "運びが書いていない" in text
+    assert "運びが無い" in text
     issues = saved(data)[0]["issues"]
     assert [(i["round"], i["kind"], i["resolved"]) for i in issues] == [
         (1, "missing_step", True),  # 2 周目に無いので解決
@@ -125,7 +123,7 @@ def test_deshi_sees_only_markdown(data, tmp_path):
         text = text_of(call)
         assert "おう太助か" not in text  # 録音の引用は無い
         assert "react-" not in text and "seg-" not in text
-        assert "運びが書いていない" not in text  # 差し戻しの履歴を見せない
+        assert "運びが無い" not in text  # 差し戻しの履歴を見せない
         assert "# 噺" in text and "# 型" in text
 
 

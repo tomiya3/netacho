@@ -87,7 +87,7 @@ def test_build_writes_books_and_counts(data, tmp_path):
     doc = build(client, data, tmp_path)
     assert doc["evidence"] == {"kept": 4, "dropped": {"bad_seg": 1}}
     assert doc["checker"] == {"supported": 1, "weak": 1, "unsupported": 1, "unchecked_knowledge": 1}
-    assert {r["name"]: r["calls"] for r in doc["roles"]} == {"writer": 1, "checker": 1}
+    assert {r["name"]: r["calls"] for r in doc["roles"]} == {"writer": 1, "checker": 1, "deshi": 1}
     hanashi, kata = books(data)
     assert [i["id"] for i in hanashi["items"]] == ["item-0001", "item-0004"]
     assert [i["id"] for i in kata["items"]] == ["item-0002", "item-0003"]
