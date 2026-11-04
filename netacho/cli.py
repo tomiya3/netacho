@@ -230,6 +230,13 @@ def _rewrite_markdown(neta: store.Neta) -> None:
     pipeline.write_markdown(neta, store.read(neta.hanashi, "book"), store.read(neta.kata, "book"))
 
 
+def cmd_run(args: argparse.Namespace) -> None:
+    """prep、build、note を順に回す。"""
+    cmd_prep(args)
+    cmd_build(args)
+    cmd_note(args)
+
+
 def cmd_decide(args: argparse.Namespace) -> None:
     from . import performer
 
@@ -327,6 +334,18 @@ def build_parser() -> argparse.ArgumentParser:
     note.add_argument("--koza", required=True)
     note.add_argument("--reuse", action="store_true", help="同じ入力の役の出力を使い回す")
     note.set_defaults(func=cmd_note)
+
+    run = sub.add_parser("run", help="prep + build + note")
+    run.add_argument("--audio", required=True)
+    run.add_argument("--performer", required=True)
+    run.add_argument("--neta", required=True)
+    run.add_argument("--koza", required=True)
+    run.add_argument("--from", dest="start", type=float)
+    run.add_argument("--to", dest="end", type=float)
+    run.add_argument("--terms", help="演目の語（カンマ区切り）")
+    run.add_argument("--force", action="store_true", help="手で付けた反応があっても作り直す")
+    run.add_argument("--reuse", action="store_true", help="同じ入力の役の出力を使い回す")
+    run.set_defaults(func=cmd_run)
 
     decide = sub.add_parser("decide", help="演者の決定を型に入れる（LLM 0 回）")
     _who(decide)

@@ -95,3 +95,32 @@ def note_markdown(
             "",
         ]
     return "\n".join(out).rstrip() + "\n"
+
+
+REACTION_LABEL = {"laugh": "（笑い）", "applause": "（拍手）", "reaction": "（反応）"}
+
+
+def sokki_markdown(koza: dict, transcript: dict, reactions: dict) -> str:
+    """速記。文字起こしに、反応の始まりを含む区間の後ろで印を入れる。スクリプトだけで作る。"""
+    segs = transcript["segments"]
+    after: dict[int, list[str]] = {}
+    for r in sorted(reactions["reactions"], key=lambda x: x["t0"]):
+        at = next((i for i, s in enumerate(segs) if s["end"] >= r["t0"]), len(segs) - 1)
+        marks = after.setdefault(at, [])
+        if REACTION_LABEL[r["kind"]] not in marks:  # 同じ所に同じ印を重ねない
+            marks.append(REACTION_LABEL[r["kind"]])
+    manual = any(r["method"] == "manual" for r in reactions["reactions"])
+    note = "印は耳で付けた時刻です。" if manual else "印の位置は目安です（5 秒の窓で拾っています）。"
+    out = [
+        f"# 速記：{koza['neta']}（{koza['id']}）",
+        "",
+        f"未校正です。文字起こしの誤りを含みます。{note}",
+        "",
+    ]
+    for i, s in enumerate(segs):
+        line = s["text"].strip() + "".join(after.get(i, []))
+        if line:
+            out.append(line)
+    if not segs:
+        out.append("（文字起こしの区間がありません）")
+    return "\n".join(out).rstrip() + "\n"

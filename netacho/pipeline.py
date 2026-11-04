@@ -425,7 +425,11 @@ def note(
     run_path = kdir / "run.json"
     if run_path.exists():
         ctx.usage.restore(store.read(run_path, "run"))  # build の分に積み足す
-    for stale in (kdir / "note.md", ctx.neta.drafts / "noter.json"):  # 途中で落ちても古い文を残さない
+    for stale in (
+        kdir / "note.md",
+        kdir / "sokki.md",
+        ctx.neta.drafts / "noter.json",
+    ):  # 途中で落ちても古い文を残さない
         stale.unlink(missing_ok=True)
     reactions = store.read(kdir / "reactions.json", "reactions")
     tl = store.read(kdir / "timeline.json", "timeline")
@@ -463,6 +467,9 @@ def note(
     }
     (kdir / "note.md").write_text(
         render.note_markdown(ctx.koza, cands, notes, items, item_scene), encoding="utf-8"
+    )
+    (kdir / "sokki.md").write_text(
+        render.sokki_markdown(ctx.koza, ctx.transcript, reactions), encoding="utf-8"
     )
     ctx.usage.extra["notes"] = {"candidates": len(cands["candidates"]), "fallback": fallback}
     result = ctx.usage.to_json()
