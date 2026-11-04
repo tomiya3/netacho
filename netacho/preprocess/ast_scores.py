@@ -68,4 +68,6 @@ def score(audio: np.ndarray, *, predict: Predictor | None = None) -> dict:
         result = predict(batch)
         for name in GROUPS:
             out[name] += [round(float(x), 4) for x in result[name]]
-    return {"model": f"{MODEL}@{REVISION}", "window": WINDOW_SEC, "stride": STRIDE_SEC, **out}
+    seconds = round(len(audio) / SAMPLE_RATE, 3)
+    model = f"{MODEL}@{REVISION}"
+    return {"model": model, "window": WINDOW_SEC, "stride": STRIDE_SEC, "seconds": seconds, **out}

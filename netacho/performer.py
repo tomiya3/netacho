@@ -111,25 +111,17 @@ def answer(neta: store.Neta, *, question: str, speaker: str, words: str, now: st
     q = next((x for x in questions["questions"] if x["id"] == question), None)
     if q is None:
         raise PerformerError(f"質問が無い: {question}")
-    if "answer" in q:
+    if "answer" in q and q["answer"]["words"] != words:
+        raise PerformerError(f"{question} は答え済み（演者の言葉は上書きしない）")
+    issue = next((i for i in review["issues"] if i["id"] == q["issue_id"]), None)
+    if "answer" in q and (issue is None or issue["resolved"]):
         raise PerformerError(f"{question} は答え済み（演者の言葉は上書きしない）")
     at = now or _now()
-    q["answer"] = {"speaker": speaker, "recorded_at": at, "words": words}
-    for issue in review["issues"]:
-        if issue["id"] == q["issue_id"]:
-            issue["resolved"] = True
+    q.setdefault("answer", {"speaker": speaker, "recorded_at": at, "words": words})
+    if issue is not None:
+        issue["resolved"] = True
     # 途中で落ちた答えのやり直しなら、型に二重に入れない
-    done = next(
-        (
-            i
-            for i in kata["items"]
-            if i["kind"] == "staging"
-            and i["source"]["speaker"] == speaker
-            and i["source"]["words"] == words
-            and i["anchor"]["scene_id"] == q["scene_id"]
-        ),
-        None,
-    )
+    done = next((i for i in kata["items"] if i["source"].get("question_id") == question), None)
     item = done or _staging(
         hanashi,
         kata,
@@ -142,6 +134,7 @@ def answer(neta: store.Neta, *, question: str, speaker: str, words: str, now: st
         approved=False,
         at=at,
     )
+    item["source"]["question_id"] = question
     if done is None:
         kata["items"].append(item)
     check_refs(hanashi, kata, review=review, questions=questions)

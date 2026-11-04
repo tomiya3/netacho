@@ -16,6 +16,7 @@ def scores(*, laugh=(), applause=(), music=(), n=None):
         "model": "fake",
         "window": 5.0,
         "stride": 2.0,
+        "seconds": (n - 1) * 2.0 + 5.0,
         "laugh": fill(laugh),
         "applause": fill(applause),
         "music": fill(music),
@@ -91,11 +92,10 @@ def test_laugh_and_applause_may_overlap():
 
 def test_empty_scores():
     assert rx.auto_reactions(scores(n=1)) == []
-    assert rx.covered_seconds({"scores": {"laugh": [], "stride": 2.0, "window": 5.0}}) is None
 
 
-def test_covered_seconds():
-    assert rx.covered_seconds({"scores": scores(n=3)}) == 9.0
+def test_covered_seconds_is_the_audio_length():
+    assert rx.covered_seconds({"scores": {**scores(n=3), "seconds": 7.5}}) == 7.5
     assert rx.covered_seconds({}) is None
 
 

@@ -118,7 +118,11 @@ def _check_items(ctx: Context, items: list[dict], draft_name: str) -> set[str]:
         ctx.client, "checker", [{"type": "text", "text": text}], "checker", ctx.usage, ctx.budget, ctx.cache
     )
     store.write(ctx.neta.drafts / draft_name, doc, "checker")
-    verdicts = {v["item_id"]: v["verdict"] for v in doc["verdicts"]}
+    verdicts: dict[str, str] = {}
+    severity = {"supported": 0, "weak": 1, "unsupported": 2}
+    for v in doc["verdicts"]:  # 同じ項目に複数の判定が返ったら、一番厳しいものを取る
+        current = verdicts.get(v["item_id"], "supported")
+        verdicts[v["item_id"]] = max(current, v["verdict"], key=severity.__getitem__)
     held = set()
     for it in heard:
         verdict = verdicts.get(it["id"], "no_verdict")
@@ -148,7 +152,6 @@ def write_pass(ctx: Context, *, rework: list[dict] | None = None, suffix: str = 
     ctx.dropped.update(dropped)
     if bad_scenes:
         ctx.dropped["scene_bad_seg"] += bad_scenes
-    ctx.kept += len(items)
     before = {i["id"]: i["text"] for i in ctx.hanashi["items"] + ctx.kata["items"]}
     merge.assign_ids(items, ctx.hanashi, ctx.kata)
     changed = [i for i in items if before.get(i["id"]) != i["text"]]
@@ -157,6 +160,7 @@ def write_pass(ctx: Context, *, rework: list[dict] | None = None, suffix: str = 
         ctx.hanashi, ctx.kata, items=items, scenes=scenes, characters=draft["characters"], held_ids=held
     )
     save_books(ctx)
+    ctx.kept += len(items)  # 正本に入ってから数える
     lookup = render.scene_lookup(timelines(ctx.neta))
     return {render.scene_of_item(i, lookup) for i in changed if i["id"] not in held}
 
@@ -249,11 +253,13 @@ def deshi_pass(ctx: Context, doc: dict, questions: dict, round_no: int) -> tuple
     store.write(ctx.neta.drafts / f"deshi-{round_no}.json", raw, "deshi")
     current, dropped = review.receive(raw, doc, ctx.hanashi, ctx.kata, round_no)
     lookup = render.scene_lookup(timelines(ctx.neta))
-    no_scene, asked = review.add_questions(
+    no_scene, asked, skipped = review.add_questions(
         current, questions, ctx.hanashi, ctx.kata, lookup, skip_scenes=ctx.asked_scenes
     )
     ctx.asked_scenes |= asked
     dropped += no_scene
+    doc["issues"] = [i for i in doc["issues"] if i["id"] not in skipped]  # 答える先の無い指摘を残さない
+    current = [i for i in current if i["id"] not in skipped]
     ctx.deshi_dropped += dropped
     return current, dropped
 
@@ -331,6 +337,9 @@ def reread(
     ctx.asked_scenes |= {q["scene_id"] for q in questions["questions"] if "answer" in q}
     current, _ = deshi_pass(ctx, doc, questions, max((i["round"] for i in doc["issues"]), default=0) + 1)
     save_review(ctx, doc, questions)
+    deshi_stats = ctx.usage.extra.get("deshi", {"round1": 0, "round2": None, "dropped_no_anchor": 0})
+    ctx.usage.extra["deshi"] = {**deshi_stats, "reread": len(current)}
+    ctx.usage.extra["questions"] = len(questions["questions"])
     store.write(run_path, ctx.usage.to_json(), "run")
     guide.refresh(ctx.neta)  # 指摘が増えて札から外れる項目があれば反映する（LLM 0 回）
     return current
