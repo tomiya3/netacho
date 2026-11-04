@@ -48,10 +48,11 @@ def write(neta: store.Neta) -> dict:
     review = store.read(neta.review, "review") if neta.review.exists() else None
     doc = build(hanashi, kata, review)
     check_refs(hanashi, kata, review=review, guide=doc)
+    runs = {p: store.read(p, "run") for p in (neta.base / "koza").glob("*/run.json")}  # 先に全部確かめる
     store.write(neta.guide, doc, "guide")
-    for path in (neta.base / "koza").glob("*/run.json"):
-        run = store.read(path, "run")
-        run["guide_performer_cards"] = len(doc["cards"])
+    count = sum(1 for c in doc["cards"] if c["copied_fields"]["edited_by"] == "performer")
+    for path, run in runs.items():
+        run["guide_performer_cards"] = count
         store.write(path, run, "run")
     return doc
 

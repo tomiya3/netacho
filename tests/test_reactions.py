@@ -52,6 +52,12 @@ def test_end_never_passes_the_audio_length():
     assert rx.auto_reactions(s)[0]["t1"] == 5.0
 
 
+def test_very_short_audio_keeps_start_before_end():
+    s = {**scores(laugh=[0.3]), "seconds": 1.0}
+    r = rx.auto_reactions(s)[0]
+    assert r["t0"] <= r["t1"] == 1.0
+
+
 def test_applause_ignores_music():
     """中手に出囃子が重なって Music が高くても、拍手として採用する。"""
     s = scores(applause=[0.0, 0.65, 0.5, 0.0], music=[0.0, 0.44, 0.9, 0.0])
