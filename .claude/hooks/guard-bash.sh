@@ -45,6 +45,9 @@ rm_ok() {
     [ "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" = \
       "$(git -C "$proj" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ] || root=
   fi
+  # macOS の /tmp は /private/tmp へのリンクで、git の root も /private/tmp で始まる。そのときだけ揃える
+  tmp=$(cd -P /tmp 2>/dev/null && pwd)
+  [ "$tmp" = /private/tmp ] || tmp=/tmp
   while IFS= read -r seg; do
     read -ra words <<<"$seg"
     [ "${#words[@]}" -gt 0 ] || continue
@@ -54,12 +57,7 @@ rm_ok() {
       paths=$((paths + 1))
       [[ "$w" =~ [*?\[][^/]*/ ]] && return 1                     # ワイルドカードは最後の成分だけ（リンクを辿らない）
       [[ "$w" =~ (^|/)\.[^/]*[*?\[] || "$w" =~ (^|/)\.$ ]] && return 1  # .* や末尾の . は扱わない
-      # macOS の /tmp は /private/tmp へのリンクで、git の root も /private/tmp で始まる。そのときだけ揃える
-      tmp=/tmp
-      if [ -L /tmp ] && [ "$(cd -P /tmp 2>/dev/null && pwd)" = /private/tmp ]; then
-        tmp=/private/tmp
-        w=${w/#\/tmp\//\/private\/tmp\/}
-      fi
+      [ "$tmp" = /tmp ] || w=${w/#\/tmp\//\/private\/tmp\/}
       if [[ "$w" == "$tmp"/claude-* && "${w#"$tmp"/}" =~ ^claude-[^/*?\[]+/. ]]; then
         p=""
       else
