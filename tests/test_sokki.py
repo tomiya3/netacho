@@ -33,8 +33,8 @@ def test_reaction_in_a_gap_goes_to_the_previous_segment():
     assert lines([seg("一", 0, 2), seg("二", 10, 12)], react(5.0)) == ["一（笑い）", "二"]
 
 
-def test_reaction_before_the_first_segment_goes_to_the_first_line():
-    assert lines([seg("一", 5, 6)], react(1.0)) == ["一（笑い）"]
+def test_reaction_before_the_first_segment_is_a_line_of_its_own():
+    assert lines([seg("一", 5, 6)], react(1.0)) == ["（笑い）", "一"]
 
 
 def test_reaction_after_the_end_goes_to_the_last_line():
@@ -106,6 +106,32 @@ def test_run_checks_auth_before_long_prep(monkeypatch):
     with pytest.raises(SystemExit, match="ANTHROPIC_API_KEY"):
         cli.main(["run", "--audio", "x", "--performer", P, "--neta", N, "--koza", K])
     assert called == []
+
+
+def test_run_reports_other_errors_as_they_are(monkeypatch):
+    """ネットワーク断などを認証の問題と言わない。"""
+
+    class Down:
+        def __init__(self):
+            self.messages = self
+
+        def count_tokens(self, **kw):
+            raise ConnectionError("つながらない")
+
+    monkeypatch.setattr(runner, "make_client", Down)
+    with pytest.raises(ConnectionError):
+        cli.main(["run", "--audio", "x", "--performer", P, "--neta", N, "--koza", K])
+
+
+def test_run_passes_options_to_every_step(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_prep", lambda a: seen.update(start=a.start, terms=a.terms, force=a.force))
+    monkeypatch.setattr(cli, "cmd_build", lambda a: seen.update(build=a.reuse))
+    monkeypatch.setattr(cli, "cmd_note", lambda a: seen.update(note=a.reuse))
+    monkeypatch.setattr(runner, "make_client", ScriptedClient)
+    base = ["run", "--audio", "x", "--performer", P, "--neta", N, "--koza", K]
+    cli.main([*base, "--from", "3", "--terms", "傘", "--force", "--reuse"])
+    assert seen == {"start": 3.0, "terms": "傘", "force": True, "build": True, "note": True}
 
 
 def test_run_stops_at_first_failure_and_says_where(monkeypatch, capsys):
