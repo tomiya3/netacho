@@ -38,6 +38,11 @@ def make_client():
     return anthropic.Anthropic(max_retries=0)
 
 
+def check_auth(client) -> None:
+    """長い処理の前に認証を確かめる。count_tokens は課金されない。認証が無ければ例外。"""
+    client.messages.count_tokens(model=SONNET, messages=[{"role": "user", "content": "確認"}])
+
+
 class RoleCache:
     """役の出力の控え。演者のデータを含むので repo の外に置く。"""
 

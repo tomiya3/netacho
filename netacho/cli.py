@@ -232,8 +232,20 @@ def _rewrite_markdown(neta: store.Neta) -> None:
 
 def cmd_run(args: argparse.Namespace) -> None:
     """prep、build、note を順に回す。"""
+    from . import runner
+
+    try:
+        runner.check_auth(runner.make_client())  # 長い文字起こしの後で落ちないように、先に確かめる
+    except Exception as e:
+        raise SystemExit(
+            f"API の認証を確かめられない（{type(e).__name__}）。ANTHROPIC_API_KEY を用意する"
+        ) from e
+    where = f"--performer {args.performer} --neta {args.neta} --koza {args.koza}"
+    print("1/3 prep")
     cmd_prep(args)
+    print(f"2/3 build（落ちたら netacho build {where}）")
     cmd_build(args)
+    print(f"3/3 note（落ちたら netacho note {where}）")
     cmd_note(args)
 
 

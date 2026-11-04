@@ -51,15 +51,25 @@ def laugh_threshold(laugh: list[float]) -> float:
 
 
 def _times(span: tuple[int, int], scores: dict) -> tuple[float, float]:
-    return span[0] * scores["stride"], (span[1] - 1) * scores["stride"] + scores["window"]
+    """窓の中央の、刻み幅の分を区間にする。窓の端から端までだと、実際より最大 5 秒広く見える。"""
+    half = scores["window"] / 2
+    start = span[0] * scores["stride"] + half - scores["stride"] / 2
+    end = (span[1] - 1) * scores["stride"] + half + scores["stride"] / 2
+    return start, end
+
+
+def _strength(value: float, kind: str, scores: dict) -> float:
+    """種類ごとに高座の最大値で割る。笑いは最大でも約 0.3 なので、そのままだと拍手に必ず負ける。"""
+    return value / (max(scores[kind]) or 1.0)
 
 
 def auto_reactions(scores: dict) -> list[dict]:
-    """時刻順の候補。強さは山の高さの順位（1 が最も強い。同じなら早い方）。"""
+    """時刻順の候補。強さは種類ごとの山の高さの順位（1 が最も強い。同じなら早い方）。"""
     rows = []
     for kind, threshold in (("laugh", laugh_threshold(scores["laugh"])), ("applause", APPLAUSE_MIN)):
         for span in find_spans(scores[kind], threshold):
-            rows.append((*_times(span, scores), kind, max(scores[kind][span[0] : span[1]])))
+            peak = max(scores[kind][span[0] : span[1]])
+            rows.append((*_times(span, scores), kind, _strength(peak, kind, scores)))
     rows.sort(key=lambda r: r[0])
     order = sorted(range(len(rows)), key=lambda k: (-rows[k][3], k))
     rank = {k: r for r, k in enumerate(order, start=1)}

@@ -1,5 +1,6 @@
 """速記と netacho run のテスト。"""
 
+import pytest
 from fakes import NO_ISSUES, ScriptedClient
 from test_build import K, N, P, draft, draft_item, verdicts
 
@@ -27,8 +28,13 @@ def test_marks_go_after_the_segment():
     assert got == ["一（笑い）", "二（拍手）"]
 
 
-def test_reaction_in_a_gap_goes_to_the_next_segment():
-    assert lines([seg("一", 0, 2), seg("二", 10, 12)], react(5.0)) == ["一", "二（笑い）"]
+def test_reaction_in_a_gap_goes_to_the_previous_segment():
+    """笑いは直前の台詞の後に来る。"""
+    assert lines([seg("一", 0, 2), seg("二", 10, 12)], react(5.0)) == ["一（笑い）", "二"]
+
+
+def test_reaction_before_the_first_segment_goes_to_the_first_line():
+    assert lines([seg("一", 5, 6)], react(1.0)) == ["一（笑い）"]
 
 
 def test_reaction_after_the_end_goes_to_the_last_line():
@@ -44,8 +50,13 @@ def test_empty_segment_keeps_its_mark():
 
 
 def test_says_unproofed_and_position_is_rough():
-    text = render.sokki_markdown(KOZA, {"segments": []}, {"reactions": []})
+    text = render.sokki_markdown(KOZA, {"segments": [seg("一", 0, 2)]}, {"reactions": [react(1.0)]})
     assert "未校正" in text and "目安" in text
+
+
+def test_no_reaction_does_not_read_as_none():
+    text = render.sokki_markdown(KOZA, {"segments": []}, {"reactions": []})
+    assert "反応が無かったという意味ではありません" in text
 
 
 def test_manual_is_labelled():
@@ -63,6 +74,54 @@ def test_note_writes_sokki(data, tmp_path):
     text = (store.Neta(P, N, data).koza_dir(K) / "sokki.md").read_text(encoding="utf-8")
     assert "未校正" in text and "へえ、ですから骨折り賃をいただきに来ました。" in text
     assert "（笑い）" in text
+
+
+def test_sokki_survives_a_noter_failure(data, tmp_path):
+    budget = Budget(tmp_path / "ledger.json")
+    mitate = draft_item(
+        kind="見立て",
+        book="kata",
+        source={"segs": ["seg-0008", "seg-0008"]},
+        payoff={"segs": ["seg-0009", "seg-0009"]},
+    )
+    client = ScriptedClient(writer=[draft(mitate)], checker=[verdicts(("item-0001", "supported"))])
+    pipeline.build(P, N, K, client=client, budget=budget, root=data)
+    with pytest.raises(KeyError):  # ノート役の返事が無い = 途中で落ちた
+        pipeline.note(P, N, K, client=ScriptedClient(), budget=budget, root=data)
+    assert (store.Neta(P, N, data).koza_dir(K) / "sokki.md").exists()
+
+
+def test_run_checks_auth_before_long_prep(monkeypatch):
+    called = []
+    monkeypatch.setattr(cli, "cmd_prep", lambda a: called.append("prep"))
+
+    class NoAuth:
+        def __init__(self):
+            self.messages = self
+
+        def count_tokens(self, **kw):
+            raise TypeError("認証が無い")
+
+    monkeypatch.setattr(runner, "make_client", NoAuth)
+    with pytest.raises(SystemExit, match="ANTHROPIC_API_KEY"):
+        cli.main(["run", "--audio", "x", "--performer", P, "--neta", N, "--koza", K])
+    assert called == []
+
+
+def test_run_stops_at_first_failure_and_says_where(monkeypatch, capsys):
+    calls = []
+
+    def boom(a):
+        raise ValueError("build で落ちた")
+
+    monkeypatch.setattr(cli, "cmd_prep", lambda a: calls.append("prep"))
+    monkeypatch.setattr(cli, "cmd_build", boom)
+    monkeypatch.setattr(cli, "cmd_note", lambda a: calls.append("note"))
+    monkeypatch.setattr(runner, "make_client", ScriptedClient)
+    with pytest.raises(SystemExit):
+        cli.main(["run", "--audio", "x", "--performer", P, "--neta", N, "--koza", K])
+    assert calls == ["prep"]
+    assert "netacho build" in capsys.readouterr().out
 
 
 def test_run_calls_prep_build_note_in_order(data, tmp_path, monkeypatch):

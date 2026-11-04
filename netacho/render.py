@@ -101,16 +101,21 @@ REACTION_LABEL = {"laugh": "（笑い）", "applause": "（拍手）", "reaction
 
 
 def sokki_markdown(koza: dict, transcript: dict, reactions: dict) -> str:
-    """速記。文字起こしに、反応の始まりを含む区間の後ろで印を入れる。スクリプトだけで作る。"""
+    """速記。反応が始まった時点で話していた区間（無ければ直前の区間）の後ろに印を入れる。LLM は使わない。"""
     segs = transcript["segments"]
     after: dict[int, list[str]] = {}
     for r in sorted(reactions["reactions"], key=lambda x: x["t0"]):
-        at = next((i for i, s in enumerate(segs) if s["end"] >= r["t0"]), len(segs) - 1)
+        at = max((i for i, s in enumerate(segs) if s["start"] <= r["t0"]), default=0)
         marks = after.setdefault(at, [])
         if REACTION_LABEL[r["kind"]] not in marks:  # 同じ所に同じ印を重ねない
             marks.append(REACTION_LABEL[r["kind"]])
-    manual = any(r["method"] == "manual" for r in reactions["reactions"])
-    note = "印は耳で付けた時刻です。" if manual else "印の位置は目安です（5 秒の窓で拾っています）。"
+    rows = reactions["reactions"]
+    if not rows:
+        note = "反応の候補は拾えていません（反応が無かったという意味ではありません）。"
+    elif any(r["method"] == "manual" for r in rows):
+        note = "印は耳で付けた時刻のあたりの行にあります。"
+    else:
+        note = "印の位置は目安です（音声の窓で拾っているので、前後の行のこともあります）。"
     out = [
         f"# 速記：{koza['neta']}（{koza['id']}）",
         "",
@@ -122,5 +127,5 @@ def sokki_markdown(koza: dict, transcript: dict, reactions: dict) -> str:
         if line:
             out.append(line)
     if not segs:
-        out.append("（文字起こしの区間がありません）")
+        out.append("（文字起こしの区間がありません）" + "".join(after.get(0, [])))
     return "\n".join(out).rstrip() + "\n"

@@ -432,6 +432,9 @@ def note(
     ):  # 途中で落ちても古い文を残さない
         stale.unlink(missing_ok=True)
     reactions = store.read(kdir / "reactions.json", "reactions")
+    (kdir / "sokki.md").write_text(
+        render.sokki_markdown(ctx.koza, ctx.transcript, reactions), encoding="utf-8"
+    )
     tl = store.read(kdir / "timeline.json", "timeline")
     all_items = ctx.hanashi["items"] + ctx.kata["items"]
     cands = candidates.select(all_items, reactions)
@@ -467,9 +470,6 @@ def note(
     }
     (kdir / "note.md").write_text(
         render.note_markdown(ctx.koza, cands, notes, items, item_scene), encoding="utf-8"
-    )
-    (kdir / "sokki.md").write_text(
-        render.sokki_markdown(ctx.koza, ctx.transcript, reactions), encoding="utf-8"
     )
     ctx.usage.extra["notes"] = {"candidates": len(cands["candidates"]), "fallback": fallback}
     result = ctx.usage.to_json()
