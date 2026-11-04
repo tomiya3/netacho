@@ -7,7 +7,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import candidates, evidence, merge, render, store
+from . import candidates, evidence, merge, render, review, store
 from .budget import Budget
 from .runner import RoleCache, Usage, call_role
 from .schema import check_refs
@@ -27,6 +27,7 @@ class Context:
     dropped: Counter = field(default_factory=Counter)
     kept: int = 0
     checker: Counter = field(default_factory=Counter)
+    deshi_dropped: int = 0
 
 
 def load_books(neta: store.Neta) -> tuple[dict, dict]:
@@ -215,6 +216,45 @@ def _finish(ctx: Context) -> dict:
     return doc
 
 
+def deshi_content(neta: store.Neta) -> list[dict]:
+    """弟子役に見せる物：確定した噺・型の .md だけ。"""
+    hanashi = neta.hanashi.with_suffix(".md").read_text(encoding="utf-8")
+    kata = neta.kata.with_suffix(".md").read_text(encoding="utf-8")
+    return [{"type": "text", "text": hanashi + "\n" + kata}]
+
+
+def read_review(neta: store.Neta) -> tuple[dict, dict]:
+    doc = (
+        store.read(neta.review, "review")
+        if neta.review.exists()
+        else review.empty_review(neta.performer, neta.neta)
+    )
+    questions = (
+        store.read(neta.questions, "questions")
+        if neta.questions.exists()
+        else review.empty_questions(neta.performer, neta.neta)
+    )
+    return doc, questions
+
+
+def deshi_pass(ctx: Context, doc: dict, questions: dict, round_no: int) -> list[dict]:
+    """弟子役を 1 回呼び、指摘を受け取り、質問を足す。"""
+    raw = call_role(ctx.client, "deshi", deshi_content(ctx.neta), "deshi", ctx.usage, ctx.budget, ctx.cache)
+    store.write(ctx.neta.drafts / f"deshi-{round_no}.json", raw, "deshi")
+    added, dropped = review.receive(raw, doc, ctx.hanashi, ctx.kata, round_no)
+    lookup = render.scene_lookup(timelines(ctx.neta))
+    ctx.deshi_dropped += dropped + review.add_questions(added, questions, ctx.hanashi, ctx.kata, lookup)
+    return added
+
+
+def save_review(ctx: Context, doc: dict, questions: dict) -> None:
+    check_refs(
+        ctx.hanashi, ctx.kata, koza=ctx.koza, koza_ids=koza_ids(ctx.neta), review=doc, questions=questions
+    )
+    store.write(ctx.neta.review, doc, "review")
+    store.write(ctx.neta.questions, questions, "questions")
+
+
 def build(
     performer: str,
     neta_name: str,
@@ -225,9 +265,26 @@ def build(
     reuse: bool = False,
     root: Path | None = None,
 ) -> dict:
-    """噺・型を作る。返すのは run.json の中身。"""
+    """噺・型を作り、弟子役に読ませ、差し戻しを 1 回だけ反映する。返すのは run.json の中身。"""
     ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
     write_pass(ctx)
+    doc, questions = read_review(ctx.neta)
+    base_round = max((i["round"] for i in doc["issues"]), default=0)
+    first = deshi_pass(ctx, doc, questions, base_round + 1)
+    save_review(ctx, doc, questions)
+    second = None
+    rework = review.rework_of(first)
+    if rework:
+        write_pass(ctx, rework=rework, suffix="-2")
+        second = deshi_pass(ctx, doc, questions, base_round + 2)
+        review.settle_rework(first, second)
+        save_review(ctx, doc, questions)
+    ctx.usage.extra["deshi"] = {
+        "round1": len(first),
+        "round2": None if second is None else len(second),
+        "dropped_no_anchor": ctx.deshi_dropped,
+    }
+    ctx.usage.extra["questions"] = len(questions["questions"])
     return _finish(ctx)
 
 

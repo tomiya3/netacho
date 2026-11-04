@@ -18,12 +18,14 @@ class _Stream:
         return self.resp
 
 
+NO_ISSUES = {"schema_version": 1, "issues": []}
 ROLE_MARKS = {"構成作家役": "writer", "照合役": "checker", "ノート役": "noter", "弟子役": "deshi"}
 
 
 class ScriptedClient:
     def __init__(self, **replies):
         self.replies = {role: list(r) for role, r in replies.items()}
+        self.replies.setdefault("deshi", [NO_ISSUES] * 4)  # 指摘なしが既定
         self.calls = {role: [] for role in ROLE_MARKS.values()}
         self.messages = self
 
