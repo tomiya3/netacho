@@ -35,32 +35,50 @@ def _anchor(raw: dict, scene_ids: set[str], item_ids: set[str]) -> dict | None:
     return {"item_id": item} if item in item_ids else None
 
 
+def _key(issue: dict) -> tuple:
+    return issue["kind"], tuple(sorted(issue["anchor"].items()))
+
+
 def receive(doc: dict, review: dict, hanashi: dict, kata: dict, round_no: int) -> tuple[list[dict], int]:
-    """役の出力を指摘にして review に足す。(足した指摘, 落とした数)。"""
+    """役の出力を指摘にして review に足す。(今回の指摘, 落とした数)。
+
+    同じ所への未解決の指摘が既にあれば足さず、それを今回の指摘として返す（作り直しで重ねない）。
+    演者の項目を指す指摘は、構成作家役では直せないので ask_performer に回す。
+    """
+    items = {i["id"]: i for b in (hanashi, kata) for i in b["items"]}
     scene_ids = {s["id"] for s in hanashi["scenes"]}
-    item_ids = {i["id"] for b in (hanashi, kata) for i in b["items"] if not i.get("held")}
+    visible = {k for k, i in items.items() if not i.get("held")}
+    open_issues = {_key(i): i for i in review["issues"] if not i["resolved"]}
     n = _next_number(review["issues"])
-    added, dropped = [], 0
+    current, dropped = [], 0
     for raw in doc["issues"]:
-        anchor = _anchor(raw, scene_ids, item_ids)
+        anchor = _anchor(raw, scene_ids, visible)
         if anchor is None or not raw["attempt"].strip() or not raw["what_is_missing"].strip():
             dropped += 1
             continue
-        added.append(
-            {
-                "id": f"issue-{n:04d}",
-                "role": "deshi",
-                "kind": raw["kind"],
-                "anchor": anchor,
-                "attempt": raw["attempt"],
-                "what_is_missing": raw["what_is_missing"],
-                "round": round_no,
-                "resolved": False,
-            }
-        )
+        kind = raw["kind"]
+        if "item_id" in anchor and items[anchor["item_id"]]["edited_by"] == "performer":
+            kind = ASK
+        issue = {
+            "id": f"issue-{n:04d}",
+            "role": "deshi",
+            "kind": kind,
+            "anchor": anchor,
+            "attempt": raw["attempt"],
+            "what_is_missing": raw["what_is_missing"],
+            "round": round_no,
+            "resolved": False,
+        }
+        existing = open_issues.get(_key(issue))
+        if existing is not None:
+            if existing not in current:
+                current.append(existing)
+            continue
+        open_issues[_key(issue)] = issue
+        review["issues"].append(issue)
+        current.append(issue)
         n += 1
-    review["issues"].extend(added)
-    return added, dropped
+    return current, dropped
 
 
 def rework_of(issues: list[dict]) -> list[dict]:
@@ -75,35 +93,60 @@ def scene_of_anchor(anchor: dict, items: dict, lookup: dict) -> str | None:
     return render.scene_of_item(items[anchor["item_id"]], lookup)
 
 
-def add_questions(issues: list[dict], questions: dict, hanashi: dict, kata: dict, lookup: dict) -> int:
-    """ask_performer を質問にする。同じ所への質問は重ねない。場面が決まらなければ落として数を返す。"""
+def add_questions(
+    issues: list[dict], questions: dict, hanashi: dict, kata: dict, lookup: dict, *, skip_scenes: set[str]
+) -> tuple[int, set[str]]:
+    """ask_performer を質問にする。(場面が決まらず落とした数, 質問した場面)。
+
+    skip_scenes は同じ実行の 1 周目で聞いた場面。2 周目の言い直しで聞き直さない。
+    """
     items = {i["id"]: i for b in (hanashi, kata) for i in b["items"]}
-    asked = {(q["scene_id"], q["text"]) for q in questions["questions"]}
-    scenes_asked = {q["scene_id"] for q in questions["questions"]}
+    has_question = {q["issue_id"] for q in questions["questions"]}
     n = _next_number(questions["questions"])
     dropped = 0
+    asked: set[str] = set()
     for issue in issues:
-        if issue["kind"] != ASK:
+        if issue["kind"] != ASK or issue["id"] in has_question:
             continue
         scene = scene_of_anchor(issue["anchor"], items, lookup)
         if scene is None:
             dropped += 1
             continue
+        if scene in skip_scenes:
+            continue
         text = f"{issue['attempt']}。{issue['what_is_missing']}"
-        if issue["round"] > 1 and scene in scenes_asked:  # 2 周目の言い直しで同じ場面を聞き直さない
-            continue
-        if (scene, text) in asked:
-            continue
         questions["questions"].append(
             {"id": f"q-{n:04d}", "issue_id": issue["id"], "scene_id": scene, "text": text}
         )
         n += 1
-    return dropped
+        asked.add(scene)
+    return dropped, asked
 
 
-def settle_rework(first: list[dict], second: list[dict]) -> None:
-    """1 周目の差し戻しのうち、2 周目に同じ所へ同じ kind が無いものを解決にする。"""
-    remaining = {(i["kind"], tuple(sorted(i["anchor"].items()))) for i in second}
+def settle_rework(
+    first: list[dict],
+    second: list[dict],
+    *,
+    items: dict,
+    lookup: dict,
+    touched_scenes: set[str],
+    second_dropped: int,
+) -> None:
+    """1 周目の差し戻しを解決にしてよいか決める。解決は札の許可につながるので、厳しく見る。
+
+    解決にするのは、2 周目に同じ場面・同じ kind の指摘が無く、2 周目に落とした指摘も無く、
+    再生成がその場面を実際に変えていて、指された項目が保留になっていないときだけ。
+    """
+    if second_dropped:
+        return
+    remaining = {(i["kind"], scene_of_anchor(i["anchor"], items, lookup)) for i in second}
     for issue in first:
-        if issue["kind"] != ASK:
-            issue["resolved"] = (issue["kind"], tuple(sorted(issue["anchor"].items()))) not in remaining
+        if issue["kind"] == ASK:
+            continue
+        scene = scene_of_anchor(issue["anchor"], items, lookup)
+        target = items.get(issue["anchor"].get("item_id", ""))
+        if (issue["kind"], scene) in remaining or scene not in touched_scenes:
+            continue
+        if target is not None and target.get("held"):
+            continue
+        issue["resolved"] = True

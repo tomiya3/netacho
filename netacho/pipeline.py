@@ -30,6 +30,7 @@ class Context:
     kept: int = 0
     checker: Counter = field(default_factory=Counter)
     deshi_dropped: int = 0
+    asked_scenes: set = field(default_factory=set)
 
 
 def load_books(neta: store.Neta) -> tuple[dict, dict]:
@@ -127,8 +128,8 @@ def _check_items(ctx: Context, items: list[dict], draft_name: str) -> set[str]:
     return held
 
 
-def write_pass(ctx: Context, *, rework: list[dict] | None = None, suffix: str = "") -> None:
-    """構成作家役 → 根拠の検証 → 照合役 → マージ → .md。"""
+def write_pass(ctx: Context, *, rework: list[dict] | None = None, suffix: str = "") -> set[str]:
+    """構成作家役 → 根拠の検証 → 照合役 → マージ → .md。文が変わった場面を返す。"""
     draft = call_role(
         ctx.client,
         "writer",
@@ -148,12 +149,16 @@ def write_pass(ctx: Context, *, rework: list[dict] | None = None, suffix: str = 
     if bad_scenes:
         ctx.dropped["scene_bad_seg"] += bad_scenes
     ctx.kept += len(items)
+    before = {i["id"]: i["text"] for i in ctx.hanashi["items"] + ctx.kata["items"]}
     merge.assign_ids(items, ctx.hanashi, ctx.kata)
+    changed = [i for i in items if before.get(i["id"]) != i["text"]]
     held = _check_items(ctx, items, f"checker{suffix}.json")
     merge.merge(
         ctx.hanashi, ctx.kata, items=items, scenes=scenes, characters=draft["characters"], held_ids=held
     )
     save_books(ctx)
+    lookup = render.scene_lookup(timelines(ctx.neta))
+    return {render.scene_of_item(i, lookup) for i in changed if i["id"] not in held}
 
 
 def save_books(ctx: Context) -> None:
@@ -239,14 +244,19 @@ def read_review(neta: store.Neta) -> tuple[dict, dict]:
     return doc, questions
 
 
-def deshi_pass(ctx: Context, doc: dict, questions: dict, round_no: int) -> list[dict]:
-    """弟子役を 1 回呼び、指摘を受け取り、質問を足す。"""
+def deshi_pass(ctx: Context, doc: dict, questions: dict, round_no: int) -> tuple[list[dict], int]:
+    """弟子役を 1 回呼び、指摘を受け取り、質問を足す。(今回の指摘, 落とした数)。"""
     raw = call_role(ctx.client, "deshi", deshi_content(ctx.neta), "deshi", ctx.usage, ctx.budget, ctx.cache)
     store.write(ctx.neta.drafts / f"deshi-{round_no}.json", raw, "deshi")
-    added, dropped = review.receive(raw, doc, ctx.hanashi, ctx.kata, round_no)
+    current, dropped = review.receive(raw, doc, ctx.hanashi, ctx.kata, round_no)
     lookup = render.scene_lookup(timelines(ctx.neta))
-    ctx.deshi_dropped += dropped + review.add_questions(added, questions, ctx.hanashi, ctx.kata, lookup)
-    return added
+    no_scene, asked = review.add_questions(
+        current, questions, ctx.hanashi, ctx.kata, lookup, skip_scenes=ctx.asked_scenes
+    )
+    ctx.asked_scenes |= asked
+    dropped += no_scene
+    ctx.deshi_dropped += dropped
+    return current, dropped
 
 
 def save_review(ctx: Context, doc: dict, questions: dict) -> None:
@@ -272,21 +282,33 @@ def build(
     write_pass(ctx)
     doc, questions = read_review(ctx.neta)
     base_round = max((i["round"] for i in doc["issues"]), default=0)
-    first = deshi_pass(ctx, doc, questions, base_round + 1)
+    first, _ = deshi_pass(ctx, doc, questions, base_round + 1)
     save_review(ctx, doc, questions)
-    second = None
+
+    def record(second: list[dict] | None) -> None:
+        ctx.usage.extra["deshi"] = {
+            "round1": len(first),
+            "round2": None if second is None else len(second),
+            "dropped_no_anchor": ctx.deshi_dropped,
+        }
+        ctx.usage.extra["questions"] = len(questions["questions"])
+
+    record(None)
+    _finish(ctx)  # 2 周目の途中で落ちても 1 周目の数字を残す
     rework = review.rework_of(first)
     if rework:
-        write_pass(ctx, rework=rework, suffix="-2")
-        second = deshi_pass(ctx, doc, questions, base_round + 2)
-        review.settle_rework(first, second)
+        touched = write_pass(ctx, rework=rework, suffix="-2")
+        second, dropped = deshi_pass(ctx, doc, questions, base_round + 2)
+        review.settle_rework(
+            first,
+            second,
+            items={i["id"]: i for i in ctx.hanashi["items"] + ctx.kata["items"]},
+            lookup=render.scene_lookup(timelines(ctx.neta)),
+            touched_scenes=touched,
+            second_dropped=dropped,
+        )
         save_review(ctx, doc, questions)
-    ctx.usage.extra["deshi"] = {
-        "round1": len(first),
-        "round2": None if second is None else len(second),
-        "dropped_no_anchor": ctx.deshi_dropped,
-    }
-    ctx.usage.extra["questions"] = len(questions["questions"])
+        record(second)
     return _finish(ctx)
 
 
