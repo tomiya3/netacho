@@ -144,6 +144,21 @@ def test_span_too_long(transcript):
     assert dropped == {"span_too_long": 1}
 
 
+def test_payoff_span_too_long(transcript):
+    t = copy.deepcopy(transcript)
+    t["segments"][-1]["end"] = 500.0
+    kind = {"kind": "サゲ", "source": {"segs": ["seg-0001", "seg-0001"]}}
+    _, dropped = run(t, item(**kind, payoff={"segs": ["seg-0002", "seg-0012"]}))
+    assert dropped == {"payoff_too_long": 1}
+
+
+def test_gag_inside_one_segment_is_allowed(transcript):
+    """Whisper の区間は長いので、仕込みと回収が同じ区間に入ることがある。"""
+    span = {"segs": ["seg-0008", "seg-0008"]}
+    kept, dropped = run(transcript, item(kind="見立て", book="kata", source=span, payoff=span))
+    assert kept and not dropped
+
+
 def test_overlapping_segments_use_the_latest_end(transcript):
     t = copy.deepcopy(transcript)
     t["segments"][3]["end"] = 40.0

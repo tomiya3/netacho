@@ -119,9 +119,9 @@ def _check_items(ctx: Context, items: list[dict], draft_name: str) -> set[str]:
     verdicts = {v["item_id"]: v["verdict"] for v in doc["verdicts"]}
     held = set()
     for it in heard:
-        verdict = verdicts.get(it["id"], "unsupported")
+        verdict = verdicts.get(it["id"], "no_verdict")
         ctx.checker[verdict] += 1
-        if verdict == "unsupported":
+        if verdict in {"unsupported", "no_verdict"}:
             held.add(it["id"])
     return held
 
@@ -196,12 +196,8 @@ def _context(
     hanashi, kata = load_books(neta)
     run_path = kdir / "run.json"
     usage = Usage(run_path, {"schema_version": 1, "koza_id": koza_id})
-    if run_path.exists():
-        previous = store.read(run_path, "run")
-        if "prep" in previous:  # prep の実測は作り直しても残す
-            usage.extra["prep"] = previous["prep"]
-        if reuse:
-            usage.restore(previous)
+    if run_path.exists():  # 費用の実測は作り直しても消さない。キャッシュに当たった分は足さない
+        usage.restore(store.read(run_path, "run"))
     cache = RoleCache((root or store.data_root()) / ".cache" / "roles", reuse=reuse)
     return Context(neta, koza, transcript, client, budget or Budget(), usage, cache, hanashi, kata)
 
@@ -210,7 +206,10 @@ def _finish(ctx: Context) -> dict:
     """run.json を書いて、数字を返す。"""
     ctx.usage.extra |= {
         "evidence": {"kept": ctx.kept, "dropped": dict(ctx.dropped)},
-        "checker": {k: ctx.checker[k] for k in ("supported", "weak", "unsupported", "unchecked_knowledge")},
+        "checker": {
+            k: ctx.checker[k]
+            for k in ("supported", "weak", "unsupported", "unchecked_knowledge", "no_verdict")
+        },
     }
     doc = ctx.usage.to_json()
     store.write(ctx.neta.koza_dir(ctx.koza["id"]) / "run.json", doc, "run")
@@ -229,8 +228,11 @@ def build(
 ) -> dict:
     """噺・型を作る。返すのは run.json の中身。"""
     ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
-    write_pass(ctx)
-    return _finish(ctx)
+    try:
+        write_pass(ctx)
+    finally:  # 落ちても、それまでの数字を残す
+        doc = _finish(ctx)
+    return doc
 
 
 # ノート役の文の検査。断定、客の気持ち、直し方の提案、数字の羅列を通さない
