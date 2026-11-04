@@ -109,7 +109,7 @@ function itemWho(i) { return i.edited_by === "performer" ? ["performer", "演者
 function drawWave(root, d) {
   const s = d.reactions.scores;
   if (!s || !s.laugh.length) { root.append(el("div", { class: "notice" }, "スコアがありません。")); return; }
-  const W = 1040, H = 280, L = 40, R = 12, T = 28, B = 26;
+  const W = 1040, H = 280, L = 40, R = 24, T = 28, B = 26;
   const end = (s.laugh.length - 1) * s.stride + s.window;
   const x = t => L + (W - L - R) * t / end, y = v => T + (H - T - B) * (1 - v);
   const center = i => i * s.stride + s.window / 2;
@@ -122,7 +122,7 @@ function drawWave(root, d) {
   const step = end > 1200 ? 300 : end > 300 ? 60 : 10;
   for (let t = 0; t <= end; t += step) g.append(svg("text", { class: "axis", x: x(t), y: H - 8, "text-anchor": "middle" }, clock(t)));
   for (const r of d.reactions.reactions) {
-    const v = r.kind === "applause" ? "--applause" : "--laugh";
+    const v = r.method === "manual" ? "--text-2" : r.kind === "applause" ? "--applause" : "--laugh";
     g.append(svg("rect", { x: x(r.t0), width: Math.max(x(r.t1) - x(r.t0), 2), y: T, height: H - T - B,
       fill: `var(${v})`, opacity: .12 }));
   }
@@ -160,10 +160,8 @@ function drawWave(root, d) {
 function renderWave(d) {
   const root = document.getElementById("wave");
   const rows = d.reactions.reactions;
-  const manual = rows.some(r => r.method === "manual");
-  root.append(el("div", { class: "notice" }, manual
-    ? "この高座の反応は手で付けたものです。"
-    : "反応の候補は音声のスコアから機械的に拾ったものです。候補が無い所も、反応が無かったという意味ではありません。"));
+  if (rows.some(r => r.method === "manual")) root.append(el("div", { class: "notice" }, "この高座の反応は手で付けたものです（灰色の帯）。"));
+  root.append(el("div", { class: "notice" }, "反応の候補は機械的に拾ったものです。候補が無い所も、反応が無かったという意味ではありません。"));
   drawWave(root, d);
   for (const n of (d.candidates?.notices || [])) root.append(el("div", { class: "notice" }, n));
   root.append(el("h2", {}, "ノート"));
@@ -172,15 +170,20 @@ function renderWave(d) {
   if (!cands.length) root.append(el("p", {}, "今回は候補を選びませんでした。反応が十分だったという意味ではありません。"));
   for (const c of cands) {
     const it = items[c.item_id];
-    root.append(card("claude", "Claude の候補", `${c.id}  ${clock(c.payoff_t)}  ${WHY[c.why]}`,
-      el("p", {}, c.note || "（ノートはまだありません）"),
-      el("p", { class: "quote" }, `【${it.kind}】${it.text}`),
-      el("p", { class: "quote" }, `仕込み：「${it.source.quote}」`),
-      el("p", { class: "quote" }, `回収：「${it.payoff.quote}」`)));
+    const body = [el("p", {}, c.note || "（ノートはまだありません）")];
+    if (it) {
+      body.push(el("p", { class: "quote" }, `【${it.kind}】${it.text}`));
+      if (it.source?.quote) body.push(el("p", { class: "quote" }, `仕込み：「${it.source.quote}」`));
+      if (it.payoff?.quote) body.push(el("p", { class: "quote" }, `回収：「${it.payoff.quote}」`));
+    }
+    // 候補を選ぶのはスクリプト。文がノート役の物なら Claude、決まった文ならスクリプト
+    const fixed = c.note_source === "fixed";
+    root.append(card(fixed ? "script" : "claude", fixed ? "スクリプトの転記" : "Claude の候補",
+      `${c.id}  ${clock(c.payoff_t)}  ${WHY[c.why] || ""}`, ...body));
   }
   const table = el("table", {}, el("tr", {}, ...["順位", "時刻", "種類"].map(h => el("th", {}, h))));
   for (const r of rows) table.append(el("tr", {},
-    el("td", {}, r.strength_rank ?? "-"), el("td", {}, `${clock(r.t0)} - ${clock(r.t1)}`), el("td", {}, REACT[r.kind])));
+    el("td", {}, r.strength_rank ?? "-"), el("td", {}, `${clock(r.t0)} - ${clock(r.t1)}`), el("td", {}, REACT[r.kind] || r.kind)));
   root.append(el("details", {}, el("summary", {}, `反応の候補の一覧（${rows.length} 件）`), table));
 }
 
@@ -216,7 +219,7 @@ function renderCards(d) {
   if (!d.guide) root.append(el("p", {}, "札はまだありません。netacho guide で作ります。"));
   else if (!cards.length) root.append(el("p", {}, "札に出す項目はまだありません。"));
   for (const c of cards) {
-    root.append(card("script", "スクリプトの転記", `${c.order}. ${c.copied_fields.scene_title}（${POSITION[c.copied_fields.position]}）`,
+    root.append(card("script", "スクリプトの転記", `${c.order}. ${c.copied_fields.scene_title}（${POSITION[c.copied_fields.position] || ""}）`,
       el("p", { class: "big" }, c.text),
       el("div", { class: "meta" }, tag("performer", "演者の決定"), `理由：${c.copied_fields.reason}`)));
   }
@@ -241,7 +244,7 @@ function renderDeshi(d) {
   if (!issues.length) root.append(el("p", {}, "指摘はありません。"));
   for (const i of issues) {
     const where = i.anchor.scene_id ? titles[i.anchor.scene_id] : i.anchor.item_id;
-    root.append(card("claude", "Claude の候補", `${where}  ${ISSUE[i.kind]}  ${i.round} 周目  ${i.resolved ? "解決" : "未解決"}`,
+    root.append(card("claude", "Claude の候補", `${where}  ${ISSUE[i.kind] || i.kind}  ${i.round} 周目  ${i.resolved ? "解決" : "未解決"}`,
       el("p", {}, i.attempt), el("p", { class: "quote" }, i.what_is_missing)));
   }
 }

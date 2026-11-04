@@ -434,11 +434,8 @@ def note(
     run_path = kdir / "run.json"
     if run_path.exists():
         ctx.usage.restore(store.read(run_path, "run"))  # build の分に積み足す
-    for stale in (
-        kdir / "note.md",
-        kdir / "sokki.md",
-        ctx.neta.drafts / "noter.json",
-    ):  # 途中で落ちても古い文を残さない
+    stale_files = ("note.md", "sokki.md", "note_candidates.json")
+    for stale in (*(kdir / n for n in stale_files), ctx.neta.drafts / "noter.json"):  # 古い文を残さない
         stale.unlink(missing_ok=True)
     reactions = store.read(kdir / "reactions.json", "reactions")
     (kdir / "sokki.md").write_text(
@@ -473,6 +470,7 @@ def note(
     notes, fallback = checked_notes(doc, cands)
     for c in cands["candidates"]:
         c["note"] = notes[c["id"]]
+        c["note_source"] = "fixed" if notes[c["id"]] == NOTE_FALLBACK[c["why"]] else "claude"
     store.write(kdir / "note_candidates.json", cands, "note_candidates")  # 視聴画面が読む
     scene_of = {s["seg_id"]: s["scene_id"] for s in tl["segments"]}
     titles = {s["id"]: s["title"] for s in ctx.hanashi["scenes"]}

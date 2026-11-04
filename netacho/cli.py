@@ -307,7 +307,11 @@ def _who(parser: argparse.ArgumentParser) -> None:
 def cmd_view(args: argparse.Namespace) -> None:
     from . import view
 
-    path = view.write(store.Neta(args.performer, args.neta), args.koza)
+    out = Path(args.out) if args.out else view.OUT
+    try:
+        path = view.write(store.Neta(args.performer, args.neta), args.koza, out)
+    except FileNotFoundError as e:
+        raise SystemExit(f"{Path(str(e.filename)).name} が無い。先に netacho prep と build を回す") from e
     print(f"書き出した：{path.name}。make viewer で開く")
 
 
@@ -393,6 +397,7 @@ def build_parser() -> argparse.ArgumentParser:
     show.add_argument("--performer", required=True)
     show.add_argument("--neta", required=True)
     show.add_argument("--koza", required=True)
+    show.add_argument("--out", help="書き出し先（既定は out/view）")
     show.set_defaults(func=cmd_view)
 
     reread = sub.add_parser("reread", help="弟子役に読み直させる")

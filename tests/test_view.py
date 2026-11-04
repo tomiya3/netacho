@@ -54,18 +54,21 @@ def test_missing_later_files_are_ok(tmp_path):
 
 
 def test_cli_view_needs_no_anthropic(tmp_path):
-    code = (
-        "import sys\n"
-        "sys.modules['anthropic'] = None\n"
-        "from netacho import cli, view\n"
-        "from pathlib import Path\n"
-        f"view.OUT = Path({str(tmp_path)!r})\n"
-        f"view.write.__defaults__ = (view.OUT,)\n"
-        f"cli.main(['view', '--performer', {P!r}, '--neta', {N!r}, '--koza', {K!r}])\n"
-    )
+    args = ["view", "--performer", P, "--neta", N, "--koza", K, "--out", str(tmp_path)]
+    code = f"import sys\nsys.modules['anthropic'] = None\nfrom netacho import cli\ncli.main({args!r})\n"
     env = {**os.environ, "NETACHO_DATA": str(DATA)}
     subprocess.run([sys.executable, "-c", code], check=True, env=env, capture_output=True)
     assert (tmp_path / "view.json").exists()
+
+
+def test_view_before_build_says_what_to_do(tmp_path, monkeypatch):
+    monkeypatch.setenv("NETACHO_DATA", str(tmp_path))
+    with pytest.raises(SystemExit, match="netacho prep"):
+        cli.main(["view", "--performer", P, "--neta", N, "--koza", K, "--out", str(tmp_path / "o")])
+
+
+def test_makefile_binds_to_localhost_only():
+    assert "--bind 127.0.0.1" in (ROOT / "Makefile").read_text(encoding="utf-8")
 
 
 def test_cli_parser_knows_view():
