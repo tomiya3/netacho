@@ -118,7 +118,10 @@ def test_guide_runs_without_anthropic_installed(built):
 
 
 def test_guide_module_does_not_import_runner():
-    code = "import sys; import netacho.guide; assert 'netacho.runner' not in sys.modules; assert 'anthropic' not in sys.modules"
+    code = (
+        "import sys; import netacho.guide; "
+        "assert 'netacho.runner' not in sys.modules; assert 'anthropic' not in sys.modules"
+    )
     subprocess.run([sys.executable, "-c", code], check=True)
 
 

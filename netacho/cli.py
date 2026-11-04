@@ -252,10 +252,9 @@ def cmd_guide(args: argparse.Namespace) -> None:
 def cmd_reread(args: argparse.Namespace) -> None:
     from . import pipeline, runner
 
-    added = pipeline.reread(
-        args.performer, args.neta, args.koza, client=runner.make_client(), reuse=args.reuse
-    )
-    print(f"弟子役の指摘 {len(added)} 件")
+    client = runner.make_client()
+    current = pipeline.reread(args.performer, args.neta, args.koza, client=client, reuse=args.reuse)
+    print(f"弟子役の指摘 {len(current)} 件")
 
 
 def build_parser() -> argparse.ArgumentParser:

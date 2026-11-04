@@ -329,10 +329,10 @@ def reread(
         ctx.usage.restore(store.read(run_path, "run"))
     write_markdown(ctx.neta, ctx.hanashi, ctx.kata)
     doc, questions = read_review(ctx.neta)
-    added = deshi_pass(ctx, doc, questions, max((i["round"] for i in doc["issues"]), default=0) + 1)
+    current, _ = deshi_pass(ctx, doc, questions, max((i["round"] for i in doc["issues"]), default=0) + 1)
     save_review(ctx, doc, questions)
     store.write(run_path, ctx.usage.to_json(), "run")
-    return added
+    return current
 
 
 # ノート役の文の検査。断定、客の気持ち、直し方の提案、数字の羅列を通さない
