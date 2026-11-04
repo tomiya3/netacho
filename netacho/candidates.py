@@ -48,7 +48,10 @@ def select(items: list[dict], reactions: dict) -> dict:
             if not clipped and has_auto:
                 silent.append((it, window))
             continue
-        ranks = [r["strength_rank"] for r in hits if r["strength_rank"] is not None]
+        # 笑い同士で比べる。拍手が重なっただけで「強い」側に回さない。窓にあること自体は候補として数える
+        ranks = [
+            r["strength_rank"] for r in hits if r["strength_rank"] is not None and r["kind"] != "applause"
+        ]
         if ranks and not clipped:  # 窓が短いと弱く出るので、切れた窓は比べない
             ranked.append((min(ranks), it, window, [r["id"] for r in hits]))
     low_count = len(ranked) // LOW_FRACTION

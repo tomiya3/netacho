@@ -81,6 +81,15 @@ def decide(
             raise PerformerError(f"候補が無い: {candidate}")
         if any(i["source"].get("candidate_id") == candidate for i in kata["items"]):
             raise PerformerError(f"{candidate} は決定済み（別の札にするなら --candidate を外す）")
+    twice = any(
+        i["kind"] == "staging"
+        and i["approved"]
+        and i["card_text"] == card
+        and i["anchor"] == {"scene_id": scene, "position": position}
+        for i in kata["items"]
+    )
+    if twice:
+        raise PerformerError("同じ場面の同じ位置に、同じ札がある")
     item = _staging(
         hanashi,
         kata,
