@@ -2,9 +2,9 @@
 
 import pytest
 from fakes import NO_ISSUES, ScriptedClient, text_of
-from test_build import K, N, P, books, draft, draft_item, verdicts
+from test_build import K, N, P, _performer_item, books, draft, draft_item, verdicts
 
-from netacho import pipeline, review, store
+from netacho import pipeline, store
 from netacho.budget import Budget
 
 
@@ -54,8 +54,7 @@ def test_rework_goes_to_writer_once_and_second_round_measures(data, tmp_path):
     issues = saved(data)[0]["issues"]
     assert [(i["round"], i["kind"], i["resolved"]) for i in issues] == [
         (1, "missing_step", True),  # 2 周目に無いので解決
-        (1, "no_sage", False),  # 残った
-        (2, "no_sage", False),
+        (1, "no_sage", False),  # 残った（2 周目の同じ指摘は重ねない）
     ]
 
 
@@ -154,17 +153,115 @@ def test_rebuild_keeps_answered_questions(data, tmp_path):
     assert doc["issues"][0]["resolved"] is True
 
 
-def test_settle_rework_compares_kind_and_anchor():
-    first = [
-        {"kind": "missing_step", "anchor": {"scene_id": "scene-01"}, "resolved": False},
-        {"kind": "missing_step", "anchor": {"scene_id": "scene-02"}, "resolved": False},
-    ]
-    second = [
-        {"kind": "no_sage", "anchor": {"scene_id": "scene-01"}},
-        {"kind": "missing_step", "anchor": {"scene_id": "scene-02"}},
-    ]
-    review.settle_rework(first, second)
-    assert [i["resolved"] for i in first] == [True, False]
+def test_rework_without_real_change_is_not_resolved(data, tmp_path):
+    """構成作家役が何も直さず、弟子役が 2 周目に言わなかっただけなら解決にしない。"""
+    c = client(
+        deshi(issue(scene="scene-02")),
+        NO_ISSUES,
+        writers=[draft(draft_item()), draft(draft_item(id="item-0001"))],
+    )
+    run(c, data, tmp_path)
+    assert saved(data)[0]["issues"][0]["resolved"] is False
+
+
+def test_change_in_another_scene_does_not_resolve(data, tmp_path):
+    other = draft_item(text="別の場面の項目", source={"segs": ["seg-0010", "seg-0010"]})
+    c = client(deshi(issue(scene="scene-02")), NO_ISSUES, writers=[draft(draft_item()), draft(other)])
+    run(c, data, tmp_path)
+    assert saved(data)[0]["issues"][0]["resolved"] is False
+
+
+def test_dropped_second_round_issue_blocks_resolution(data, tmp_path):
+    """2 周目の指摘が壊れて落ちたら、言わなかったのか分からないので解決にしない。"""
+    c = client(deshi(issue(scene="scene-02")), deshi(issue(scene="scene-99")))
+    run(c, data, tmp_path)
+    assert saved(data)[0]["issues"][0]["resolved"] is False
+
+
+def test_item_and_scene_anchors_are_compared_by_scene(data, tmp_path):
+    """1 周目が項目、2 周目が同じ場面を指しても、同じ指摘が残っている。"""
+    c = client(deshi(issue(item="item-0001")), deshi(issue(scene="scene-02")))
+    run(c, data, tmp_path)
+    assert saved(data)[0]["issues"][0]["resolved"] is False
+
+
+def test_held_target_is_not_resolved(data, tmp_path):
+    c = client(
+        deshi(issue(item="item-0001")),
+        NO_ISSUES,
+        writers=[
+            draft(draft_item()),
+            draft(draft_item(id="item-0001", text="直した"), draft_item(text="足した")),
+        ],
+        checkers=[
+            verdicts(("item-0001", "supported")),
+            verdicts(("item-0001", "unsupported"), ("item-0002", "supported")),
+        ],
+    )
+    run(c, data, tmp_path)
+    assert saved(data)[0]["issues"][0]["resolved"] is False
+
+
+def test_rebuild_does_not_duplicate_open_issues(data, tmp_path):
+    run(client(deshi(issue(scene="scene-03")), deshi(issue(scene="scene-03"))), data, tmp_path)
+    before = saved(data)[0]["issues"]
+    assert len(before) == 1
+    c = ScriptedClient(
+        writer=[draft(draft_item(id="item-0001")), draft(draft_item(id="item-0002", text="また直した"))],
+        checker=[verdicts(("item-0001", "supported")), verdicts(("item-0002", "supported"))],
+        deshi=[deshi(issue(scene="scene-03")), NO_ISSUES],
+    )
+    doc = run(c, data, tmp_path)
+    assert doc["deshi"]["round1"] == 1
+    assert len(saved(data)[0]["issues"]) == 1  # 重ねない
+    assert "運びが無い" in text_of(c.calls["writer"][1])  # 前回の未解決も差し戻しに入る
+
+
+def test_rebuild_can_ask_new_question_on_asked_scene(data, tmp_path):
+    run(client(deshi(issue("ask_performer", scene="scene-02", missing="一つ目"))), data, tmp_path)
+    c = ScriptedClient(
+        writer=[draft(draft_item(id="item-0001"))],
+        checker=[verdicts(("item-0001", "supported"))],
+        deshi=[
+            deshi(
+                issue("no_makura", scene="scene-02"),
+                issue("ask_performer", item="item-0001", missing="二つ目"),
+            )
+        ],
+    )
+    c.replies["writer"].append(draft(draft_item(id="item-0001", text="直した")))
+    c.replies["checker"].append(verdicts(("item-0001", "supported")))
+    c.replies["deshi"].append(NO_ISSUES)
+    run(c, data, tmp_path)
+    assert len(saved(data)[1]["questions"]) == 2
+
+
+def test_issue_on_performer_item_becomes_question(data, tmp_path):
+    """演者の項目は構成作家役に直せないので、本人に聞く（札を止めたままにしない）。"""
+    run(client(NO_ISSUES), data, tmp_path)
+    neta = store.Neta(P, N, data)
+    _, kata = books(data)
+    item = {**_performer_item(), "id": "item-0009"}
+    kata["items"].append(item)
+    store.write(neta.kata, kata, "book")
+    c = ScriptedClient(
+        writer=[draft(draft_item(id="item-0001"))],
+        checker=[verdicts(("item-0001", "supported"))],
+        deshi=[deshi(issue(item=item["id"]))],
+    )
+    run(c, data, tmp_path)
+    assert len(c.calls["writer"]) == 1  # 差し戻さない
+    issues, questions = saved(data)
+    assert issues["issues"][-1]["kind"] == "ask_performer"
+    assert questions["questions"][-1]["scene_id"] == "scene-01"
+
+
+def test_first_round_numbers_survive_a_crash_in_second_round(data, tmp_path):
+    c = client(deshi(issue(scene="scene-02")))
+    with pytest.raises(IndexError):  # 2 周目の返事が無い = 途中で落ちた
+        run(c, data, tmp_path)
+    doc = store.read(store.Neta(P, N, data).koza_dir(K) / "run.json", "run")
+    assert doc["deshi"] == {"round1": 1, "round2": None, "dropped_no_anchor": 0}
 
 
 def test_deshi_role_has_the_promises():
