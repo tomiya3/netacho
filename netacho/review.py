@@ -98,16 +98,18 @@ def scene_of_anchor(anchor: dict, items: dict, lookup: dict) -> str | None:
 
 def add_questions(
     issues: list[dict], questions: dict, hanashi: dict, kata: dict, lookup: dict, *, skip_scenes: set[str]
-) -> tuple[int, set[str]]:
-    """ask_performer を質問にする。(場面が決まらず落とした数, 質問した場面)。
+) -> tuple[int, set[str], set[str]]:
+    """ask_performer を質問にする。(場面が決まらず落とした数, 質問した場面, 聞かなかった指摘の id)。
 
     skip_scenes は同じ実行の 1 周目で聞いた場面。2 周目の言い直しで聞き直さない。
+    聞かなかった指摘は呼び出し側が消す（質問の無い指摘は answer で解決できず、札を止め続けるため）。
     """
     items = {i["id"]: i for b in (hanashi, kata) for i in b["items"]}
     has_question = {q["issue_id"] for q in questions["questions"]}
     n = _next_number(questions["questions"])
     dropped = 0
     asked: set[str] = set()
+    skipped: set[str] = set()
     for issue in issues:
         if issue["kind"] != ASK or issue["id"] in has_question:
             continue
@@ -116,6 +118,7 @@ def add_questions(
             dropped += 1
             continue
         if scene in skip_scenes:
+            skipped.add(issue["id"])
             continue
         text = f"{issue['attempt']}。{issue['what_is_missing']}"
         questions["questions"].append(
@@ -123,7 +126,7 @@ def add_questions(
         )
         n += 1
         asked.add(scene)
-    return dropped, asked
+    return dropped, asked, skipped
 
 
 def settle_rework(
@@ -137,18 +140,18 @@ def settle_rework(
 ) -> None:
     """1 周目の差し戻しを解決にしてよいか決める。解決は札の許可につながるので、厳しく見る。
 
-    解決にするのは、2 周目に同じ場面・同じ kind の指摘が無く、2 周目に落とした指摘も無く、
+    解決にするのは、2 周目に同じ場面の指摘が無く（kind は言い直しで変わるので問わない）、落とした指摘も無く、
     再生成がその場面を実際に変えていて、指された項目が保留になっていないときだけ。
     """
     if second_dropped:
         return
-    remaining = {(i["kind"], scene_of_anchor(i["anchor"], items, lookup)) for i in second}
+    remaining = {scene_of_anchor(i["anchor"], items, lookup) for i in second}
     for issue in first:
         if issue["kind"] == ASK:
             continue
         scene = scene_of_anchor(issue["anchor"], items, lookup)
         target = items.get(issue["anchor"].get("item_id", ""))
-        if (issue["kind"], scene) in remaining or scene not in touched_scenes:
+        if scene in remaining or scene not in touched_scenes:
             continue
         if target is not None and target.get("held"):
             continue

@@ -102,11 +102,9 @@ def hints(transcript: dict) -> list[dict]:
 
 
 def covered_seconds(doc: dict) -> float | None:
-    """スコアが覆う長さ。スコアの無い物は None。"""
+    """音声の長さ。スコアの無い物は None。"""
     scores = doc.get("scores")
-    if not scores or not scores["laugh"]:
-        return None
-    return (len(scores["laugh"]) - 1) * scores["stride"] + scores["window"]
+    return scores["seconds"] if scores else None
 
 
 def build(scores: dict, transcript: dict) -> dict:
@@ -127,7 +125,7 @@ def build(scores: dict, transcript: dict) -> dict:
         "reactions": auto_reactions(scores),
         "music": music_candidates(scores),
         "hints": hints(transcript),
-        "scores": {k: scores[k] for k in ("window", "stride", "laugh", "applause", "music")},
+        "scores": {k: scores[k] for k in ("window", "stride", "seconds", "laugh", "applause", "music")},
     }
 
 

@@ -105,7 +105,7 @@ def sokki_markdown(koza: dict, transcript: dict, reactions: dict) -> str:
     segs = transcript["segments"]
     after: dict[int, list[str]] = {}
     for r in sorted(reactions["reactions"], key=lambda x: x["t0"]):
-        at = max((i for i, s in enumerate(segs) if s["start"] <= r["t0"]), default=0)
+        at = max((i for i, s in enumerate(segs) if s["start"] <= r["t0"]), default=-1)
         marks = after.setdefault(at, [])
         if REACTION_LABEL[r["kind"]] not in marks:  # 同じ所に同じ印を重ねない
             marks.append(REACTION_LABEL[r["kind"]])
@@ -122,10 +122,12 @@ def sokki_markdown(koza: dict, transcript: dict, reactions: dict) -> str:
         f"未校正です。文字起こしの誤りを含みます。{note}",
         "",
     ]
+    if after.get(-1):  # 最初の台詞より前の反応は、台詞に付けず印だけの行にする
+        out.append("".join(after[-1]))
     for i, s in enumerate(segs):
         line = s["text"].strip() + "".join(after.get(i, []))
         if line:
             out.append(line)
     if not segs:
-        out.append("（文字起こしの区間がありません）" + "".join(after.get(0, [])))
+        out.append("（文字起こしの区間がありません）")
     return "\n".join(out).rstrip() + "\n"

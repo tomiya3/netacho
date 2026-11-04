@@ -63,8 +63,8 @@ def _problem(item: dict, segs: Segments, tool_ids: set[str], performer_ids: set[
         return "span_too_long"
     if _book(item) == "kata" and item["basis"] != "heard":
         return "kata_not_heard"
-    if item["kind"] == "間" and not any((s["pause_after"] or 0) >= MIN_PAUSE_SEC for s in segs.between(span)):
-        return "ma_no_pause"
+    if item["kind"] == "間" and (segs.between(span)[-1]["pause_after"] or 0) < MIN_PAUSE_SEC:
+        return "ma_no_pause"  # 根拠の最後の区間の後に間があること（長い範囲のどこかでは足りない）
     if item["kind"] in PAYOFF_KINDS:
         if item["payoff"] is None:
             return "no_payoff"

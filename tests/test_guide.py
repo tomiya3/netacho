@@ -354,6 +354,49 @@ def test_answer_retried_after_a_crash_does_not_double(built, data, tmp_path, mon
     assert store.read(built.review, "review")["issues"][-1]["resolved"] is True
 
 
+def test_answer_retried_after_review_write_failed(built, data, tmp_path, monkeypatch):
+    """questions を書いた後に落ちても、同じ言葉のやり直しで指摘が解決する。"""
+    q = _with_question(built, data, tmp_path)
+    real = store.write
+
+    def crash_on_review(path, obj, schema):
+        if schema == "review":
+            raise OSError("途中で落ちた")
+        real(path, obj, schema)
+
+    monkeypatch.setattr(store, "write", crash_on_review)
+    with pytest.raises(OSError):
+        performer.answer(built, question=q, speaker="s", words="答え")
+    monkeypatch.setattr(store, "write", real)
+    assert store.read(built.review, "review")["issues"][-1]["resolved"] is False
+    performer.answer(built, question=q, speaker="s", words="答え")
+    assert store.read(built.review, "review")["issues"][-1]["resolved"] is True
+    kata = store.read(built.kata, "book")
+    assert sum(1 for i in kata["items"] if i["text"] == "答え") == 1
+
+
+def test_same_words_for_two_questions_both_enter_the_book(built, data, tmp_path):
+    q1 = _with_question(built, data, tmp_path)
+    questions = store.read(built.questions, "questions")
+    review = store.read(built.review, "review")
+    issue = {**review["issues"][-1], "id": "issue-0099"}
+    review["issues"].append(issue)
+    questions["questions"].append({**questions["questions"][-1], "id": "q-0099", "issue_id": "issue-0099"})
+    store.write(built.review, review, "review")
+    store.write(built.questions, questions, "questions")
+    performer.answer(built, question=q1, speaker="s", words="同じです")
+    performer.answer(built, question="q-0099", speaker="s", words="同じです")
+    kata = store.read(built.kata, "book")
+    assert sum(1 for i in kata["items"] if i["text"] == "同じです") == 2
+
+
+def test_reread_updates_numbers_in_run_json(built, data, tmp_path):
+    q = _with_question(built, data, tmp_path)
+    assert q
+    run = store.read(built.koza_dir(K) / "run.json", "run")
+    assert run["deshi"]["reread"] == 1 and run["questions"] == 1
+
+
 def test_approved_card_without_text_is_skipped_by_builder(built):
     hanashi, kata = store.read(built.hanashi, "book"), store.read(built.kata, "book")
     item = decide(built)
