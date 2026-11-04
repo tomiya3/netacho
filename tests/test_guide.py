@@ -298,6 +298,20 @@ def test_reread_keeps_cost_when_it_crashes(built, data, tmp_path):
     assert next(r for r in run["roles"] if r["name"] == "deshi")["calls"] >= 2
 
 
+def test_reread_counts_dropped_issues(built, data, tmp_path):
+    bad = {
+        "kind": "missing_step",
+        "scene_id": "scene-99",
+        "item_id": None,
+        "attempt": "演ろうとした",
+        "what_is_missing": "無い場面",
+    }
+    c = ScriptedClient(deshi=[{"schema_version": 1, "issues": [bad]}])
+    pipeline.reread(P, N, K, client=c, budget=Budget(tmp_path / "ledger.json"), root=data)
+    run = store.read(built.koza_dir(K) / "run.json", "run")
+    assert run["deshi"]["dropped_no_anchor"] == 1
+
+
 def test_suppressed_answers_are_counted(built, data, tmp_path):
     q = _with_question(built, data, tmp_path)
     performer.answer(built, question=q, speaker="s", words="答え")
