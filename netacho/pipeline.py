@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -231,17 +233,14 @@ def build(
     return _finish(ctx)
 
 
-# ノート役の文に出してはいけない語（断定）
-NOTE_BANNED = (
-    "受けなかった",
-    "ウケなかった",
-    "受けていない",
-    "反応なし",
-    "反応がなかった",
-    "反応が無かった",
-    "滑",
-    "スベ",
+# ノート役の文の検査。断定、客の気持ち、直し方の提案、数字の羅列を通さない
+NOTE_ALLOWED = "反応候補"  # 「反応候補が少ない」は約束の言い方
+NOTE_BANNED = re.compile(
+    r"(反応|笑い|ウケ|受け)[^。]{0,8}(なし|無し|なかった|無かった|ない|無い|ありません|ませんでした|起きな|起こらな)"
+    r"|無反応|滑|スベ|盛り上がらな|失敗|ダメ|だめ|客|した方が|すべき|おすすめ|お勧め|てはどう|てみては|直すと|変えると|\d+\s*秒"
 )
+NOTE_MAX_SENTENCES = 2
+AFTER_QUOTE_MAX = 120
 NOTE_FALLBACK = {
     "no_candidate": "回収の後に、反応候補が少ない所です。",
     "low_rank": "回収の後の反応候補が、この高座の中では小さい方です。",
@@ -257,7 +256,7 @@ def noter_rows(cands: dict, items: dict, transcript: dict, hanashi: dict, tl: di
     for c in cands["candidates"]:
         it = items[c["item_id"]]
         t0, t1 = c["window"]
-        after = "".join(s["text"] for s in transcript["segments"] if t0 <= s["start"] < t1)
+        after = "".join(s["text"] for s in transcript["segments"] if t0 <= s["start"] < t1)[:AFTER_QUOTE_MAX]
         row = {
             "candidate_id": c["id"],
             "kind": it["kind"],
@@ -279,6 +278,13 @@ def noter_rows(cands: dict, items: dict, transcript: dict, hanashi: dict, tl: di
     return rows
 
 
+def note_is_ok(text: str) -> bool:
+    plain = unicodedata.normalize("NFKC", text).strip()
+    if not plain or len(re.findall(r"[。！？!?]", plain)) > NOTE_MAX_SENTENCES:
+        return False
+    return NOTE_BANNED.search(plain.replace(NOTE_ALLOWED, "")) is None
+
+
 def checked_notes(doc: dict | None, cands: dict) -> tuple[dict[str, str], int]:
     """候補ごとに 1 件の文を返す。無い、重なる、断定の語があるものは決まった文に置き換えて数える。"""
     written: dict[str, list[str]] = {}
@@ -287,7 +293,7 @@ def checked_notes(doc: dict | None, cands: dict) -> tuple[dict[str, str], int]:
     out, fallback = {}, 0
     for c in cands["candidates"]:
         texts = written.get(c["id"], [])
-        if len(texts) == 1 and texts[0] and not any(w in texts[0] for w in NOTE_BANNED):
+        if len(texts) == 1 and note_is_ok(texts[0]):
             out[c["id"]] = texts[0]
         else:
             out[c["id"]] = NOTE_FALLBACK[c["why"]]
@@ -311,6 +317,8 @@ def note(
     run_path = kdir / "run.json"
     if run_path.exists():
         ctx.usage.restore(store.read(run_path, "run"))  # build の分に積み足す
+    for stale in (kdir / "note.md", ctx.neta.drafts / "noter.json"):  # 途中で落ちても古い文を残さない
+        stale.unlink(missing_ok=True)
     reactions = store.read(kdir / "reactions.json", "reactions")
     tl = store.read(kdir / "timeline.json", "timeline")
     all_items = ctx.hanashi["items"] + ctx.kata["items"]
