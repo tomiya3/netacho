@@ -18,7 +18,8 @@ DEFAULT_MODEL = "medium"
 def load_wav(wav: Path) -> np.ndarray:
     """16kHz mono PCM16 の wav を float32 配列に（av に依存しない）。"""
     with wave.open(str(wav), "rb") as w:
-        assert w.getframerate() == SAMPLE_RATE and w.getnchannels() == 1 and w.getsampwidth() == 2
+        if (w.getframerate(), w.getnchannels(), w.getsampwidth()) != (SAMPLE_RATE, 1, 2):
+            raise ValueError("wav は 16kHz モノラル PCM16 のはず")
         pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
     return pcm.astype(np.float32) / 32768.0
 

@@ -6,12 +6,25 @@ import argparse
 import hashlib
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 from . import reactions, store
 
 SCHEMA_VERSION = 1
+# prep をやり直すと意味を失う物
+PREP_OUTPUTS = (
+    "koza.json",
+    "transcript.json",
+    "reactions.json",
+    "reactions.auto.json",
+    "timeline.json",
+    "note_candidates.json",
+    "note.md",
+    "sokki.md",
+    "run.json",
+)
 
 
 def _sha256(path: Path) -> str:
@@ -54,27 +67,53 @@ def _to_transcript(detected: dict, koza_id: str) -> dict:
 
 
 def _print_top(doc: dict, n: int = 10) -> None:
+    if not doc["reactions"]:
+        print("反応の候補を自動では拾えなかった（反応なしとは限らない）。耳で確かめて netacho mark で入れる")
+        return
     print(f"反応の候補 {len(doc['reactions'])} 件。強い順に {n} 件（時刻はこの wav の先頭から）：")
     for r in reactions.top(doc, n):
         rank = "-" if r["strength_rank"] is None else r["strength_rank"]
         print(f"  {rank:>3}  {reactions.clock(r['t0'])} - {reactions.clock(r['t1'])}  {r['id']}")
 
 
+def _check_excerpt(args: argparse.Namespace, seconds: float) -> None:
+    start, end = args.start, args.end
+    if (start is not None and start < 0) or (end is not None and end <= 0):
+        raise SystemExit("--from は 0 以上、--to は 0 より大きい値で")
+    if start is not None and end is not None and start >= end:
+        raise SystemExit("--from は --to より前で")
+    if start is not None and start >= seconds:
+        raise SystemExit(f"--from が音声の長さ（{seconds:.0f} 秒）を超えている")
+
+
+def _clear_outputs(kdir: Path, force: bool) -> None:
+    """やり直す前に古い生成物を消す（途中で落ちても、新しい wav に古い結果が並ばないように）。"""
+    path = kdir / "reactions.json"
+    if path.exists() and not force:
+        if any(r["method"] == "manual" for r in store.read(path, "reactions")["reactions"]):
+            raise SystemExit("手で付けた反応がある。作り直すなら --force を付ける")
+    for name in PREP_OUTPUTS:
+        (kdir / name).unlink(missing_ok=True)
+
+
 def cmd_prep(args: argparse.Namespace) -> None:
     from .preprocess import audio, speech  # Whisper は prep でだけ読み込む
 
-    if not Path(args.audio).is_file():
-        raise SystemExit(f"音声が無い: {args.audio}")
+    source = Path(args.audio)
+    if not source.is_file():
+        raise SystemExit(f"音声が無い: {source.name}")
+    _check_excerpt(args, audio.duration(source))
     neta = store.Neta(args.performer, args.neta)
     koza = _koza_meta(args)
     kdir = neta.koza_dir(args.koza)
-    wav = audio.extract_wav(Path(args.audio), kdir / "audio.wav", start=args.start, end=args.end)
-    store.write(kdir / "koza.json", koza, "koza")
+    _clear_outputs(kdir, args.force)
+    wav = audio.extract_wav(source, kdir / "audio.wav", start=args.start, end=args.end)
     terms = [t for t in args.terms.split(",") if t] if args.terms else None
     transcript = _to_transcript(speech.detect(wav, terms=terms), args.koza)
     store.write(kdir / "transcript.json", transcript, "transcript")
     doc = reactions.build(speech.load_wav(wav), transcript)
     store.write(kdir / "reactions.json", doc, "reactions")
+    store.write(kdir / "koza.json", koza, "koza")  # 最後に書く。これがあれば prep は完了している
     print(f"区間 {len(transcript['segments'])}、VAD {len(transcript['vad'])}、手がかり {len(doc['hints'])}")
     _print_top(doc)
 
@@ -92,6 +131,8 @@ def cmd_mark(args: argparse.Namespace) -> None:
 
 
 def cmd_top(args: argparse.Namespace) -> None:
+    if args.n < 1:
+        raise SystemExit("-n は 1 以上で")
     _print_top(store.read(store.find_koza(args.koza) / "reactions.json", "reactions"), args.n)
 
 
@@ -107,6 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     prep.add_argument("--from", dest="start", type=float)
     prep.add_argument("--to", dest="end", type=float)
     prep.add_argument("--terms", help="演目の語（カンマ区切り）")
+    prep.add_argument("--force", action="store_true", help="手で付けた反応があっても作り直す")
     prep.set_defaults(func=cmd_prep)
 
     mark = sub.add_parser("mark", help="手で付けた反応の時刻を入れる")
@@ -127,3 +169,7 @@ def main(argv: list[str] | None = None) -> None:
         args.func(args)
     except (store.StoreError, ValueError) as e:
         sys.exit(f"netacho: {e}")
+    except FileNotFoundError as e:  # ffmpeg が無いときもここ。パスは出さない
+        sys.exit(f"netacho: 見つからない: {Path(str(e.filename)).name}")
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"netacho: {Path(str(e.cmd[0])).name} が失敗した（終了コード {e.returncode}）")
