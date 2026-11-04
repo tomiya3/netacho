@@ -28,7 +28,8 @@ def rms_db(audio: np.ndarray, *, sr: int = SAMPLE_RATE, hop: float = HOP) -> np.
     frames = len(audio) // n
     if frames == 0:
         return np.zeros(0)
-    power = (audio[: frames * n].astype(np.float64) ** 2).reshape(frames, n).mean(axis=1)
+    a = audio[: frames * n].reshape(frames, n)
+    power = np.einsum("ij,ij->i", a, a, dtype=np.float64) / n  # 全体を float64 に広げない
     return 10 * np.log10(np.maximum(power, 1e-10))
 
 

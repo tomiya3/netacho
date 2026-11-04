@@ -95,6 +95,87 @@ def test_prep_rejects_bad_koza_and_missing_audio(data, tmp_path):
         cli.main([*PREP, "--audio", str(tmp_path / "none.wav")])
 
 
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--from", "-1"],
+        ["--to", "0"],
+        ["--from", "5", "--to", "5"],
+        ["--from", "9", "--to", "2"],
+        ["--from", "99"],
+    ],
+)
+def test_prep_rejects_bad_excerpt(data, extra):
+    with pytest.raises(SystemExit):
+        cli.main([*PREP, "--audio", str(data), *extra])
+
+
+def test_prep_only_from_keeps_to_the_end(data):
+    cli.main([*PREP, "--audio", str(data), "--from", "20"])
+    kdir = store.Neta("performer-x", "架空の噺").koza_dir("2026-02-03-hall")
+    assert audio.duration(kdir / "audio.wav") == pytest.approx(10.0, abs=0.05)
+    assert store.read(kdir / "koza.json", "koza")["excerpt"] == {"from": 20.0, "to": None}
+
+
+def test_prep_refuses_to_overwrite_manual_marks(data, tmp_path):
+    cli.main([*PREP, "--audio", str(data)])
+    tsv = tmp_path / "m.tsv"
+    tsv.write_text("5\t6\n", encoding="utf-8")
+    cli.main(["mark", "--koza", "2026-02-03-hall", "--tsv", str(tsv)])
+    with pytest.raises(SystemExit):
+        cli.main([*PREP, "--audio", str(data)])
+    kdir = store.find_koza("2026-02-03-hall")
+    assert store.read(kdir / "reactions.json", "reactions")["reactions"][0]["method"] == "manual"
+    cli.main([*PREP, "--audio", str(data), "--force"])
+    assert store.read(kdir / "reactions.json", "reactions")["reactions"][0]["method"] == "auto"
+    assert not (kdir / "reactions.auto.json").exists()  # 古い控えを残さない
+
+
+def test_failed_prep_leaves_no_stale_results(data, monkeypatch):
+    cli.main([*PREP, "--audio", str(data)])
+    kdir = store.find_koza("2026-02-03-hall")
+
+    def boom(*a, **k):
+        raise ValueError("文字起こしに失敗")
+
+    monkeypatch.setattr(speech, "detect", boom)
+    with pytest.raises(SystemExit):
+        cli.main([*PREP, "--audio", str(data), "--from", "5", "--to", "15"])
+    assert not (kdir / "transcript.json").exists()
+    assert not (kdir / "reactions.json").exists()
+    assert not (kdir / "koza.json").exists()
+
+
+def test_top_message_when_nothing_found(data, capsys, monkeypatch):
+    from netacho import reactions
+
+    monkeypatch.setattr(reactions, "auto_reactions", lambda *a, **k: [])
+    cli.main([*PREP, "--audio", str(data)])
+    assert "反応なしとは限らない" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        cli.main(["top", "--koza", "2026-02-03-hall", "-n", "0"])
+
+
+def test_ffmpeg_failure_is_a_short_message(data, tmp_path, capsys):
+    broken = tmp_path / "broken.mp3"
+    broken.write_bytes(b"not audio")
+    with pytest.raises(SystemExit) as e:
+        cli.main([*PREP, "--audio", str(broken)])
+    assert "ffprobe" in str(e.value)
+    assert str(tmp_path) not in str(e.value)
+
+
+def test_load_wav_rejects_wrong_format(tmp_path):
+    path = tmp_path / "x.wav"
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(SR)
+        w.writeframes(b"\0\0\0\0")
+    with pytest.raises(ValueError):
+        speech.load_wav(path)
+
+
 def test_paths_cannot_leave_the_data_dir():
     with pytest.raises(store.StoreError):
         store.Neta("..", "n")

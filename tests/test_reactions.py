@@ -81,6 +81,46 @@ def test_digital_silence_then_quiet_noise_is_not_a_reaction():
     assert detect(a) == []
 
 
+def test_laugh_over_loud_speech():
+    """台詞が基準を持ち上げていても、その上に重なる笑いを拾う。"""
+    found = detect(speech_with((30.0, 2.0, -12.0), level=-20.0))
+    assert len(found) == 1
+    assert found[0]["t0"] == pytest.approx(30.0, abs=0.2)
+
+
+def test_level_step_is_not_a_reaction():
+    """途中で音量が一段上がっても（自動音量調整）、段差は候補にならない。"""
+    a = np.concatenate([noise(60.0, -30.0), noise(60.0, -22.0, seed=1)])
+    assert detect(a) == []
+
+
+def test_finds_laugh_after_level_step():
+    a = np.concatenate([noise(60.0, -30.0), noise(60.0, -22.0, seed=1)])
+    i = 90 * SR
+    a[i : i + 2 * SR] += noise(2.0, -10.0, seed=2)[: 2 * SR]
+    found = detect(a)
+    assert len(found) == 1 and found[0]["t0"] == pytest.approx(90.0, abs=0.2)
+
+
+def test_long_laugh_limit():
+    """基準は前後 10 秒の中央値なので、10 秒を超えて続く音は中央値が持ち上がって拾えない（既知の限界）。"""
+    assert len(detect(speech_with((30.0, 8.0, -18.0), seconds=90.0))) == 1
+    assert detect(speech_with((30.0, 16.0, -18.0), seconds=90.0)) == []
+
+
+def test_reflected_edge_finds_opening_laugh():
+    found = detect(speech_with((0.5, 1.5, -18.0)))
+    assert len(found) == 1
+
+
+def test_same_strength_rank_goes_to_the_earlier():
+    db = np.full(100, -30.0)
+    base = np.full(100, -30.0)
+    db[10:20] = -20.0
+    db[60:70] = -20.0
+    assert [r["strength_rank"] for r in rx.auto_reactions(db, base)] == [1, 2]
+
+
 def test_edges_do_not_crash():
     assert rx.rms_db(np.zeros(10, dtype=np.float32)).size == 0
     assert rx.baseline(np.zeros(0)).size == 0
