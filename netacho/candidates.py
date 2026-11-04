@@ -42,8 +42,8 @@ def select(items: list[dict], reactions: dict) -> dict:
     silent: list[tuple[dict, list[float]]] = []
     ranked: list[tuple[int, dict, list[float], list[str]]] = []
     for it in payoff_items(items, koza_id):
-        t0 = it["payoff"]["t1"]
-        t1 = t0 + WINDOW_SEC
+        t0 = it["payoff"]["t0"]  # 笑いは台詞に重なり、Whisper の区間は長いので、回収の区間の中から見る
+        t1 = it["payoff"]["t1"] + WINDOW_SEC
         clipped = end is not None and t1 > end
         window = [t0, round(min(t1, end), 3) if clipped else round(t1, 3)]
         hits = _overlapping(reactions["reactions"], window[0], window[1])
@@ -52,10 +52,17 @@ def select(items: list[dict], reactions: dict) -> dict:
                 silent.append((it, window))
             continue
         ranks = [r["strength_rank"] for r in hits if r["strength_rank"] is not None]
-        if ranks:
+        if ranks and not clipped:  # 窓が短いと弱く出るので、切れた窓は比べない
             ranked.append((min(ranks), it, window, [r["id"] for r in hits]))
     low_count = len(ranked) // LOW_FRACTION
-    weakest = sorted(ranked, key=lambda x: x[0], reverse=True)[:low_count]
+    weakest = sorted(ranked, key=lambda x: x[0], reverse=True)
+    if low_count:
+        line = weakest[low_count - 1][0]
+        tied = low_count < len(weakest) and weakest[low_count][0] == line
+        # 境目の同順位（近い回収が同じ反応を指す）は、時刻で片方だけ選ばず両方外す
+        weakest = [x for x in weakest[:low_count] if not (tied and x[0] == line)]
+    else:
+        weakest = []
     rows = [(it, w, [], "no_candidate") for it, w in silent]
     rows += [(it, w, ids, "low_rank") for _, it, w, ids in weakest]
     rows.sort(key=lambda r: r[0]["payoff"]["t1"])

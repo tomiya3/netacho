@@ -114,6 +114,13 @@ def test_allowed_note_wording(text):
     "text",
     [
         "ここは受け無かったようです。",
+        "反応候補が無かった所です。",
+        "反応候補はなかった所です。",
+        "反応候補が出なかった所です。",
+        "静かだった所です。",
+        "反応が薄い所です。",
+        "手応えが弱い所です。",
+        "回収の後の六秒に候補があまりない所です。",
         "ｳｹなかった所です。",
         "笑いが起きなかった所です。",
         "反応がありませんでした。",
@@ -149,6 +156,15 @@ def test_after_quote_is_capped(data, tmp_path):
     store.write(kdir / "transcript.json", doc, "transcript")
     client, _ = run_note(data, tmp_path, note_doc(("cand-0001", "文です。")))
     assert len(json.loads(text_of(client.calls["noter"][0]))[0]["after_quote"]) == pipeline.AFTER_QUOTE_MAX
+
+
+def test_cost_is_kept_when_noter_output_is_broken(data, tmp_path):
+    built(data, tmp_path)
+    client = ScriptedClient(noter=[lambda kw: '{"schema_version": 1}'])  # schema に合わない
+    with pytest.raises(ValueError):
+        pipeline.note(P, N, K, client=client, budget=Budget(tmp_path / "ledger.json"), root=data)
+    run = store.read(store.Neta(P, N, data).koza_dir(K) / "run.json", "run")
+    assert "noter" in {r["name"] for r in run["roles"]}
 
 
 def test_manual_marks_are_shown_in_note(data, tmp_path):

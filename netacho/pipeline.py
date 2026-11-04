@@ -235,11 +235,15 @@ def build(
     return doc
 
 
-# ノート役の文の検査。断定、客の気持ち、直し方の提案、数字の羅列を通さない
-NOTE_ALLOWED = "反応候補"  # 「反応候補が少ない」は約束の言い方
+# ノート役の文の検査。断定、客の気持ち、直し方の提案、数字の羅列を通さない。
+# 「反応候補」の言い方は約束の 3 つだけ許し、それ以外の「反応…ない」は落とす
+NOTE_ALLOWED = ("反応候補が少な", "反応候補が小さ", "反応候補が見つからな")
 NOTE_BANNED = re.compile(
-    r"(反応|笑い|ウケ|受け)[^。]{0,8}(なし|無し|なかった|無かった|ない|無い|ありません|ませんでした|起きな|起こらな)"
-    r"|無反応|滑|スベ|盛り上がらな|失敗|ダメ|だめ|客|した方が|すべき|おすすめ|お勧め|てはどう|てみては|直すと|変えると|\d+\s*秒"
+    r"(反応|候補|笑い|ウケ|受け|手応え)[^。]{0,8}"
+    r"(なし|無し|なかった|無かった|ない|無い|ありません|ませんでした|起きな|起こらな|薄|弱|出な)"
+    r"|無反応|沈黙|静か|シーン|滑っ|滑り|スベ|盛り上がらな|失敗|ダメ|だめ|客"
+    r"|した方が|すべき|おすすめ|お勧め|てはどう|てみては|直すと|変えると"
+    r"|[0-9〇一二三四五六七八九十百]+\s*(秒|分|回|件|位)"
 )
 NOTE_MAX_SENTENCES = 2
 AFTER_QUOTE_MAX = 120
@@ -251,7 +255,6 @@ NOTE_FALLBACK = {
 
 def noter_rows(cands: dict, items: dict, transcript: dict, hanashi: dict, tl: dict) -> list[dict]:
     """ノート役に見せる物：選ばれた候補、前後の引用、場面の尺だけ。"""
-    segs = evidence.Segments(transcript)
     scenes = {s["id"]: s for s in hanashi["scenes"]}
     scene_of = {s["seg_id"]: s["scene_id"] for s in tl["segments"]}
     rows = []
@@ -271,10 +274,10 @@ def noter_rows(cands: dict, items: dict, transcript: dict, hanashi: dict, tl: di
             "payoff_quote": it["payoff"]["quote"],
             "after_quote": after,
         }
-        scene = scenes.get(scene_of.get(it["payoff"]["segs"][0]))
-        if scene is not None and scene["koza_id"] == transcript["koza_id"] and segs.ok(scene["segs"]):
-            part = segs.between(scene["segs"])
-            row["scene"] = scene["title"]
+        scene_id = scene_of.get(it["payoff"]["segs"][0])
+        part = [s for s in transcript["segments"] if scene_of.get(s["id"]) == scene_id]
+        if scene_id in scenes and part:  # 尺はこの高座の timeline から出す（別の高座でも同じ場面 ID なので）
+            row["scene"] = scenes[scene_id]["title"]
             row["scene_seconds"] = round(part[-1]["end"] - part[0]["start"])
         rows.append(row)
     return rows
@@ -284,7 +287,9 @@ def note_is_ok(text: str) -> bool:
     plain = unicodedata.normalize("NFKC", text).strip()
     if not plain or len(re.findall(r"[。！？!?]", plain)) > NOTE_MAX_SENTENCES:
         return False
-    return NOTE_BANNED.search(plain.replace(NOTE_ALLOWED, "")) is None
+    for phrase in NOTE_ALLOWED:
+        plain = plain.replace(phrase, "")
+    return NOTE_BANNED.search(plain) is None
 
 
 def checked_notes(doc: dict | None, cands: dict) -> tuple[dict[str, str], int]:
@@ -341,9 +346,12 @@ def note(
     if cands["candidates"]:
         rows = noter_rows(cands, items, ctx.transcript, ctx.hanashi, tl)
         text = json.dumps(rows, ensure_ascii=False, indent=1)
-        doc = call_role(
-            ctx.client, "noter", [{"type": "text", "text": text}], "noter", ctx.usage, ctx.budget, ctx.cache
-        )
+        content = [{"type": "text", "text": text}]
+        try:
+            doc = call_role(ctx.client, "noter", content, "noter", ctx.usage, ctx.budget, ctx.cache)
+        except Exception:
+            store.write(run_path, ctx.usage.to_json(), "run")  # 費用は実測として残す
+            raise
         store.write(ctx.neta.drafts / "noter.json", doc, "noter")
     notes, fallback = checked_notes(doc, cands)
     scene_of = {s["seg_id"]: s["scene_id"] for s in tl["segments"]}
