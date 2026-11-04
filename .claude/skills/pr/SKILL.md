@@ -35,8 +35,14 @@ Closes #<N>
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
-7. PR の URL と、レビューで見送った指摘を報告する。マージはユーザーが行う（Squash）
-8. 最後に `/log`
+7. **自動レビューの指摘を読む（省略しない）**：`gh pr checks <N> --watch` で完了を待ち、`scripts/pr-reviews.sh` で指摘を読む
+   - チェックが緑でも指摘は付く。緑かどうかではなく、指摘の本文を読む
+   - 1 件ずつ「反映」「見送り（理由）」「Issue へ」を決める。反映したら push して、もう一度待って読む
+   - 3 周まで反映し、4 周目以降は Issue に回す（高の指摘も Issue に書いて報告する）。機能凍結の後は待たない
+   - 周回と判断を PR 本文の確認欄に残す。読み終えたら `scripts/pr-reviews.sh --mark`
+   - 積んだ PR は下の PR から順に。下を直して上へ取り込むと、上の PR にも周回が増える
+8. PR の URL と、見送った指摘を報告する。マージはユーザーが行う（Squash）
+9. 最後に `/log`
 
 ## 積んだ PR（別の PR の上に作るとき）
 - base を前の PR のブランチにし、本文に「#N の上に積んでいる。先に #N をマージしてから base を main に」と書く
