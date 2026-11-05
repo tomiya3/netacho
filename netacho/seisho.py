@@ -80,10 +80,8 @@ def markdown(koza: dict, doc: dict, stats: dict | None = None) -> str:
         "",
     ]
     if stats and (stats["missing"] or stats["duplicate"]):
-        out += [
-            f"**速記役が返さなかった区間が {stats['missing'] + stats['duplicate']} あります。その行は原文のままです。**",
-            "",
-        ]
+        count = stats["missing"] + stats["duplicate"]
+        out += [f"**速記役が返さなかった区間が {count} あります。その行は原文のままです。**", ""]
     out += [
         "Claude が文脈から聞き違いを直し、話者を付けた読み物です。話者と直した語は推定で、"
         "演者の言葉そのものではありません。直した行には原文を添えています。"

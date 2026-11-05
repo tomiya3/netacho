@@ -266,9 +266,10 @@ def cmd_seisho(args: argparse.Namespace) -> None:
     client = runner.make_client()
     doc = pipeline.clean_copy(args.performer, args.neta, args.koza, client=client, reuse=args.reuse)
     s = doc["seisho"]
-    print(
-        f"清書 {s['lines']} 行、直した行 {s['changed']}、原文に戻した行 {s['kept_raw']}、抜け {s['missing']}"
-    )
+    print(f"清書 {s['lines']} 行、直した行 {s['changed']}、大きく直した行 {s['heavy']}")
+    print(f"原文に戻した行 {s['kept_raw']}、抜け {s['missing']}、重複 {s['duplicate']}")
+    if s["missing"] or s["duplicate"]:
+        print("速記役が返さなかった区間がある。その行は原文のまま", file=sys.stderr)
 
 
 def cmd_decide(args: argparse.Namespace) -> None:
