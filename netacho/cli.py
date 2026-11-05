@@ -272,11 +272,20 @@ def cmd_run(args: argparse.Namespace) -> None:
     cmd_note(args)
 
 
+def _title(value: str | None) -> str | None:
+    """指定して空なのは打ち間違い。黙ってフォルダの名前に戻さない。"""
+    if value is None:
+        return None
+    if not value.strip():
+        raise SystemExit("--title が空です")
+    return value.strip()
+
+
 def cmd_seisho(args: argparse.Namespace) -> None:
     from . import pipeline, runner
 
     client = runner.make_client()
-    title = (args.title or "").strip() or None
+    title = _title(args.title)
     doc = pipeline.clean_copy(
         args.performer, args.neta, args.koza, client=client, reuse=args.reuse, title=title
     )

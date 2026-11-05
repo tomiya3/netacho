@@ -65,7 +65,7 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 | 照合役 | 項目の文と引用だけ | transcript 全体、演目名 | `drafts/checker.json` |
 | ノート役 | 選ばれた候補、前後の引用、場面の尺 | 反応の全体、型の全文 | `drafts/noter.json` |
 | 弟子役 | 確定した噺・型の `.md` だけ | transcript、音声、反応、差し戻しの履歴 | `review/deshi.json` |
-| 速記役 | transcript、演目名、人物 | 反応、型 | `drafts/scribe.json` |
+| 速記役 | transcript、演目の題、人物 | 反応、型 | `drafts/scribe.json` |
 
 - 構成作家役に反応を見せないのは、結果から型を逆算させないため
 - 照合役に演目名を見せないのは、演目の知識で補って通してしまうのを防ぐため
