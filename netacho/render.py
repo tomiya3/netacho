@@ -69,6 +69,17 @@ def clock(t: float) -> str:
 
 
 def _rate_line(gaps: dict) -> list[str]:
+    if gaps.get("humps_total") == 0:
+        return ["- 笑いの山（弱い山を含む）は 0 個でした"]
+    if gaps.get("humps_total") is not None:
+        share = gaps["humps_hit"] / gaps["humps_total"]
+        line = (
+            f"- 笑いの山（弱い山を含む）{gaps['humps_total']} 個のうち、予測の窓に入ったのは "
+            f"{gaps['humps_hit']} 個（{share:.0%}）"
+        )
+        if gaps.get("humps_expected") is not None:
+            line += f"。同じ長さの窓を音声全体に置くと、見込みは {gaps['humps_expected']:.0%}"
+        return [line]
     if gaps.get("peak_rate") is None or gaps.get("baseline_rate") is None:  # 前の版の gaps.json には無い
         return []
     return [
@@ -87,13 +98,13 @@ def gaps_markdown(gaps: dict, items: dict) -> list[str]:
         "",
         "Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。",
         "",
-        f"- 的中 {len(gaps['hits'])}{weak}、空振り {len(gaps['misses'])}、"
-        f"予測なしで反応あり {gaps['surprise_total']}",
         f"- 笑い {gaps['laughs_total']} か所のうち、予測の窓に入ったのは {gaps['laughs_hit']} か所。"
         f"窓は音声の {gaps['window_share']:.0%} を覆っている",
+        *_rate_line(gaps),
+        f"- 項目ごとの内訳：的中 {len(gaps['hits'])}{weak}、空振り {len(gaps['misses'])}、"
+        f"予測なしで反応あり {gaps['surprise_total']}。1 つの笑いに項目が重なることがあります",
         "- 空振りは、検出できなかっただけのこともあります。反応が無かったという意味ではありません",
         *([] if weak else ["- 前の版の数え方です。空振りに弱い山を含みます。note をやり直すと分かれます"]),
-        *_rate_line(gaps),
         "",
     ]
     if gaps["surprises"]:

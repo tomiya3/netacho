@@ -123,6 +123,30 @@ def window_peak(doc: dict, t0: float, t1: float) -> float:
     return max(scores["laugh"][lo:hi], default=0.0)
 
 
+def laugh_humps(doc: dict, floor: float = LAUGH_FLOOR) -> list[list[float]] | None:
+    """floor 以上のスコアのひと続きを 1 つの山とする。山ごとの、floor 以上の窓の中央の並び。
+
+    切れ目が 1 窓までならつなぐ（反応の候補と同じ）。本物の笑いが 1 窓の揺れで 2 つに割れないように。
+
+    項目の窓に関係なく音声全体から決まるので、項目の数が変わっても動かない。スコアが無ければ None。
+    """
+    scores = doc.get("scores")
+    if not scores or not scores.get("laugh"):
+        return None
+    half, stride = scores["window"] / 2, scores["stride"]
+    humps: list[list[float]] = []
+    last = -MERGE_STEPS - 2
+    for n, score in enumerate(scores["laugh"]):
+        if score < floor:
+            continue
+        if n - last <= MERGE_STEPS + 1:
+            humps[-1].append(half + n * stride)
+        else:
+            humps.append([half + n * stride])
+        last = n
+    return humps
+
+
 def peak_share(doc: dict, widths: list[float], floor: float = LAUGH_FLOOR) -> float | None:
     """基準の割合。予測の窓と同じ長さの窓を、音声全体の全部の位置に置いたとき、floor 以上の山がある割合。
 

@@ -178,7 +178,9 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 ### 笑いどころの予測と実際
 
 - 構成作家役は反応を見ずに回収を書く。スクリプトが AST の笑いと重ねて、的中（強い山）、弱い山（0.08 以上）、空振り、予測なしで反応ありに分ける
-- 予測の窓に山がある割合を、音声全体を同じ長さの窓で見た割合と比べる。予測に力があるかはこの差で見る
+- 主な数字は笑いごと・山ごとに数える。項目ごとの区分は、1 つの笑いに項目が重なると膨らむ（同じ録音の作り直しで的中が 4 から 2 に見えて、当たった笑いは同じ 2 か所だった）ので、ノートの材料にとどめる
+- 山は、0.08 以上のスコアのひと続き（切れ目が 1 窓までならつなぐ）。音声全体のスコアから決まり、手で付けた反応は入らない。予測の窓に入った山の割合を、同じ長さの窓を音声全体に一様に置いたときの見込みと比べる。見込みは山の幅を入れて計算する（窓が覆う割合と比べると、幅のある山に触れやすい分だけ予測に有利になる）
+- 予測の窓に山がある割合と、音声全体を同じ長さの窓で見た割合は、`run.json` に残す
 - 予測なしで反応ありの笑いは、15 秒以内の物を束ねて強い順に 5 件まで、ノート役が演者への問いにする。全数は別に数える。`questions.json` に入り、`netacho answer` で型に残る
 - 拍手は比較に使わない。自動の反応が無い高座と、録音の末尾で切れた窓は判定しない
 - 的中率は、窓が音声を覆う割合と、窓に入った笑いの数と一緒に見る。窓が高座の大半を覆うと意味を失う
@@ -229,7 +231,7 @@ transcript: segments[{id,start,end,text,words,no_speech_prob,pause_after}], vad[
 timeline: segments[{seg_id,scene_id,speaker(null可),confidence}]
 reactions: reactions[{id,t0,t1,kind(laugh|applause|reaction),strength_rank(null可),method(auto|manual)}], music[], hints[], scores
 note_candidates: candidates[{id,item_id,payoff_t,window,reaction_ids,why(no_candidate|low_rank)}]
-gaps: judged, hits[], weak[], misses[], surprises[{id,reaction_id,t0,t1,scene_id,before_quote,question?}], peak_rate, baseline_rate
+gaps: judged, hits[], weak[], misses[], surprises[{id,reaction_id,t0,t1,scene_id,before_quote,question?}], peak_rate, baseline_rate, humps_total, humps_hit, humps_expected
 review: issues[{id,role,kind,anchor{scene_id|item_id},attempt,what_is_missing,round,resolved}]
 questions: questions[{id,issue_id,scene_id,text,answer?}]
 guide: cards[{order,scene_id,item_id,text,copied_fields,llm_fields}]

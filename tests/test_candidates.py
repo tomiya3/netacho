@@ -210,4 +210,3 @@ def test_held_payoff_is_told_not_hidden():
 def test_no_notice_without_held_payoff():
     r = candidates.select([item(1, 10.0)], doc())
     assert not any("保留" in n for n in r["notices"])
-

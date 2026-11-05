@@ -223,15 +223,23 @@ def cmd_build(args: argparse.Namespace) -> None:
         print(f"文に内部の番号が残って保留の項目 {left}。`.md`、札、ノートの候補には出ません")
 
 
+def _hump_line(g: dict) -> str:
+    line = f"笑いの山 {g['humps_total']} のうち窓に入った {g['humps_hit']}"
+    return line if g["humps_expected"] is None else f"{line}、見込み {g['humps_expected']}"
+
+
 def cmd_note(args: argparse.Namespace) -> None:
     from . import pipeline, runner
 
     doc = pipeline.note(args.performer, args.neta, args.koza, client=runner.make_client(), reuse=args.reuse)
     print(f"候補 {doc['notes']['candidates']}、決まった文に置き換えた数 {doc['notes']['fallback']}")
     g = doc["gaps"]
-    print(f"的中 {g['hit']}、弱い山 {g['weak']}、空振り {g['miss']}、予測なしで反応あり {g['surprise']}")
+    print(f"項目ごと：的中 {g['hit']}、弱い山 {g['weak']}、空振り {g['miss']}")
+    print(f"予測なしで反応あり {g['surprise']}")
     print(f"山のある割合 予測 {g['peak_rate']}、音声全体 {g['baseline_rate']}、質問 {doc['questions']}")
     print(f"笑い {g['laughs_total']} のうち窓に入った {g['laughs_hit']}、窓の割合 {g['window_share']:.0%}")
+    if g["humps_total"] is not None:
+        print(_hump_line(g))
 
 
 def _rewrite_markdown(neta: store.Neta) -> None:

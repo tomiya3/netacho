@@ -134,4 +134,3 @@ def test_checker_held_item_with_id_is_also_sent_back():
     h, k = book("hanashi"), book("kata")
     h["items"] = [{**strip(row("item-0001", text="scene-07 の後")), "held": True}]
     assert [r["anchor"] for r in merge.id_rework(h, k)] == [{"item_id": "item-0001"}]
-
