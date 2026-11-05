@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import re
 import secrets
 import threading
 import wave
@@ -80,8 +81,10 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         pass  # URL のトークンも本文も、ログに出さない
 
-    def _send(self, status: int, data: bytes, kind: str) -> None:
+    def _send(self, status: int, data: bytes, kind: str, extra: dict | None = None) -> None:
         self.send_response(status)
+        for key, value in (extra or {}).items():
+            self.send_header(key, value)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
@@ -117,10 +120,24 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 <= at < float("inf"):
                 raise ValueError
             data = clip_wav(self.server.neta.koza_dir(self.server.koza_id) / "audio.wav", at)
-        except (ValueError, OSError, wave.Error):
+        except (ValueError, OverflowError, OSError, wave.Error):
             self._json(404, {"error": "無い"})
             return
-        self._send(200, data, "audio/wav")
+        self._send_range(data, "audio/wav")
+
+    def _send_range(self, data: bytes, kind: str) -> None:
+        """範囲の指定に応える。Safari の audio は 206 が返らないと再生しないことがある。"""
+        match = re.fullmatch(r"bytes=(\d+)-(\d*)", self.headers.get("Range", ""))
+        if match is None:
+            self._send(200, data, kind, {"Accept-Ranges": "bytes"})
+            return
+        start = int(match[1])
+        end = min(int(match[2]) if match[2] else len(data) - 1, len(data) - 1)
+        if start > end:
+            self._send(416, b"", kind, {"Content-Range": f"bytes */{len(data)}"})
+            return
+        headers = {"Accept-Ranges": "bytes", "Content-Range": f"bytes {start}-{end}/{len(data)}"}
+        self._send(206, data[start : end + 1], kind, headers)
 
     def do_GET(self) -> None:  # noqa: N802
         parts = urlsplit(self.path)

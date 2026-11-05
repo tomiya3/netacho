@@ -164,13 +164,30 @@ TRANSCRIPT = {
 
 
 def test_place_uses_the_clean_copy_when_it_exists():
-    clean = {"lines": [{"seg_id": "seg-0002", "speaker": "親方", "text": "清書の台詞"}]}
+    clean = {
+        "lines": [
+            {"seg_id": "seg-0002", "speaker": "親方", "text": "清書の台詞", "raw": "生の台詞"},
+            {"seg_id": "seg-0003", "speaker": None, "text": "次の清書", "raw": "次の台詞"},
+        ]
+    }
     place = view.question_places(GAPS, QUESTIONS, TRANSCRIPT, clean)["q-0001"]
     assert place["t0"] == 100.0 and place["clean"] is True
     assert place["lines"] == [
         {"speaker": "親方", "text": "清書の台詞"},
-        {"speaker": None, "text": "次の台詞"},
+        {"speaker": None, "text": "次の清書"},
     ]
+
+
+def test_a_missing_line_is_not_called_clean():
+    clean = {"lines": [{"seg_id": "seg-0002", "speaker": "親方", "text": "清書", "raw": "生の台詞"}]}
+    place = view.question_places(GAPS, QUESTIONS, TRANSCRIPT, clean)["q-0001"]
+    assert place["clean"] is False and place["lines"][1] == {"speaker": None, "text": "次の台詞"}
+
+
+def test_old_clean_copy_is_not_shown_for_a_changed_line():
+    clean = {"lines": [{"seg_id": "seg-0002", "speaker": "親方", "text": "古い清書", "raw": "前の文字"}]}
+    place = view.question_places(GAPS, QUESTIONS, TRANSCRIPT, clean)["q-0001"]
+    assert place["lines"][0] == {"speaker": None, "text": "生の台詞"}
 
 
 def test_place_falls_back_to_the_transcript_and_says_so():

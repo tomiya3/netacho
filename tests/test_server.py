@@ -350,7 +350,18 @@ def test_clip_at_the_start_and_end_of_the_recording(running):
     assert clip_seconds(call(running, f"/clip?at=59&t={running.token}", headers={})[1]) == 13
 
 
-@pytest.mark.parametrize("at", ["x", "-1", "nan", "inf", "9999", ""])
+def test_clip_answers_range_requests(running):
+    put_wav(running)
+    path = f"/clip?at=30&t={running.token}"
+    whole = call(running, path, headers={})[1]
+    status, part = call(running, path, headers={"Range": "bytes=0-1"})
+    assert status == 206 and part == whole[:2]
+    status, part = call(running, path, headers={"Range": "bytes=100-"})
+    assert status == 206 and part == whole[100:]
+    assert call(running, path, headers={"Range": f"bytes={len(whole)}-"})[0] == 416
+
+
+@pytest.mark.parametrize("at", ["x", "-1", "nan", "inf", "1e306", "9999", ""])
 def test_bad_clip_time_is_not_found(running, at):
     put_wav(running)
     assert call(running, f"/clip?at={at}&t={running.token}", headers={})[0] == 404

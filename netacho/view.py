@@ -53,17 +53,20 @@ def question_places(
         q = next((x for x in questions["questions"] if x["text"].startswith(head)), None)
         if q is None:
             continue
-        rows = []
+        rows, all_clean = [], True
         for seg in transcript["segments"]:
             if seg["end"] <= s["t0"] - PLACE_BEFORE or seg["start"] >= s["t0"] + PLACE_AFTER:
                 continue
             line = lines.get(seg["id"])
+            if line is not None and line["raw"].strip() != seg["text"].strip():
+                line = None  # 文字起こしを作り直す前の清書は、別の台詞に当たる
+            all_clean = all_clean and line is not None
             rows.append(
                 {"speaker": line["speaker"], "text": line["text"]}
                 if line
                 else {"speaker": None, "text": seg["text"].strip()}
             )
-        places[q["id"]] = {"t0": s["t0"], "clean": bool(lines), "lines": rows}
+        places[q["id"]] = {"t0": s["t0"], "clean": all_clean, "lines": rows}
     return places
 
 
