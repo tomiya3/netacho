@@ -30,5 +30,8 @@
  "surprise_total": 1,
  "laughs_total": 2,
  "laughs_hit": 1,
- "window_share": 0.2
+ "window_share": 0.2,
+ "weak": [],
+ "peak_rate": 0.5,
+ "baseline_rate": 0.2
 }

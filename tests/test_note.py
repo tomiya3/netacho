@@ -104,6 +104,7 @@ def test_bad_note_is_replaced_and_counted(data, tmp_path, bad):
         "回収の後に、反応候補が少ない所です。",
         "見立ての回収の後は、反応候補が見つからない所です。原音で確かめてください。",
         "サゲの後の反応候補が、この高座の中では小さい方です。",
+        "「悩みはない」の客いじりの後に、反応候補が見つかりませんでした。",
     ],
 )
 def test_allowed_note_wording(text):

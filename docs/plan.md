@@ -169,14 +169,16 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 
 ### 「薄い」候補の選び方
 
-- 回収の終わりから 6 秒の窓を見る
+- 回収の区間の始まりから、回収の終わりの 6 秒後までの窓を見る
 - 窓に候補が無い、または同じ高座の回収の中で強さが下位 4 分の 1 のものを「薄い」とする
+- 窓に弱い山があれば「薄い」としない。候補は 6 件まで、サゲ・地口・見立てを先に出し、全数は残す
 - 見せ場に使う候補は原音で確かめる
 - 未検出を「反応なし」と扱わない
 
 ### 笑いどころの予測と実際
 
-- 構成作家役は反応を見ずに回収を書く。スクリプトが AST の笑いと重ねて、的中、空振り、予測なしで反応ありに分ける
+- 構成作家役は反応を見ずに回収を書く。スクリプトが AST の笑いと重ねて、的中（強い山）、弱い山（0.08 以上）、空振り、予測なしで反応ありに分ける
+- 予測の窓に山がある割合を、音声全体を同じ長さの窓で見た割合と比べる。予測に力があるかはこの差で見る
 - 予測なしで反応ありの笑いは、15 秒以内の物を束ねて強い順に 5 件まで、ノート役が演者への問いにする。全数は別に数える。`questions.json` に入り、`netacho answer` で型に残る
 - 拍手は比較に使わない。自動の反応が無い高座と、録音の末尾で切れた窓は判定しない
 - 的中率は、窓が音声を覆う割合と、窓に入った笑いの数と一緒に見る。窓が高座の大半を覆うと意味を失う
@@ -227,7 +229,7 @@ transcript: segments[{id,start,end,text,words,no_speech_prob,pause_after}], vad[
 timeline: segments[{seg_id,scene_id,speaker(null可),confidence}]
 reactions: reactions[{id,t0,t1,kind(laugh|applause|reaction),strength_rank(null可),method(auto|manual)}], music[], hints[], scores
 note_candidates: candidates[{id,item_id,payoff_t,window,reaction_ids,why(no_candidate|low_rank)}]
-gaps: judged, hits[], misses[], surprises[{id,reaction_id,t0,t1,scene_id,before_quote,question?}]
+gaps: judged, hits[], weak[], misses[], surprises[{id,reaction_id,t0,t1,scene_id,before_quote,question?}], peak_rate, baseline_rate
 review: issues[{id,role,kind,anchor{scene_id|item_id},attempt,what_is_missing,round,resolved}]
 questions: questions[{id,issue_id,scene_id,text,answer?}]
 guide: cards[{order,scene_id,item_id,text,copied_fields,llm_fields}]

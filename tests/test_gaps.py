@@ -150,6 +150,31 @@ def test_laugh_without_scene_does_not_use_a_slot():
     assert r["surprise_total"] == 2
 
 
+def scored(seconds, peaks):
+    """{秒: スコア} の笑いのスコアを持つ doc。"""
+    n = int((seconds - 5) / 2) + 1
+    laugh = [0.0] * n
+    for t, v in peaks.items():
+        laugh[int((t - 2.5) / 2)] = v
+    d = doc(react(1, 80.0, 82.0, 1), seconds=seconds)
+    d["scores"].update(window=5.0, stride=2.0, laugh=laugh)
+    return d
+
+
+def test_weak_peak_is_not_a_miss():
+    r = compare([item(1, 10.0), item(2, 40.0)], scored(100.0, {12.5: 0.1}))
+    assert [w["item_id"] for w in r["weak"]] == ["item-0001"]
+    assert [m["item_id"] for m in r["misses"]] == ["item-0002"]
+    c = gaps.counts(r)
+    assert (c["hit"], c["weak"], c["miss"], c["peak_rate"]) == (0, 1, 1, 0.5)
+
+
+def test_baseline_rate_is_measured_on_the_whole_audio():
+    r = compare([item(1, 10.0)], scored(70.0, {12.5: 0.1}))
+    assert r["peak_rate"] == 1.0
+    assert 0 < r["baseline_rate"] < 1.0  # 全体では山のある窓は一部だけ
+
+
 def test_no_prediction_rate_is_none():
     assert gaps.counts(compare([], doc()))["hit_rate"] is None
 
