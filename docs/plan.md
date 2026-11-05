@@ -165,7 +165,7 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 
 - `ffmpeg -vn -ac 1 -ar 16000` で 16kHz モノラル wav に。`--from` `--to` で抜粋を切り出す
 - 文字起こしは Apple の GPU で動く `mlx-whisper`（`mlx-community/whisper-large-v3-turbo`）。使えない環境（CI の Linux など）では faster-whisper の `medium`、`device="cpu"`、`compute_type="int8"`。どちらも `language="ja"`、`condition_on_previous_text=False`、`word_timestamps=True`。実行ごとに結果は少し変わる
-- faster-whisper の場合：`device="cpu"`、`compute_type="int8"`、`language="ja"`、`vad_filter=False`、`condition_on_previous_text=False`、`word_timestamps=True`。モデルは `medium`
+- MLX が使えなければ faster-whisper の `medium` に落ちる。どちらの方式でも空の行は除く。`--terms`（`initial_prompt`）が効くのは最初の窓（約 30 秒）だけ。`condition_on_previous_text=False` では次の窓で捨てられる。語の直しは清書が担う
 - VAD はどちらの場合も faster-whisper 同梱の Silero を別に回し、両方残す。Whisper の区間に `seg-0001` と振り、次の区間との隙間を `pause_after` に入れる
 - 演目の語を `initial_prompt` に入れられるようにする
 

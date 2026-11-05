@@ -6,6 +6,7 @@ Whisper の区間には固定の ID（seg-0001）と、次の区間までの間�
 
 from __future__ import annotations
 
+import sys
 import wave
 from importlib.util import find_spec
 from pathlib import Path
@@ -15,6 +16,7 @@ import numpy as np
 SAMPLE_RATE = 16000
 DEFAULT_MODEL = "medium"
 MLX_MODEL = "mlx-community/whisper-large-v3-turbo"
+MLX_REVISION = "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb"  # 版を固定する。AST と同じ考え
 
 
 def load_wav(wav: Path) -> np.ndarray:
@@ -56,7 +58,8 @@ def default_model() -> str:
 
 
 def _prompt(terms: list[str] | None) -> str | None:
-    # 演目の語を initial_prompt に入れると固有名詞の書き起こしが安定する
+    # 演目の語を initial_prompt に入れる。効くのは最初の窓（約 30 秒）だけ。
+    # condition_on_previous_text=False だと次の窓で捨てられる。語の直しは清書が担う
     return "、".join(terms) + "。" if terms else None
 
 
@@ -71,12 +74,18 @@ def _row(start: float, end: float, text: str, no_speech: float, words: list[dict
     }
 
 
+def _numbered(rows: list[dict]) -> list[dict]:
+    """空の行を除いて番号を振る。方式によって ID の振り方を変えない。"""
+    return number_segments([r for r in rows if r["text"]])
+
+
 def _transcribe_mlx(audio: np.ndarray, terms: list[str] | None, model: str) -> dict:
     import mlx_whisper
+    from huggingface_hub import snapshot_download
 
     result = mlx_whisper.transcribe(
         audio,
-        path_or_hf_repo=model,
+        path_or_hf_repo=snapshot_download(repo_id=model, revision=MLX_REVISION),
         language="ja",
         initial_prompt=_prompt(terms),
         condition_on_previous_text=False,
@@ -93,9 +102,9 @@ def _transcribe_mlx(audio: np.ndarray, terms: list[str] | None, model: str) -> d
             }
             for w in s.get("words") or []
         ]
-        if s["text"].strip():  # 空の行を返すことがある
-            out.append(_row(s["start"], s["end"], s["text"], s.get("no_speech_prob") or 0.0, words))
-    return {"model": model, "language": result.get("language") or "ja", "segments": number_segments(out)}
+        out.append(_row(s["start"], s["end"], s["text"], s.get("no_speech_prob") or 0.0, words))
+    model_id = f"{model}@{MLX_REVISION}"
+    return {"model": model_id, "language": result.get("language") or "ja", "segments": _numbered(out)}
 
 
 def _transcribe_cpu(audio: np.ndarray, terms: list[str] | None, model_size: str) -> dict:
@@ -117,13 +126,19 @@ def _transcribe_cpu(audio: np.ndarray, terms: list[str] | None, model_size: str)
             for w in (s.words or [])
         ]
         out.append(_row(s.start, s.end, s.text, s.no_speech_prob, words))
-    return {"model": model_size, "language": info.language, "segments": number_segments(out)}
+    return {"model": model_size, "language": info.language, "segments": _numbered(out)}
 
 
 def transcribe(audio: np.ndarray, *, terms: list[str] | None = None, model_size: str | None = None) -> dict:
     model = model_size or default_model()
     if model == MLX_MODEL:
-        return _transcribe_mlx(audio, terms, model)
+        try:
+            return _transcribe_mlx(audio, terms, model)
+        except (ImportError, OSError, RuntimeError):  # GPU の無い Mac の VM など。止めずに CPU へ
+            if model_size is not None:
+                raise
+            print("MLX が使えないので faster-whisper で文字起こしする", file=sys.stderr)
+            return _transcribe_cpu(audio, terms, DEFAULT_MODEL)
     return _transcribe_cpu(audio, terms, model)
 
 
