@@ -280,7 +280,8 @@ function renderSeisho(d) {
   for (const l of d.seisho.lines) {
     const who = l.speaker ? `${l.speaker}（推定）：` : "";
     root.append(el("p", { class: "script-line" }, who + l.text + (l.marks || []).join("")));
-    if (l.changed) root.append(el("p", { class: "quote" }, `　原文：${l.raw}`));
+    if (l.changed) root.append(el("p", { class: "quote" }, `　${l.heavy ? "大きく直した。原文" : "原文"}：${l.raw}`));
+    if (l.proposal) root.append(el("p", { class: "quote" }, `　長さが大きく変わるので原文のまま。案：${l.proposal}`));
   }
 }
 

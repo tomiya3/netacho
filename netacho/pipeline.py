@@ -543,8 +543,7 @@ def note(
 
 def scribe_content(ctx: Context) -> list[dict]:
     """速記役に見せる物：文字起こし、演目名、人物。反応は見せない。"""
-    names = [{"name": c["name"], "note": c["note"]} for c in ctx.hanashi["characters"]]
-    head = {"演目": ctx.koza["neta"], "人物": names}
+    head = {"演目": ctx.koza["neta"], "人物": [c["name"] for c in ctx.hanashi["characters"]]}
     lines = [{"seg_id": s["id"], "text": s["text"]} for s in ctx.transcript["segments"] if s["text"].strip()]
     return [
         {"type": "text", "text": json.dumps(head, ensure_ascii=False, indent=1)},
@@ -566,13 +565,12 @@ def clean_copy(
     ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
     kdir = ctx.neta.koza_dir(koza_id)
     run_path = kdir / "run.json"
-    for stale in (kdir / "seisho.json", kdir / "seisho.md"):
-        stale.unlink(missing_ok=True)
     draft = call_role(ctx.client, "scribe", scribe_content(ctx), "scribe", ctx.usage, ctx.budget, ctx.cache)
     store.write(ctx.neta.drafts / "scribe.json", draft, "scribe")
     reactions_path = kdir / "reactions.json"
     reactions = store.read(reactions_path, "reactions") if reactions_path.exists() else None
-    doc, stats = seisho.build(draft, ctx.transcript, reactions)
+    names = {c["name"] for c in ctx.hanashi["characters"]}
+    doc, stats = seisho.build(draft, ctx.transcript, reactions, names)
     store.write(kdir / "seisho.json", doc, "seisho")
     (kdir / "seisho.md").write_text(seisho.markdown(ctx.koza, doc), encoding="utf-8")
     ctx.usage.extra["seisho"] = stats

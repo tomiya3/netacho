@@ -10,47 +10,67 @@ from difflib import SequenceMatcher
 
 from .render import marks_after
 
-MIN_SIMILARITY = 0.5  # 原文とこれより違う文は、聞き違いの修正ではなく言い換えとみなす。暫定
+MIN_SIMILARITY = 0.5  # これより違う行は、直しすぎかもしれない印を付ける（歌の表記の修正もここに入る）。暫定
+LENGTH_RATIO = (0.6, 1.5)  # 長さがこの範囲の外なら、削りか足しとみなして原文に戻す。暫定
+LENGTH_MARGIN = 4  # 短い区間は比率では見られないので、この字数までの差は許す
+
+
+def _length_ok(raw: str, text: str) -> bool:
+    low, high = LENGTH_RATIO
+    return len(raw) * low - LENGTH_MARGIN <= len(text) <= len(raw) * high + LENGTH_MARGIN
 
 
 def _similar(raw: str, text: str) -> bool:
     return SequenceMatcher(None, raw, text, autojunk=False).ratio() >= MIN_SIMILARITY
 
 
-def build(draft: dict, transcript: dict, reactions: dict | None) -> tuple[dict, dict]:
+def build(
+    draft: dict, transcript: dict, reactions: dict | None, names: set[str] | None = None
+) -> tuple[dict, dict]:
     """(seisho.json の中身, 数)。全区間を原文の順に残す。"""
+    segs = transcript["segments"]
+    ids = {s["id"] for s in segs}
     written: dict[str, list[dict]] = {}
     for row in draft["lines"]:
         written.setdefault(row["seg_id"], []).append(row)
-    marks = marks_after(transcript["segments"], reactions["reactions"]) if reactions else {}
+    marks = marks_after(segs, reactions["reactions"]) if reactions else {}
+    stats = dict.fromkeys(
+        ("changed", "kept_raw", "missing", "duplicate", "empty", "heavy", "unknown_speaker"), 0
+    )
     lines = []
-    changed = kept_raw = missing = 0
-    for i, seg in enumerate(transcript["segments"]):
+    for i, seg in enumerate(segs):
         raw = seg["text"].strip()
         rows = written.get(seg["id"], [])
         row = rows[0] if len(rows) == 1 else None
-        if row is None and raw:  # 空の区間は役に渡していない
-            missing += 1
+        if len(rows) > 1:
+            stats["duplicate"] += 1
+        elif row is None and raw:  # 空の区間は役に渡していない
+            stats["missing"] += 1
         text = row["text"].strip() if row else raw
         speaker = (row["speaker"] or None) if row else None
-        if not text or not _similar(raw, text):
-            if row is not None and raw:
-                kept_raw += 1
-            text = raw
-        line = {
-            "seg_id": seg["id"],
-            "speaker": speaker,
-            "text": text,
-            "raw": raw,
-            "changed": text != raw,
-        }
+        if speaker is not None and names is not None and speaker not in names:
+            speaker = None
+            stats["unknown_speaker"] += 1
+        line = {"seg_id": seg["id"], "speaker": speaker, "text": text, "raw": raw, "changed": False}
+        if row is not None and raw and not text:
+            stats["empty"] += 1
+            line["text"] = raw
+        elif not _length_ok(raw, text):
+            stats["kept_raw"] += 1
+            line["text"] = raw
+            line["proposal"] = text  # 演者が確かめられるように案は残す
+        elif not _similar(raw, text):
+            stats["heavy"] += 1
+            line["heavy"] = True
+        line["changed"] = line["text"] != raw
         if marks.get(i):
             line["marks"] = marks[i]
-        changed += line["changed"]
+        stats["changed"] += line["changed"]
         if raw or line.get("marks"):
             lines.append(line)
     doc = {"schema_version": 1, "koza_id": transcript["koza_id"], "lines": lines}
-    return doc, {"lines": len(lines), "changed": changed, "kept_raw": kept_raw, "missing": missing}
+    extra = sum(1 for k in written if k not in ids)
+    return doc, {"lines": len(lines), "extra": extra, **stats}
 
 
 def markdown(koza: dict, doc: dict) -> str:
@@ -66,5 +86,8 @@ def markdown(koza: dict, doc: dict) -> str:
         who = f"{line['speaker']}（推定）：" if line["speaker"] else ""
         out.append(f"{who}{line['text']}{''.join(line.get('marks', []))}")
         if line["changed"]:
-            out.append(f"　（原文：{line['raw']}）")
+            note = "大きく直した。原文" if line.get("heavy") else "原文"
+            out.append(f"　（{note}：{line['raw']}）")
+        if "proposal" in line:
+            out.append(f"　（長さが大きく変わるので原文のまま。案：{line['proposal']}）")
     return "\n".join(out).rstrip() + "\n"
