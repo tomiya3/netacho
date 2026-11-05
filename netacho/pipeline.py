@@ -316,7 +316,7 @@ def build(
         first, _ = deshi_pass(ctx, doc, questions, base_round + 1)
         save_review(ctx, doc, questions)
         record(first, None)
-        rework = review.rework_of(first)
+        rework = review.rework_of(first) + merge.id_rework(ctx.hanashi, ctx.kata)
         if rework:
             touched = write_pass(ctx, rework=rework, suffix="-2")
             second, dropped = deshi_pass(ctx, doc, questions, base_round + 2)

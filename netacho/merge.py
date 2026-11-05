@@ -55,6 +55,28 @@ def _union(old: list[dict], new: list[dict]) -> list[dict]:
     return list(merged.values())
 
 
+def hold_internal_ids(hanashi: dict, kata: dict) -> None:
+    """文に内部の番号が残る項目を保留にする。前の版の帳面も見る。解けるのは書き直されたときだけ。"""
+    for item in hanashi["items"] + kata["items"]:
+        if item["edited_by"] == "tool" and has_internal_id(item["text"]):
+            item["held"] = True
+            item["held_reason"] = "internal_id"
+
+
+def id_rework(hanashi: dict, kata: dict) -> list[dict]:
+    """番号の残る項目への差し戻し。保留は弟子役に見えないので、スクリプトが出す。"""
+    return [
+        {
+            "kind": "unclear_scene",
+            "anchor": {"item_id": i["id"]},
+            "attempt": "この項目の文を読もうとした",
+            "what_is_missing": "文に内部の番号が残っている。番号を使わず、場面の名前や台詞で書き直す",
+        }
+        for i in hanashi["items"] + kata["items"]
+        if i.get("held_reason") == "internal_id" and i["edited_by"] == "tool"
+    ]
+
+
 def merge(
     hanashi: dict,
     kata: dict,
@@ -82,11 +104,9 @@ def merge(
                     {"at": at, "before": old["text"], "after": row["text"], "by": "writer"},
                 ]
         # knowledge は照合を通らないので、保留の項目を knowledge に書き換えても保留は外れない
-        if it["id"] in held_ids or (old is not None and old.get("held") and row["basis"] == "knowledge"):
+        unproved = old is not None and old.get("held") and old.get("held_reason") != "internal_id"
+        if it["id"] in held_ids or (unproved and row["basis"] == "knowledge"):
             row["held"] = True
-        if has_internal_id(row["text"]):
-            row["held"] = True
-            row["held_reason"] = "internal_id"
         target = books[it["book"]]
         other = books["kata" if it["book"] == "hanashi" else "hanashi"]
         other["items"] = [i for i in other["items"] if i["id"] != it["id"]]  # 帳面を移ったとき
@@ -96,6 +116,7 @@ def merge(
                 break
         else:
             target["items"].append(row)
+    hold_internal_ids(hanashi, kata)
     ordered = sorted(_union(hanashi["scenes"], scenes), key=lambda s: (s["order"], s["id"]))
     merged_scenes = [{**s, "order": n} for n, s in enumerate(ordered, start=1)]
     merged_chars = _union(hanashi["characters"], characters)

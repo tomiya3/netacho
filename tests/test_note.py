@@ -1,7 +1,6 @@
 """netacho note のテスト。"""
 
 import json
-from pathlib import Path
 
 import pytest
 from fakes import ScriptedClient, text_of
@@ -215,7 +214,7 @@ def test_volume_is_not_used_to_explain_reactions():
     assert pipeline.note_is_ok("回収の後に、反応候補が少ない所です。")
 
 
-def test_old_wording_is_gone_from_what_the_performer_reads():
-    root = Path(__file__).parents[1]
-    assert "音量" not in (root / "roles" / "noter.md").read_text(encoding="utf-8")
-    assert "音量" not in (root / "netacho" / "render.py").read_text(encoding="utf-8")
+def test_note_header_does_not_say_volume(data, tmp_path):
+    built(data, tmp_path)
+    run_note(data, tmp_path, note_doc(("cand-0001", "見立ての回収の後に、反応候補が少ない所です。")))
+    assert "音量" not in (store.Neta(P, N, data).koza_dir(K) / "note.md").read_text(encoding="utf-8")

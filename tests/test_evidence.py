@@ -219,12 +219,21 @@ def test_scenes_and_timeline(transcript):
 
 
 @pytest.mark.parametrize(
-    "text", ["scene-07 の最後", "item-0048 の後", "char-01 が言う", "seg-0012", "ｓｃｅｎｅ－０７ の最後"]
+    "text",
+    [
+        "scene-07 の最後",
+        "item-0048 の後",
+        "char-01 が言う",
+        "seg-0012",
+        "ｓｃｅｎｅ－０７ の最後",
+        "Scene-07 の最後",
+        "scene_07 の最後",
+    ],
 )
 def test_internal_id_is_found(text):
     assert evidence.has_internal_id(text)
 
 
-@pytest.mark.parametrize("text", ["結びの一番の最後", "item の話", "scene が変わる", "二番-3"])
+@pytest.mark.parametrize("text", ["結びの一番の最後", "item の話", "scene が変わる", "二番-3", "mischar-1"])
 def test_ordinary_text_is_not_an_internal_id(text):
     assert not evidence.has_internal_id(text)
