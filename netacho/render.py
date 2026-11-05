@@ -68,6 +68,15 @@ def clock(t: float) -> str:
     return f"{int(t // 60)}:{int(t % 60):02d}"
 
 
+def _rate_line(gaps: dict) -> list[str]:
+    if gaps["peak_rate"] is None or gaps["baseline_rate"] is None:
+        return []
+    return [
+        f"- 予測の窓 {gaps['peak_n']} 件のうち、笑いの山（弱い山を含む）がある割合 {gaps['peak_rate']:.0%}。"
+        f"同じ長さの窓を音声全体に置くと {gaps['baseline_rate']:.0%}"
+    ]
+
+
 def gaps_markdown(gaps: dict, items: dict) -> list[str]:
     """予測と実際の比較。判定できない高座では、そう書く。"""
     if not gaps["judged"]:
@@ -77,11 +86,12 @@ def gaps_markdown(gaps: dict, items: dict) -> list[str]:
         "",
         "Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。",
         "",
-        f"- 的中 {len(gaps['hits'])}、空振り {len(gaps['misses'])}、"
+        f"- 的中 {len(gaps['hits'])}、弱い山 {len(gaps['weak'])}、空振り {len(gaps['misses'])}、"
         f"予測なしで反応あり {gaps['surprise_total']}",
         f"- 笑い {gaps['laughs_total']} か所のうち、予測の窓に入ったのは {gaps['laughs_hit']} か所。"
         f"窓は音声の {gaps['window_share']:.0%} を覆っている",
         "- 空振りは、検出できなかっただけのこともあります。反応が無かったという意味ではありません",
+        *_rate_line(gaps),
         "",
     ]
     if gaps["surprises"]:

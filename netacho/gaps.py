@@ -2,8 +2,9 @@
 
 構成作家役は反応を見ずに回収を書く。ここでその予測と AST の笑いを重ねて、3 つに分ける。
 
-- 的中：予測した回収の窓に笑いがある
-- 空振り：予測した回収の窓に、反応の候補が無い
+- 的中：予測した回収の窓に笑いの山がある
+- 弱い山：強い山には届かないが、下限（LAUGH_FLOOR）を超える山がある
+- 空振り：予測した回収の窓に、山が見つからない
 - 予測なしで反応あり：どの回収の窓にも入らない笑い。文字に書けない芸の候補
 
 未検出を反応なしと扱わない。自動の反応が無い高座は判定しない。録音の末尾で切れた窓は空振りにしない。
@@ -13,7 +14,7 @@
 from __future__ import annotations
 
 from . import candidates
-from .reactions import clock, covered_seconds
+from .reactions import LAUGH_FLOOR, clock, covered_seconds, peak_share, window_peak
 
 SURPRISE_MAX = 5  # 演者に問う数の上限。強い順
 BUNDLE_SEC = 15.0  # これより近い笑いは 1 つの山として、問いは強い 1 件だけにする
@@ -56,16 +57,26 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
     end = covered_seconds(reactions)
     laughs = [r for r in reactions["reactions"] if r["kind"] == "laugh" and r["method"] == "auto"]
     judged = bool(laughs)  # 自動の笑いが 1 件も無ければ比べない（全部の予測を空振りにしない）
-    hits, misses, windows = [], [], []
+    hits, weak, misses, windows = [], [], [], []
+    peaks: list[float] = []
+    whole: list[float] = []
     used: set[str] = set()
     for it in candidates.payoff_items(items, koza_id) if judged else []:
         window, clipped = candidates.window_of(it, end)
         windows.append(window)
         found = candidates.overlapping(laughs, window[0], window[1])
+        peak = window_peak(reactions, window[0], window[1])
+        if not clipped:  # 予測も基準もスコアだけで数える（的中の判定を混ぜると予測に有利になる）
+            peaks.append(peak)
+            whole.append(window[1] - window[0])
         if found:
             hits.append({"item_id": it["id"], "reaction_ids": [r["id"] for r in found]})
             used |= {r["id"] for r in found}
-        elif not clipped:
+        elif clipped:
+            continue  # 録音の末尾で切れた窓は判定しない
+        elif peak >= LAUGH_FLOOR:
+            weak.append({"item_id": it["id"], "peak": peak})
+        else:
             misses.append({"item_id": it["id"]})
     scene_of = {s["seg_id"]: s["scene_id"] for s in (timeline or {"segments": []})["segments"]}
 
@@ -93,22 +104,35 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
         "koza_id": koza_id,
         "judged": judged,
         "hits": hits,
+        "weak": weak,
         "misses": misses,
         "surprises": surprises,
         "surprise_total": len(rest),
         "laughs_total": len(laughs),
         "laughs_hit": len(used),
         "window_share": _window_share(windows, end),
+        # 予測と基準は同じ定義で数える。録音の末尾で切れた窓は両方から外す
+        "peak_rate": _rate(sum(p >= LAUGH_FLOOR for p in peaks), sum(p < LAUGH_FLOOR for p in peaks)),
+        "peak_n": len(peaks),
+        "baseline_rate": peak_share(reactions, whole),
     }
 
 
+def _rate(found: int, rest: int) -> float | None:
+    return round(found / (found + rest), 3) if found + rest else None
+
+
 def counts(doc: dict) -> dict:
-    hit, miss = len(doc["hits"]), len(doc["misses"])
+    hit, weak, miss = len(doc["hits"]), len(doc["weak"]), len(doc["misses"])
     return {
         "hit": hit,
+        "weak": weak,
         "miss": miss,
         "surprise": doc["surprise_total"],
-        "hit_rate": round(hit / (hit + miss), 3) if hit + miss else None,
+        "hit_rate": _rate(hit, weak + miss),
+        "peak_rate": doc["peak_rate"],
+        "peak_n": doc["peak_n"],
+        "baseline_rate": doc["baseline_rate"],
         "laughs_total": doc["laughs_total"],
         "laughs_hit": doc["laughs_hit"],
         "window_share": doc["window_share"],

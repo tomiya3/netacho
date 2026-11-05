@@ -74,6 +74,29 @@ def test_applause_does_not_count_as_strength():
     assert whys(candidates.select(items, doc(*rows))) == []
 
 
+def test_weak_peak_is_not_a_candidate():
+    d = doc(react(9, 1.0, 2.0, 1), seconds=60)
+    d["scores"].update(window=5.0, stride=2.0, laugh=[0.0] * 4 + [0.1] + [0.0] * 24)
+    assert candidates.select([item(1, 10.0)], d)["candidates"] == []
+
+
+def test_candidates_are_capped_with_clear_kinds_first():
+    items = [item(i, 10.0 * i) for i in range(1, 9)]
+    items[7]["kind"] = "サゲ"
+    r = candidates.select(items, doc(react(9, 1.0, 2.0, 1), seconds=200))
+    assert r["total"] == 8 and len(r["candidates"]) == candidates.NOTE_MAX
+    assert "item-0008" in [c["item_id"] for c in r["candidates"]]
+    assert any("8 件のうち" in n for n in r["notices"])
+
+
+def test_smaller_priority_number_comes_first():
+    """priority は 1 が要。同じ kind なら小さい数を先に残す。"""
+    items = [{**item(i, 10.0 * i), "priority": 3} for i in range(1, 8)]
+    items[6]["priority"] = 1
+    r = candidates.select(items, doc(react(9, 1.0, 2.0, 1), seconds=200))
+    assert "item-0007" in [c["item_id"] for c in r["candidates"]]
+
+
 def test_lower_quarter_is_low_rank():
     items = [item(i, 10.0 * i) for i in range(1, 9)]
     rows = [react(i, 10.0 * i + 1, 10.0 * i + 2, rank=i) for i in range(1, 9)]

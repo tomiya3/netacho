@@ -5,7 +5,7 @@ import json
 from fakes import ScriptedClient, text_of
 from test_build import K, N, P, draft, draft_item, verdicts
 
-from netacho import gaps, performer, pipeline, store
+from netacho import gaps, performer, pipeline, reactions, store
 from netacho.budget import Budget
 
 
@@ -41,8 +41,8 @@ TIMELINE = {
 }
 
 
-def compare(items, reactions):
-    return gaps.compare(items, reactions, TRANSCRIPT, TIMELINE)
+def compare(items, doc_):
+    return gaps.compare(items, doc_, TRANSCRIPT, TIMELINE)
 
 
 def test_three_groups():
@@ -148,6 +148,77 @@ def test_laugh_without_scene_does_not_use_a_slot():
     r = gaps.compare([], doc(*rows), TRANSCRIPT, tl)
     assert [s["reaction_id"] for s in r["surprises"]] == ["react-0002"]
     assert r["surprise_total"] == 2
+
+
+def scored(seconds, peaks):
+    """{秒: スコア} の笑いのスコアを持つ doc。"""
+    n = int((seconds - 5) / 2) + 1
+    laugh = [0.0] * n
+    for t, v in peaks.items():
+        laugh[int((t - 2.5) / 2)] = v
+    d = doc(react(1, 80.0, 82.0, 1), seconds=seconds)
+    d["scores"].update(window=5.0, stride=2.0, laugh=laugh)
+    return d
+
+
+def test_weak_peak_is_not_a_miss():
+    r = compare([item(1, 10.0), item(2, 40.0)], scored(100.0, {12.5: 0.1}))
+    assert [w["item_id"] for w in r["weak"]] == ["item-0001"]
+    assert [m["item_id"] for m in r["misses"]] == ["item-0002"]
+    c = gaps.counts(r)
+    assert (c["hit"], c["weak"], c["miss"], c["peak_rate"]) == (0, 1, 1, 0.5)
+
+
+def test_baseline_counts_every_position_with_the_same_rule():
+    """長さ 10 秒の窓を 2 秒刻みで全部の位置に置く。山は 12.5 秒に 1 つ。"""
+    d = scored(50.0, {12.5: 0.1})
+    # 開始 4〜12 秒の 5 位置が山を含む。位置は 0〜40 秒の 21 個
+    assert reactions.peak_share(d, [10.0]) == round(5 / 21, 3)
+    assert reactions.peak_share(d, [10.0, 10.0]) == round(5 / 21, 3)
+    assert reactions.peak_share(d, []) is None
+    assert reactions.peak_share({"scores": {"seconds": 10.0}}, [5.0]) is None
+
+
+def test_peak_rate_uses_scores_only():
+    """予測も基準もスコアだけで数える。的中の判定を混ぜない。"""
+    d = doc(react(1, 11.0, 12.0, 1), seconds=100.0)
+    d["scores"].update(window=5.0, stride=2.0, laugh=[0.0] * 48)
+    r = compare([item(1, 10.0)], d)
+    assert len(r["hits"]) == 1 and r["peak_rate"] == 0.0
+
+
+def test_clipped_window_is_not_weak_either():
+    r = compare([item(1, 98.0)], scored(100.0, {96.5: 0.1}))
+    assert r["weak"] == [] and r["misses"] == [] and r["peak_n"] == 0
+
+
+def test_long_audio_is_fast():
+    """2 時間分のスコアでも、基準はすぐ出る。"""
+    import time
+
+    n = 3600
+    d = {"scores": {"window": 5.0, "stride": 2.0, "seconds": 7200.0, "laugh": [0.0] * n}}
+    t0 = time.time()
+    assert reactions.peak_share(d, [12.0, 12.0, 15.0, 20.0] * 30) == 0.0
+    assert time.time() - t0 < 2.0
+
+
+def test_window_before_the_first_center_is_empty():
+    d = scored(50.0, {12.5: 0.1})
+    assert reactions.window_peak(d, 0.0, 1.0) == 0.0
+
+
+def test_window_edges_are_half_open():
+    d = scored(50.0, {12.5: 0.1})
+    assert reactions.window_peak(d, 12.5, 14.0) == 0.1
+    assert reactions.window_peak(d, 11.0, 12.5) == 0.0
+
+
+def test_peak_rate_uses_the_same_rule_and_leaves_clipped_windows_out():
+    items = [item(1, 10.0), item(2, 40.0), item(3, 98.0)]
+    d = scored(100.0, {12.5: 0.1, 96.5: 0.1})
+    r = compare(items, d)
+    assert r["peak_n"] == 2 and r["peak_rate"] == 0.5  # 末尾で切れた item-0003 は分母に入らない
 
 
 def test_no_prediction_rate_is_none():

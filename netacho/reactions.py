@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
+from math import ceil
 from pathlib import Path
 
 LAUGH_PEAK_RATIO = 0.5  # 高座の笑いの最大値に対する割合
@@ -105,6 +107,41 @@ def covered_seconds(doc: dict) -> float | None:
     """音声の長さ。スコアの無い物は None。"""
     scores = doc.get("scores")
     return scores["seconds"] if scores else None
+
+
+def window_peak(doc: dict, t0: float, t1: float) -> float:
+    """半開区間 [t0, t1) に中央が入る窓の、笑いのスコアの最大。スコアの無い物は 0。
+
+    区間は刻み幅より長い前提（短いと中央が 1 つも入らない）。
+    """
+    scores = doc.get("scores")
+    if not scores or not scores.get("laugh"):
+        return 0.0
+    half, stride = scores["window"] / 2, scores["stride"]
+    lo = max(ceil((t0 - half) / stride), 0)  # 中央が t0 以上の最初の窓。全部を走査しない
+    hi = max(ceil((t1 - half) / stride), 0)  # 負だと末尾から数えるスライスになる
+    return max(scores["laugh"][lo:hi], default=0.0)
+
+
+def peak_share(doc: dict, widths: list[float], floor: float = LAUGH_FLOOR) -> float | None:
+    """基準の割合。予測の窓と同じ長さの窓を、音声全体の全部の位置に置いたとき、floor 以上の山がある割合。
+
+    長さごとの割合を、予測の窓の数で重みを付けて平均する。同じ長さは 1 度だけ数える。
+    """
+    seconds = covered_seconds(doc)
+    scores = doc.get("scores")
+    if not seconds or not scores or not scores.get("laugh") or not widths:
+        return None
+    stride = scores["stride"]
+    total = weight = 0.0
+    for width, n in Counter(round(w, 3) for w in widths).items():
+        count = int((seconds - width) // stride) + 1
+        if count <= 0:
+            continue
+        found = sum(window_peak(doc, i * stride, i * stride + width) >= floor for i in range(count))
+        total += n * found / count
+        weight += n
+    return round(total / weight, 3) if weight else None
 
 
 def build(scores: dict, transcript: dict) -> dict:

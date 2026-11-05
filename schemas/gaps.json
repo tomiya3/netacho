@@ -14,7 +14,11 @@
     "surprise_total",
     "laughs_total",
     "laughs_hit",
-    "window_share"
+    "window_share",
+    "weak",
+    "peak_rate",
+    "baseline_rate",
+    "peak_n"
   ],
   "properties": {
     "schema_version": {
@@ -133,6 +137,45 @@
     "window_share": {
       "type": "number",
       "description": "予測の窓が音声を覆う割合。大きいほど的中しやすい"
+    },
+    "weak": {
+      "type": "array",
+      "description": "強い山には届かないが、弱い山がある予測",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item_id",
+          "peak"
+        ],
+        "properties": {
+          "item_id": {
+            "type": "string"
+          },
+          "peak": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "peak_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "予測の窓のうち、笑いの山（弱い山を含む）がある割合"
+    },
+    "baseline_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "音声全体を同じ長さの窓で見たときの同じ割合。予測の値と比べる"
+    },
+    "peak_n": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "割合の分母。録音の末尾で切れた窓は入れない"
     }
   }
 }

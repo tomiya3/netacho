@@ -233,7 +233,11 @@
         "hit_rate",
         "laughs_total",
         "laughs_hit",
-        "window_share"
+        "window_share",
+        "weak",
+        "peak_rate",
+        "baseline_rate",
+        "peak_n"
       ],
       "description": "笑いどころの予測と実際の比較",
       "properties": {
@@ -265,6 +269,26 @@
         },
         "window_share": {
           "type": "number"
+        },
+        "weak": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "peak_rate": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "baseline_rate": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "peak_n": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

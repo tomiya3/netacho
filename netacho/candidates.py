@@ -6,10 +6,12 @@
 
 from __future__ import annotations
 
-from .reactions import covered_seconds
+from .reactions import LAUGH_FLOOR, covered_seconds, window_peak
 
 WINDOW_SEC = 6.0  # 回収の終わりから見る長さ。暫定
 LOW_FRACTION = 4  # 下位 4 分の 1
+NOTE_MAX = 6  # 演者に見せる候補の上限。多いと読まれない。暫定
+FIRST_KINDS = ("サゲ", "地口", "見立て")  # 仕込みのはっきりした物を先に見せる
 
 
 def payoff_items(items: list[dict], koza_id: str) -> list[dict]:
@@ -53,7 +55,8 @@ def select(items: list[dict], reactions: dict) -> dict:
         window, clipped = window_of(it, end)
         hits = overlapping(reactions["reactions"], window[0], window[1])
         if not hits:
-            if not clipped and has_auto:
+            # 弱い山があれば「候補が少ない」とは言わない
+            if not clipped and has_auto and window_peak(reactions, *window) < LAUGH_FLOOR:
                 silent.append((it, window))
             continue
         # 笑い同士で比べる。拍手が重なっただけで「強い」側に回さない。窓にあること自体は候補として数える
@@ -73,8 +76,14 @@ def select(items: list[dict], reactions: dict) -> dict:
         weakest = []
     rows = [(it, w, [], "no_candidate") for it, w in silent]
     rows += [(it, w, ids, "low_rank") for _, it, w, ids in weakest]
-    rows.sort(key=lambda r: r[0]["payoff"]["t1"])
+    total = len(rows)
+    rows.sort(
+        key=lambda r: (r[0].get("kind") not in FIRST_KINDS, r[0].get("priority", 2), r[0]["payoff"]["t1"])
+    )
+    rows = sorted(rows[:NOTE_MAX], key=lambda r: r[0]["payoff"]["t1"])
     notices = []
+    if total > NOTE_MAX:
+        notices.append(f"候補 {total} 件のうち、仕込みのはっきりした物から {NOTE_MAX} 件を出しています。")
     if has_manual:
         notices.append("この高座の反応は手で付けたものです。")
     if not has_auto:
@@ -85,6 +94,7 @@ def select(items: list[dict], reactions: dict) -> dict:
         "schema_version": 1,
         "koza_id": koza_id,
         "notices": notices,
+        "total": total,
         "candidates": [
             {
                 "id": "cand-"

@@ -85,6 +85,11 @@
         "type": "string"
       },
       "description": "候補を選ばなかった理由など。スクリプトが書く"
+    },
+    "total": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "絞る前の候補の数"
     }
   }
 }
