@@ -30,7 +30,7 @@ ROLES = {
     "deshi": (OPUS, "high", 8000),
     "scribe": (OPUS, "high", 32000),
     "aligner": (OPUS, "high", 32000),
-    "asker": (OPUS, "high", 4000),
+    "asker": (OPUS, "high", 16000),
 }
 
 

@@ -569,15 +569,8 @@ def note(
 
 
 COMPARE_QUESTIONS = 5  # 2 本の比較で演者に問う数。多いと答えてもらえない
+COMPARE_CANDIDATES = 10  # 聞き役に見せる所の数。聞く価値が無ければ飛ばすので、多めに渡す
 CLEAN_MIN = 0.9  # 文字起こしの行のうち、清書で読める割合の下限
-FIXED_ASK = {
-    "kept": "ここ、2 本とも同じ言葉ですね。ここは変えない所ですか？",
-    "moved": "ここ、来る所が 2 本でずれてますね。わざとですか？",
-    "ma": "ここ、一言の前の間が 2 本で違いますね。わざとですか？",
-    "one_side": "ここ、片方の録音でだけ拾えています。何か変えましたか？",
-    "words": "ここ、言い方を変えてますね。わざとですか？",
-    "added": "ここの言葉、もう 1 本にはありませんね。その場で足したんですか？",
-}
 
 
 def compare_side(neta: store.Neta, koza_id: str) -> compare.Side:
@@ -595,16 +588,10 @@ def compare_side(neta: store.Neta, koza_id: str) -> compare.Side:
     return compare.side_of(koza_id, transcript, lines, reactions, timeline)
 
 
-def ask_rows(spots: list[dict], other: str) -> list[dict]:
-    """聞き役に見せる物：所の種類と、2 本の台詞だけ。"""
+def ask_rows(spots: list[dict], a: compare.Side, b: compare.Side, other: str) -> list[dict]:
+    """聞き役に見せる物：所の種類と、前後の台詞。録音とスコアは見せない。"""
     return [
-        {
-            "spot_id": s["id"],
-            "kind": s["kind"],
-            "other": other,
-            "quote_a": s["a"]["quote"],
-            "quote_b": s["b"]["quote"] if s["b"] else "",
-        }
+        {"spot_id": s["id"], "kind": s["kind"], "other": other, **compare.context_rows(s, a, b)}
         for s in spots
     ]
 
@@ -657,7 +644,7 @@ def compare_koza(
         raise store.StoreError("1 本目に笑いがほぼ無い。--koza に本番、--with-koza に稽古を指定する")
     titles = {s["id"]: s["title"] for s in ctx.hanashi["scenes"]}
     kdir = ctx.neta.koza_dir(koza_id)
-    fallback = added = 0
+    fallback = added = skipped = 0
     doc = {"share": 0.0, "spots": [], "dropped": 0}
     try:
         content = align_content(a, b, title or ctx.koza["neta"])
@@ -666,17 +653,10 @@ def compare_koza(
         doc = {**compare.compare(a, b, draft, titles), "other_neta": other.neta}
         if doc["comparable"]:
             known = [s for s in doc["spots"] if s["scene_id"] in titles]
-            chosen = compare.select(known, COMPARE_QUESTIONS)
-            content = [
-                {
-                    "type": "text",
-                    "text": json.dumps(
-                        ask_rows(chosen, "稽古" if doc["practice"] else "もう 1 本"),
-                        ensure_ascii=False,
-                        indent=1,
-                    ),
-                }
-            ]
+            chosen = compare.select(known, COMPARE_CANDIDATES)
+            other_name = "稽古" if doc["practice"] else "もう 1 本"
+            rows = ask_rows(chosen, a, b, other_name)
+            content = [{"type": "text", "text": json.dumps(rows, ensure_ascii=False, indent=1)}]
             reply = (
                 call_role(ctx.client, "asker", content, "asker", ctx.usage, ctx.budget, ctx.cache)
                 if chosen
@@ -685,15 +665,27 @@ def compare_koza(
             store.write(
                 ctx.neta.drafts / "asker.json", reply or {"schema_version": 1, "questions": []}, "asker"
             )
-            written: dict[str, list[str]] = {}
+            shown = {r["spot_id"]: r for r in rows}
+            written: dict[str, list[dict]] = {}
             for row in (reply or {"questions": []})["questions"]:
-                written.setdefault(row["spot_id"], []).append(row["text"].strip())
+                written.setdefault(row["spot_id"], []).append(row)
             review_doc, questions = read_review(ctx.neta)
             drop_open_asks(review_doc, questions)
             issue_of = {i["attempt"]: i["id"] for i in review_doc["issues"]}
             n_issue = max((int(i["id"].split("-")[1]) for i in review_doc["issues"]), default=0) + 1
             n_q = max((int(q["id"].split("-")[1]) for q in questions["questions"]), default=0) + 1
             for spot in chosen:
+                if added == COMPARE_QUESTIONS:
+                    break
+                got = written.get(spot["id"], [])
+                row = got[0] if len(got) == 1 else None
+                if row is None or not row["ask"]:
+                    skipped += 1
+                    continue
+                words = row["text"].strip()
+                if not compare.settle(spot, row, a, b, shown[spot["id"]]) or not ask_is_ok(words, spot):
+                    fallback += 1  # 場所の合わない問いは出さない
+                    continue
                 # 種類も入れる。やり直しで種類が変わった所に、古い問いの文を残さない
                 attempt = (
                     f"{render.clock(spot['a']['t'])} の比較（{koza_id} と {other_koza}、{spot['kind']}）"
@@ -703,11 +695,7 @@ def compare_koza(
                     if q is not None:
                         q["spot_id"] = spot["id"]
                     continue
-                texts = written.get(spot["id"], [])
-                ok = len(texts) == 1 and ask_is_ok(texts[0], spot)
-                fallback += 0 if ok else 1
                 issue_id, q_id = f"issue-{n_issue:04d}", f"q-{n_q:04d}"
-                words = texts[0] if ok else FIXED_ASK[spot["kind"]]
                 review_doc["issues"].append(
                     {
                         "id": issue_id,
@@ -747,6 +735,7 @@ def compare_koza(
             "spots": len(doc["spots"]),
             "questions": added,
             "fallback": fallback,
+            "skipped": skipped,
             "dropped": doc["dropped"],
         }
         store.write(kdir / "run.json", ctx.usage.to_json(), "run")

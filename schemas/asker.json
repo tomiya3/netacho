@@ -19,11 +19,34 @@
         "additionalProperties": false,
         "required": [
           "spot_id",
+          "a_seg",
+          "b_seg",
+          "relation",
+          "ask",
           "text"
         ],
         "properties": {
           "spot_id": {
             "type": "string"
+          },
+          "a_seg": {
+            "type": "string"
+          },
+          "b_seg": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "relation": {
+            "enum": [
+              "same",
+              "changed",
+              "none"
+            ]
+          },
+          "ask": {
+            "type": "boolean"
           },
           "text": {
             "type": "string"

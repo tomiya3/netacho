@@ -99,7 +99,9 @@
           "a",
           "b",
           "laugh_a",
-          "laugh_b"
+          "laugh_b",
+          "span_a",
+          "span_b"
         ],
         "properties": {
           "id": {
@@ -188,6 +190,31 @@
           },
           "ma_b": {
             "type": "number"
+          },
+          "span_a": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "span_b": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       }
