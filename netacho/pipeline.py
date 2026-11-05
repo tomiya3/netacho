@@ -626,64 +626,70 @@ def compare_koza(
     doc = {**compare.compare(a, b, titles), "other_neta": other.neta}
     kdir = ctx.neta.koza_dir(koza_id)
     fallback = added = 0
-    if doc["comparable"]:
-        chosen = [s for s in compare.select(doc["spots"], COMPARE_QUESTIONS) if s["scene_id"] in titles]
-        text = json.dumps(ask_rows(chosen), ensure_ascii=False, indent=1)
-        content = [{"type": "text", "text": text}]
-        reply = (
-            call_role(ctx.client, "asker", content, "asker", ctx.usage, ctx.budget, ctx.cache)
-            if chosen
-            else None
-        )
-        store.write(ctx.neta.drafts / "asker.json", reply or {"schema_version": 1, "questions": []}, "asker")
-        written: dict[str, list[str]] = {}
-        for row in (reply or {"questions": []})["questions"]:
-            written.setdefault(row["spot_id"], []).append(row["text"].strip())
-        review_doc, questions = read_review(ctx.neta)
-        asked = {i["attempt"] for i in review_doc["issues"]}
-        n_issue = max((int(i["id"].split("-")[1]) for i in review_doc["issues"]), default=0) + 1
-        n_q = max((int(q["id"].split("-")[1]) for q in questions["questions"]), default=0) + 1
-        for spot in chosen:
-            attempt = f"{render.clock(spot['a']['t'])} の比較（{koza_id} と {other_koza}）"
-            texts = written.get(spot["id"], [])
-            ok = len(texts) == 1 and ask_is_ok(texts[0], spot)
-            fallback += 0 if ok else 1
-            if attempt in asked:
-                continue
-            issue_id, q_id = f"issue-{n_issue:04d}", f"q-{n_q:04d}"
-            words = texts[0] if ok else FIXED_ASK[spot["kind"]]
-            review_doc["issues"].append(
-                {
-                    "id": issue_id,
-                    "role": "asker",
-                    "kind": "ask_performer",
-                    "anchor": {"scene_id": spot["scene_id"]},
-                    "attempt": attempt,
-                    "what_is_missing": words,
-                    "round": 1,
-                    "resolved": False,
-                }
+    try:
+        if doc["comparable"]:
+            chosen = [s for s in compare.select(doc["spots"], COMPARE_QUESTIONS) if s["scene_id"] in titles]
+            content = [{"type": "text", "text": json.dumps(ask_rows(chosen), ensure_ascii=False, indent=1)}]
+            reply = (
+                call_role(ctx.client, "asker", content, "asker", ctx.usage, ctx.budget, ctx.cache)
+                if chosen
+                else None
             )
-            questions["questions"].append(
-                {
-                    "id": q_id,
-                    "issue_id": issue_id,
-                    "scene_id": spot["scene_id"],
-                    "text": words,
-                    "spot_id": spot["id"],
-                }
+            store.write(
+                ctx.neta.drafts / "asker.json", reply or {"schema_version": 1, "questions": []}, "asker"
             )
-            spot["question_id"] = q_id
-            n_issue, n_q, added = n_issue + 1, n_q + 1, added + 1
-        save_review(ctx, review_doc, questions)
-    store.write(kdir / "compare.json", doc, "compare")
-    ctx.usage.extra["compare"] = {
-        "share": doc["share"],
-        "spots": len(doc["spots"]),
-        "questions": added,
-        "fallback": fallback,
-    }
-    store.write(kdir / "run.json", ctx.usage.to_json(), "run")
+            written: dict[str, list[str]] = {}
+            for row in (reply or {"questions": []})["questions"]:
+                written.setdefault(row["spot_id"], []).append(row["text"].strip())
+            review_doc, questions = read_review(ctx.neta)
+            issue_of = {i["attempt"]: i["id"] for i in review_doc["issues"]}
+            n_issue = max((int(i["id"].split("-")[1]) for i in review_doc["issues"]), default=0) + 1
+            n_q = max((int(q["id"].split("-")[1]) for q in questions["questions"]), default=0) + 1
+            for spot in chosen:
+                attempt = f"{render.clock(spot['a']['t'])} の比較（{koza_id} と {other_koza}）"
+                if attempt in issue_of:  # 既に問うた所。問いと比較の所のつながりだけ保つ
+                    q = next((x for x in questions["questions"] if x["issue_id"] == issue_of[attempt]), None)
+                    if q is not None:
+                        q["spot_id"], spot["question_id"] = spot["id"], q["id"]
+                    continue
+                texts = written.get(spot["id"], [])
+                ok = len(texts) == 1 and ask_is_ok(texts[0], spot)
+                fallback += 0 if ok else 1
+                issue_id, q_id = f"issue-{n_issue:04d}", f"q-{n_q:04d}"
+                words = texts[0] if ok else FIXED_ASK[spot["kind"]]
+                review_doc["issues"].append(
+                    {
+                        "id": issue_id,
+                        "role": "asker",
+                        "kind": "ask_performer",
+                        "anchor": {"scene_id": spot["scene_id"]},
+                        "attempt": attempt,
+                        "what_is_missing": words,
+                        "round": 1,
+                        "resolved": False,
+                    }
+                )
+                questions["questions"].append(
+                    {
+                        "id": q_id,
+                        "issue_id": issue_id,
+                        "scene_id": spot["scene_id"],
+                        "text": words,
+                        "spot_id": spot["id"],
+                    }
+                )
+                spot["question_id"] = q_id
+                n_issue, n_q, added = n_issue + 1, n_q + 1, added + 1
+            save_review(ctx, review_doc, questions)
+        store.write(kdir / "compare.json", doc, "compare")
+    finally:  # 落ちても、使った費用は実測として残す
+        ctx.usage.extra["compare"] = {
+            "share": doc["share"],
+            "spots": len(doc["spots"]),
+            "questions": added,
+            "fallback": fallback,
+        }
+        store.write(kdir / "run.json", ctx.usage.to_json(), "run")
     return doc
 
 

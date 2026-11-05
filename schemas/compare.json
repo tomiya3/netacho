@@ -11,6 +11,7 @@
     "other_neta",
     "share",
     "comparable",
+    "laughs_compared",
     "humps_a",
     "humps_b",
     "scenes",
@@ -188,6 +189,10 @@
         "type": "integer",
         "minimum": 0
       }
+    },
+    "laughs_compared": {
+      "type": "boolean",
+      "description": "片方に山が無ければ false で、笑いの比較はしない"
     }
   }
 }

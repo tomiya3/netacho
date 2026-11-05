@@ -304,6 +304,7 @@ function renderCompare(d) {
   if (!c.comparable) { root.append(el("div", { class: "notice" }, "2 本の文字が揃わないので、比べていません。")); return; }
   const skipped = c.scenes.filter(s => !s.compared).map(s => s.title || s.scene_id);
   if (skipped.length) root.append(el("div", { class: "notice" }, `揃わず比べなかった場面：${skipped.join("、")}`));
+  if (!c.laughs_compared) root.append(el("div", { class: "notice" }, "片方の録音で笑いの山を拾えていないので、笑いは比べていません。言葉の違いだけを出しています。"));
   root.append(el("h2", {}, c.koza_a));
   drawWave(root, d);
   root.append(el("h2", {}, c.koza_b));

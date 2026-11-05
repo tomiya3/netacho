@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import unicodedata
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
@@ -19,8 +20,9 @@ MIN_SHARE = 0.3  # 文字がこれしか揃わなければ、2 本を比べな�
 SAME_SEC = 6.0  # 笑いがこの範囲なら同じ所。窓の幅と刻みから
 MOVED_SEC = 20.0  # この範囲なら、来る所がずれたと見る
 KEPT_RATIO = 0.9  # 行の文字がこれだけ揃えば、言葉を変えていない
-MA_DIFF = 0.8  # 一言の前の間の差。これより小さい差は区間の誤差のうち。秒
-MIN_WORDS = 12  # 言葉を変えた所と見る最小の字数
+MA_DIFF = 0.8  # 一言の前の間の差。秒
+MA_NEAR = 1.0  # 行の始まりのこの範囲の無音を、一言の前の間と見る。区間の切れ目が揺れる分。秒
+MIN_WORDS = 30  # 言葉を変えた所と見る最小の字数。清書の揺れを拾わない長さ
 SPOT_GAP = 30.0  # 問う所をこれより近づけない。秒
 ROTATION = ("moved", "ma", "kept", "one_side", "words")
 QUOTE_MAX = 60
@@ -38,6 +40,7 @@ class Side:
     koza_id: str
     lines: list[dict]
     humps: list[float]
+    silences: list[list[float]] = field(default_factory=list)  # VAD の声の無い所
     chars: str = ""
     owner: list[int] = field(default_factory=list)
 
@@ -57,6 +60,11 @@ class Side:
         return found
 
 
+def silences_of(vad: list[dict]) -> list[list[float]]:
+    """声のある所の間。間は文字起こしの区間から取らない。同じ録音でも切れ目で数秒ずれるので。"""
+    return [[left["end"], right["start"]] for left, right in zip(vad, vad[1:], strict=False)]
+
+
 def side_of(koza_id: str, transcript: dict, lines: dict, reactions: dict, timeline: dict | None) -> Side:
     """`lines` は清書の行（`view.clean_lines`）。清書の無い区間は文字起こしのまま。"""
     scene_of = {s["seg_id"]: s["scene_id"] for s in (timeline or {"segments": []})["segments"]}
@@ -70,12 +78,11 @@ def side_of(koza_id: str, transcript: dict, lines: dict, reactions: dict, timeli
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": text,
-                    "pause_after": seg.get("pause_after") or 0.0,
                     "scene_id": scene_of.get(seg["id"]),
                 }
             )
     humps = [sum(h) / len(h) for h in laugh_humps(reactions) or []]
-    return Side(koza_id, rows, humps)
+    return Side(koza_id, rows, humps, silences_of(transcript.get("vad") or []))
 
 
 @dataclass
@@ -115,12 +122,17 @@ def _quote(side: Side, n: int) -> dict:
 
 
 def _expected(a: Side, b: Side, i: int, j: int, t: float) -> float:
-    """a の時刻 t に当たる、b の時刻。行の中の位置は、始まりからの秒で写す。"""
+    """a の時刻 t に当たる、b の時刻。行の中は始まりから、行の後は終わりからの秒で写す。"""
+    if t > a.lines[i]["end"]:  # 笑いは言い終えた後に来ることが多い
+        return b.lines[j]["end"] + t - a.lines[i]["end"]
     return b.lines[j]["start"] + min(t - a.lines[i]["start"], b.lines[j]["end"] - b.lines[j]["start"])
 
 
 def _pause_before(side: Side, n: int) -> float:
-    return side.lines[n - 1]["pause_after"] if n > 0 else 0.0
+    """行の始まりの近くの、一番長い無音。"""
+    t = side.lines[n]["start"]
+    near = [t1 - t0 for t0, t1 in side.silences if t0 < t + MA_NEAR and t1 > t - MA_NEAR]
+    return round(max(near, default=0.0), 2)
 
 
 def _laugh_spot(a: Side, b: Side, al: Alignment, t: float) -> dict | None:
@@ -137,7 +149,8 @@ def _laugh_spot(a: Side, b: Side, al: Alignment, t: float) -> dict | None:
     if gap > SAME_SEC:
         return {**spot, "kind": "moved", "laugh_a": t, "laugh_b": near}
     ma_a, ma_b = _pause_before(a, i), _pause_before(b, j)
-    if abs(ma_a - ma_b) >= MA_DIFF:
+    joined = al.pairs.get(i - 1) == j - 1  # 前の行も揃っているときだけ、同じ切れ目の間と言える
+    if joined and abs(ma_a - ma_b) >= MA_DIFF:
         return {**spot, "kind": "ma", "laugh_a": t, "laugh_b": near, "ma_a": ma_a, "ma_b": ma_b}
     if al.matched.get(i, 0.0) >= KEPT_RATIO:
         return {**spot, "kind": "kept", "laugh_a": t, "laugh_b": near}
@@ -169,7 +182,7 @@ def _one_side_b(a: Side, b: Side, al: Alignment) -> list[dict]:
     back: dict[int, int] = {}
     for i, j in al.pairs.items():
         back.setdefault(j, i)
-    spots = []
+    spots: list[dict] = []
     for t in b.humps:
         j = b.line_at(t)
         if j is None or j not in back:
@@ -215,15 +228,35 @@ def scene_rows(a: Side, al: Alignment, titles: dict) -> list[dict]:
     ]
 
 
+def _spot_id(spot: dict) -> str:
+    """中身から決める id。やり直しても、問いが別の所を指さないように。"""
+    key = f"{spot['kind']}|{spot['a']['t']}|{spot['b']['t']}"
+    return f"spot-{int(hashlib.sha256(key.encode()).hexdigest()[:8], 16)}"
+
+
+def _unique(spots: list[dict]) -> list[dict]:
+    """同じ行の組は 1 件にする。片方だけの笑いは、両側から同じ所として見つかる。"""
+    seen: set[tuple] = set()
+    out = []
+    for s in spots:
+        key = (s["kind"], s["a"]["t"], s["b"]["t"])
+        if key not in seen:
+            seen.add(key)
+            out.append(s)
+    return out
+
+
 def compare(a: Side, b: Side, titles: dict) -> dict:
     """2 本を比べる。揃わなければ `comparable` を false にして、所は出さない。"""
     al = align(a, b)
+    laughs = bool(a.humps and b.humps)  # 片方に山が 1 つも無ければ、検出の問題かもしれないので比べない
     head = {
         "schema_version": 1,
         "koza_a": a.koza_id,
         "koza_b": b.koza_id,
         "share": al.share,
         "comparable": al.share >= MIN_SHARE,
+        "laughs_compared": laughs,
         "humps_a": len(a.humps),
         "humps_b": len(b.humps),
     }
@@ -231,11 +264,13 @@ def compare(a: Side, b: Side, titles: dict) -> dict:
         return {**head, "scenes": [], "spots": [], "counts": {}}
     scenes = scene_rows(a, al, titles)
     shut = {s["scene_id"] for s in scenes if not s["compared"]}
-    found = [s for s in (_laugh_spot(a, b, al, t) for t in a.humps) if s is not None]
-    found += _one_side_b(a, b, al) + _word_spots(a, b, al)
+    found = _word_spots(a, b, al)
+    if laughs:
+        found = [s for s in (_laugh_spot(a, b, al, t) for t in a.humps) if s is not None] + found
+        found += _one_side_b(a, b, al)
     found = [s for s in found if s["scene_id"] is not None and s["scene_id"] not in shut]
     found.sort(key=lambda s: s["a"]["t"])
-    spots = [{"id": f"spot-{n:04d}", **s} for n, s in enumerate(found, start=1)]
+    spots = [{"id": _spot_id(s), **s} for s in _unique(found)]
     counts = {kind: sum(s["kind"] == kind for s in spots) for kind in ROTATION}
     return {**head, "scenes": scenes, "spots": spots, "counts": counts}
 

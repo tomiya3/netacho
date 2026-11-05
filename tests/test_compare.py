@@ -29,12 +29,12 @@ def side(koza, texts, humps, *, step=10.0, pauses=None):
             "start": n * step,
             "end": (n + 1) * step,
             "text": text,
-            "pause_after": (pauses or {}).get(n, 0.0),
             "scene_id": "scene-01",
         }
         for n, text in enumerate(texts)
     ]
-    return compare.Side(koza, rows, humps)
+    silences = [[(n + 1) * step - v, (n + 1) * step] for n, v in (pauses or {}).items()]
+    return compare.Side(koza, rows, humps, silences)
 
 
 def spots(a, b):
@@ -80,6 +80,54 @@ def test_small_pause_difference_is_within_error():
     assert spots(a, b)[0]["kind"] == "kept"
 
 
+def test_pause_ignores_where_the_transcript_cut_the_line():
+    """同じ無音なら、区間の切れ目が少しずれても同じ間と見る。"""
+    a = side("a", LINES, [15.0], pauses={0: 1.5})
+    b = side("b", LINES, [15.0], pauses={0: 1.5})
+    b.lines[1]["start"] += 0.5
+    assert spots(a, b)[0]["kind"] == "kept"
+
+
+def test_vad_gives_the_silences():
+    vad = [{"start": 0.0, "end": 4.0}, {"start": 5.5, "end": 9.0}]
+    assert compare.silences_of(vad) == [[4.0, 5.5]]
+
+
+def test_no_laughs_on_one_side_compares_only_words():
+    """片方に山が無いのは検出の問題かもしれない。全部を「片方だけ」にしない。"""
+    doc = compare.compare(side("a", LINES, [15.0, 45.0]), side("b", LINES, []), {})
+    assert doc["laughs_compared"] is False and doc["spots"] == []
+
+
+def test_laugh_after_the_line_maps_from_the_end_of_the_line():
+    """言い終えた 3 秒後の笑いは、行の長さが違っても同じ所。"""
+    a = side("a", LINES, [13.0], step=10.0)
+    b = side("b", LINES, [23.0], step=20.0)
+    b.lines[0]["end"] = 20.0
+    a.lines[1]["start"], a.lines[0]["end"] = 15.0, 10.0
+    assert compare._expected(a, b, 0, 0, 13.0) == 23.0
+
+
+def test_the_same_one_sided_place_is_not_counted_twice():
+    found = spots(side("a", LINES, [15.0]), side("b", LINES, [18.0 + 40.0]))
+    keys = [(s["kind"], s["a"]["t"], s["b"]["t"]) for s in found]
+    assert len(keys) == len(set(keys))
+
+
+def test_spot_id_comes_from_the_content():
+    one = spots(side("a", LINES, [15.0]), side("b", LINES, [15.0]))
+    two = spots(side("a", LINES, [15.0, 75.0]), side("b", LINES, [15.0, 75.0]))
+    assert one[0]["id"] == two[0]["id"]
+
+
+def test_pause_counts_only_when_the_line_before_also_aligns():
+    changed = list(LINES)
+    changed[0] = "全く別の始まりの台詞が入っておりまして長くなりますが"
+    a = side("a", LINES, [15.0], pauses={0: 0.3})
+    b = side("b", changed, [15.0], pauses={0: 1.5})
+    assert all(s["kind"] != "ma" for s in spots(a, b))
+
+
 def test_score_size_is_never_used():
     """山の高さの違いは Side に入らない。来ているかどうかだけ。"""
     assert not hasattr(side("a", LINES, [15.0]), "scores")
@@ -95,6 +143,7 @@ def test_changed_words_near_a_laugh():
 def test_changed_words_without_a_laugh():
     changed = list(LINES)
     changed[4] = "そのあと町内の連中が総出で大騒ぎになりましてなあ"
+    changed[5] = "長屋の者も大家も一緒になって走り回ったわけでございます"
     found = spots(side("a", LINES, []), side("b", changed, []))
     assert [s["kind"] for s in found] == ["words"] and found[0]["laugh_a"] is None
 
@@ -250,9 +299,26 @@ def test_quote_from_the_lines_is_allowed():
 def test_second_run_does_not_ask_the_same_place_twice(tmp_path):
     root, neta = two_books(tmp_path)
     run(root, ScriptedClient(asker=[REPLY]), tmp_path)
-    first = len(store.read(neta.questions, "questions")["questions"])
-    run(root, ScriptedClient(asker=[REPLY]), tmp_path)
-    assert len(store.read(neta.questions, "questions")["questions"]) == first
+    first = store.read(neta.questions, "questions")["questions"]
+    doc = run(root, ScriptedClient(asker=[REPLY]), tmp_path)
+    after = store.read(neta.questions, "questions")["questions"]
+    assert len(after) == len(first)
+    ids = {s["id"] for s in doc["spots"]}
+    assert all(q["spot_id"] in ids for q in after if "spot_id" in q)  # 問いが別の所を指さない
+    assert any("question_id" in s for s in doc["spots"])
+    assert store.read(neta.koza_dir(K1) / "run.json", "run")["compare"]["fallback"] == 0
+
+
+def test_failed_asker_keeps_the_cost_and_no_questions(tmp_path):
+    root, neta = two_books(tmp_path)
+
+    def broken(kw):
+        raise RuntimeError("途中で落ちた")
+
+    with pytest.raises(RuntimeError):
+        run(root, ScriptedClient(asker=[broken]), tmp_path)
+    assert "compare" in store.read(neta.koza_dir(K1) / "run.json", "run")
+    assert not any("spot_id" in q for q in store.read(neta.questions, "questions")["questions"])
 
 
 def test_answers_and_books_are_not_overwritten(tmp_path):
