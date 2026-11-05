@@ -6,13 +6,10 @@
 
 from __future__ import annotations
 
+from .reactions import covered_seconds
+
 WINDOW_SEC = 6.0  # 回収の終わりから見る長さ。暫定
 LOW_FRACTION = 4  # 下位 4 分の 1
-
-
-def audio_end(reactions: dict) -> float | None:
-    wave = reactions.get("wave")
-    return wave["hop"] * len(wave["db"]) if wave else None
 
 
 def payoff_items(items: list[dict], koza_id: str) -> list[dict]:
@@ -36,7 +33,7 @@ def select(items: list[dict], reactions: dict) -> dict:
       拾えなかった高座は回収が全部「候補が少ない」になってしまう）
     """
     koza_id = reactions["koza_id"]
-    end = audio_end(reactions)
+    end = covered_seconds(reactions)
     has_auto = any(r["method"] == "auto" for r in reactions["reactions"])
     has_manual = any(r["method"] == "manual" for r in reactions["reactions"])
     silent: list[tuple[dict, list[float]]] = []
@@ -51,7 +48,10 @@ def select(items: list[dict], reactions: dict) -> dict:
             if not clipped and has_auto:
                 silent.append((it, window))
             continue
-        ranks = [r["strength_rank"] for r in hits if r["strength_rank"] is not None]
+        # 笑い同士で比べる。拍手が重なっただけで「強い」側に回さない。窓にあること自体は候補として数える
+        ranks = [
+            r["strength_rank"] for r in hits if r["strength_rank"] is not None and r["kind"] != "applause"
+        ]
         if ranks and not clipped:  # 窓が短いと弱く出るので、切れた窓は比べない
             ranked.append((min(ranks), it, window, [r["id"] for r in hits]))
     low_count = len(ranked) // LOW_FRACTION

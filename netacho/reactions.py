@@ -1,8 +1,10 @@
-"""反応の候補。波から機械的に拾うだけで、受けた・受けないは判定しない。
+"""反応の候補。AST のスコアの山から機械的に拾うだけで、受けた・受けないは判定しない。
 
-笑いは台詞に重なるので、発話区間を除外しない。強さは同じ高座の中の順位にする
-（スマホの自動音量調整があるので絶対値は使わない）。
-数値は暫定。上位と下位を耳で確かめて調整する。
+- 笑い：絶対値では判定できない（最大でも約 0.3）ので、同じ高座の最大値に対する割合で山を見る
+- 拍手：Applause、Clapping の最大。Music のスコアに関係なく採用する（中手に出囃子が重なっても拾う）
+- 音楽：太鼓でも節回しでも 0.5 前後になるので、はめものの判定には使わない。候補として別に残すだけ
+
+数値は暫定。耳で確かめて調整する。読めなければ netacho mark で手の時刻に置き換える。
 """
 
 from __future__ import annotations
@@ -10,88 +12,77 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import numpy as np
-
-SAMPLE_RATE = 16000
-HOP = 0.1  # RMS を取る間隔（秒）
-BASE_WINDOW = 10.0  # 基準の移動中央値の片側（秒）
-THRESHOLD_DB = 6.0  # 基準をこれだけ超えたら候補
-MIN_DURATION = 0.4  # つないだ後の長さの下限（秒）
-MERGE_GAP = 0.5  # これより短い隙間はつなぐ（秒）
-FLOOR_DB = -60.0  # これより小さい音は候補にしない（無音の部分の基準が下がるため）
+LAUGH_PEAK_RATIO = 0.5  # 高座の笑いの最大値に対する割合
+LAUGH_FLOOR = 0.08  # 抜粋に山が無いとき、弱い揺れを山と呼ばないための下限
+APPLAUSE_MIN = 0.3
+MUSIC_MIN = 0.5
+MERGE_STEPS = 1  # これだけの窓の切れ目はつなぐ
 LONG_PAUSE = 1.5  # 手がかりとして残す間（秒）
 VAD_NO_TEXT_SEC = 1.0  # VAD の区間のうち、文字の無い長さがこれ以上なら手がかりにする
-WAVE_HOP = 0.5  # 画面の波の間隔（秒）
-
-
-def rms_db(audio: np.ndarray, *, sr: int = SAMPLE_RATE, hop: float = HOP) -> np.ndarray:
-    n = round(sr * hop)
-    frames = len(audio) // n
-    if frames == 0:
-        return np.zeros(0)
-    a = audio[: frames * n].reshape(frames, n)
-    power = np.einsum("ij,ij->i", a, a, dtype=np.float64) / n  # 全体を float64 に広げない
-    return 10 * np.log10(np.maximum(power, 1e-10))
-
-
-def baseline(db: np.ndarray, *, hop: float = HOP, window: float = BASE_WINDOW) -> np.ndarray:
-    """前後 window 秒の移動中央値。両端は折り返して埋める（端が無音に引かれないように）。"""
-    if len(db) == 0:
-        return db
-    w = min(round(window / hop), len(db) - 1)
-    if w == 0:
-        return db.copy()
-    padded = np.pad(db, w, mode="reflect")
-    return np.median(np.lib.stride_tricks.sliding_window_view(padded, 2 * w + 1), axis=1)
 
 
 def find_spans(
-    db: np.ndarray,
-    base: np.ndarray,
-    *,
-    hop: float = HOP,
-    threshold: float = THRESHOLD_DB,
-    min_duration: float = MIN_DURATION,
-    merge_gap: float = MERGE_GAP,
+    values: list[float], threshold: float, *, merge_steps: int = MERGE_STEPS
 ) -> list[tuple[int, int]]:
-    """基準を超えたフレームの区間 [i, j)。隙間をつないでから、超えた長さの合計で落とす。
-
-    笑いは波が切れ切れになるので先につなぐ。長さに隙間は数えない（子音やクリックの 2 点を候補にしない）。
-    """
-    idx = np.flatnonzero((db - base >= threshold) & (db >= FLOOR_DB))
-    if len(idx) == 0:
-        return []
-    spans: list[list[int]] = [[int(idx[0]), int(idx[0]) + 1]]
-    for i in idx[1:]:
-        if (i - spans[-1][1]) * hop < merge_gap:
-            spans[-1][1] = int(i) + 1
+    """閾値以上の窓の区間 [i, j)。短い切れ目はつなぐ。"""
+    idx = [i for i, v in enumerate(values) if v >= threshold]
+    spans: list[list[int]] = []
+    for i in idx:
+        if spans and i - spans[-1][1] <= merge_steps:
+            spans[-1][1] = i + 1
         else:
-            spans.append([int(i), int(i) + 1])
-    over = np.zeros(len(db) + 1, dtype=int)  # 基準を超えたフレーム数の累積
-    over[idx + 1] = 1
-    over = np.cumsum(over)
-    return [(a, b) for a, b in spans if (over[b] - over[a]) * hop >= min_duration - 1e-9]
+            spans.append([i, i + 1])
+    return [(a, b) for a, b in spans]
 
 
-def _reaction(n: int, t0: float, t1: float, rank: int | None, method: str) -> dict:
+def _reaction(n: int, t0: float, t1: float, rank: int | None, method: str, kind: str = "reaction") -> dict:
     return {
         "id": f"react-{n:04d}",
         "t0": round(t0, 2),
         "t1": round(t1, 2),
-        "kind": "reaction",
+        "kind": kind,
         "strength_rank": rank,
         "method": method,
     }
 
 
-def auto_reactions(db: np.ndarray, base: np.ndarray, *, hop: float = HOP) -> list[dict]:
-    """時刻順の候補。強さは基準を超えた量の積分の順位（1 が最も強い。同じなら早い方）。"""
-    spans = find_spans(db, base, hop=hop)
-    excess = np.maximum(db - base, 0.0)
-    strength = [float(excess[a:b].sum()) for a, b in spans]
-    order = sorted(range(len(spans)), key=lambda k: (-strength[k], k))
+def laugh_threshold(laugh: list[float]) -> float:
+    return max(max(laugh, default=0.0) * LAUGH_PEAK_RATIO, LAUGH_FLOOR)
+
+
+def _times(span: tuple[int, int], scores: dict) -> tuple[float, float]:
+    """窓の中央の、刻み幅の分を区間にする。窓の端から端までだと、実際より最大 5 秒広く見える。"""
+    half = scores["window"] / 2
+    start = span[0] * scores["stride"] + half - scores["stride"] / 2
+    end = (span[1] - 1) * scores["stride"] + half + scores["stride"] / 2
+    return min(start, scores["seconds"]), min(end, scores["seconds"])  # 切れた窓で音声の長さを超えない
+
+
+def _strength(value: float, kind: str, scores: dict) -> float:
+    """種類ごとに高座の最大値で割る。笑いは最大でも約 0.3 なので、そのままだと拍手に必ず負ける。"""
+    return value / (max(scores[kind]) or 1.0)
+
+
+def auto_reactions(scores: dict) -> list[dict]:
+    """時刻順の候補。強さは種類ごとの山の高さの順位（1 が最も強い。同じなら早い方）。"""
+    rows = []
+    for kind, threshold in (("laugh", laugh_threshold(scores["laugh"])), ("applause", APPLAUSE_MIN)):
+        for span in find_spans(scores[kind], threshold):
+            peak = max(scores[kind][span[0] : span[1]])
+            rows.append((*_times(span, scores), kind, _strength(peak, kind, scores)))
+    rows.sort(key=lambda r: r[0])
+    order = sorted(range(len(rows)), key=lambda k: (-rows[k][3], k))
     rank = {k: r for r, k in enumerate(order, start=1)}
-    return [_reaction(k + 1, a * hop, b * hop, rank[k], "auto") for k, (a, b) in enumerate(spans)]
+    return [_reaction(k + 1, t0, t1, rank[k], "auto", kind) for k, (t0, t1, kind, _) in enumerate(rows)]
+
+
+def music_candidates(scores: dict) -> list[dict]:
+    """音楽の候補。判定には使わず、別に残すだけ。"""
+    out = []
+    for span in find_spans(scores["music"], MUSIC_MIN):
+        t0, t1 = _times(span, scores)
+        out.append({"t0": round(t0, 2), "t1": round(t1, 2), "score": max(scores["music"][span[0] : span[1]])})
+    return out
 
 
 def hints(transcript: dict) -> list[dict]:
@@ -110,37 +101,32 @@ def hints(transcript: dict) -> list[dict]:
     return sorted(out, key=lambda h: h["t0"])
 
 
-def wave(db: np.ndarray, base: np.ndarray, *, hop: float = HOP, wave_hop: float = WAVE_HOP) -> dict:
-    """画面の波。間引くときは大きい方を残す（短い山が消えないように）。"""
-    k = max(round(wave_hop / hop), 1)
-    n = len(db) // k
-    if n == 0:
-        return {"hop": k * hop, "db": [], "baseline_db": []}
-    return {
-        "hop": round(k * hop, 3),
-        "db": np.round(db[: n * k].reshape(n, k).max(axis=1), 1).tolist(),
-        "baseline_db": np.round(np.median(base[: n * k].reshape(n, k), axis=1), 1).tolist(),
-    }
+def covered_seconds(doc: dict) -> float | None:
+    """音声の長さ。スコアの無い物は None。"""
+    scores = doc.get("scores")
+    return scores["seconds"] if scores else None
 
 
-def build(audio: np.ndarray, transcript: dict) -> dict:
-    db = rms_db(audio)
-    base = baseline(db)
+def build(scores: dict, transcript: dict) -> dict:
     return {
         "schema_version": 1,
         "koza_id": transcript["koza_id"],
         "params": {
-            "hop": HOP,
-            "base_window": BASE_WINDOW,
-            "threshold_db": THRESHOLD_DB,
-            "min_duration": MIN_DURATION,
-            "merge_gap": MERGE_GAP,
-            "floor_db": FLOOR_DB,
+            "model": scores["model"],
+            "window": scores["window"],
+            "stride": scores["stride"],
+            "laugh_peak_ratio": LAUGH_PEAK_RATIO,
+            "laugh_floor": LAUGH_FLOOR,
+            "laugh_threshold": round(laugh_threshold(scores["laugh"]), 4),
+            "applause_min": APPLAUSE_MIN,
+            "music_min": MUSIC_MIN,
+            "merge_steps": MERGE_STEPS,
             "long_pause": LONG_PAUSE,
         },
-        "reactions": auto_reactions(db, base),
+        "reactions": auto_reactions(scores),
+        "music": music_candidates(scores),
         "hints": hints(transcript),
-        "wave": wave(db, base),
+        "scores": {k: scores[k] for k in ("window", "stride", "seconds", "laugh", "applause", "music")},
     }
 
 

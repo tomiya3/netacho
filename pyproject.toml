@@ -11,6 +11,8 @@ dependencies = [
     "jsonschema>=4.26.0",
     "numpy>=2.5.4",
     "python-dotenv>=1.2.4",
+    "torch>=2.15.0",
+    "transformers>=5.22.1",
 ]
 
 [project.scripts]
@@ -28,6 +30,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["netacho"]
+
+# Linux（CI）は CPU 版の torch にする（GPU 版は数 GB ある）
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.ruff]
 line-length = 110

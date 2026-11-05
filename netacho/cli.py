@@ -76,7 +76,8 @@ def _print_top(doc: dict, n: int = 10) -> None:
     print(f"反応の候補 {len(doc['reactions'])} 件。強い順に {n} 件（時刻はこの wav の先頭から）：")
     for r in reactions.top(doc, n):
         rank = "-" if r["strength_rank"] is None else r["strength_rank"]
-        print(f"  {rank:>3}  {reactions.clock(r['t0'])} - {reactions.clock(r['t1'])}  {r['id']}")
+        label = {"laugh": "笑い", "applause": "拍手"}.get(r["kind"], "手")
+        print(f"  {rank:>3}  {reactions.clock(r['t0'])} - {reactions.clock(r['t1'])}  {label}  {r['id']}")
 
 
 def _check_excerpt(args: argparse.Namespace, seconds: float) -> None:
@@ -122,7 +123,7 @@ def _clear_outputs(neta: store.Neta, kdir: Path, force: bool) -> None:
 
 
 def cmd_prep(args: argparse.Namespace) -> None:
-    from .preprocess import audio, speech  # Whisper は prep でだけ読み込む
+    from .preprocess import ast_scores, audio, speech  # Whisper と AST は prep でだけ読み込む
 
     source = Path(args.audio)
     if not source.is_file():
@@ -138,7 +139,7 @@ def cmd_prep(args: argparse.Namespace) -> None:
     transcript = _to_transcript(speech.detect(wav, terms=terms), args.koza)
     t1 = time.time()
     store.write(kdir / "transcript.json", transcript, "transcript")
-    doc = reactions.build(speech.load_wav(wav), transcript)
+    doc = reactions.build(ast_scores.score(speech.load_wav(wav)), transcript)
     t2 = time.time()
     store.write(kdir / "reactions.json", doc, "reactions")
     measured = {
@@ -164,13 +165,12 @@ def cmd_prep(args: argparse.Namespace) -> None:
     _print_top(doc)
 
 
-def _within_wave(doc: dict, marks: list[dict]) -> None:
+def _within_audio(doc: dict, marks: list[dict]) -> None:
     """時刻がこの wav の中にあること。抜粋なら、元の録音の時刻で付けるとずれる。"""
-    wave = doc.get("wave")
-    if wave is None:
+    length = reactions.covered_seconds(doc)
+    if length is None:
         return
-    length = wave["hop"] * len(wave["db"])
-    over = [m for m in marks if m["t1"] > length + wave["hop"]]
+    over = [m for m in marks if m["t1"] > length + doc["scores"]["stride"]]
     if over:
         raise ValueError(f"wav の長さ {length:.0f} 秒を超える時刻が {len(over)} 件ある")
 
@@ -181,7 +181,7 @@ def cmd_mark(args: argparse.Namespace) -> None:
     path = kdir / "reactions.json"
     doc = store.read(path, "reactions")
     marks = reactions.manual_reactions(reactions.parse_marks(Path(args.tsv)))
-    _within_wave(doc, marks)
+    _within_audio(doc, marks)
     backup = kdir / "reactions.auto.json"
     if not backup.exists():  # 自動の結果は別に残す（prep をやり直さなくて済むように）
         shutil.copy2(path, backup)

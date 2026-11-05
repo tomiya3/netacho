@@ -1,148 +1,165 @@
-"""反応の候補のテスト。合成した音だけを使う。"""
+"""反応の候補のテスト。AST は呼ばず、スコアの列を入れる。"""
 
-import numpy as np
 import pytest
 
 from netacho import reactions as rx
-
-SR = rx.SAMPLE_RATE
-
-
-def noise(seconds: float, db: float, seed: int = 0) -> np.ndarray:
-    """RMS が db の白色雑音（話し声の代わり）。"""
-    x = np.random.default_rng(seed).standard_normal(int(seconds * SR))
-    return (x * 10 ** (db / 20)).astype(np.float32)
+from netacho.preprocess import ast_scores
 
 
-def speech_with(
-    *bursts: tuple[float, float, float], seconds: float = 60.0, level: float = -30.0
-) -> np.ndarray:
-    """level の音に、(始まり, 長さ, dB) の音を足す。"""
-    a = noise(seconds, level)
-    for n, (t0, dur, db) in enumerate(bursts, start=1):
-        i = int(t0 * SR)
-        a[i : i + int(dur * SR)] += noise(dur, db, seed=n)[: int(dur * SR)]
-    return a
+def scores(*, laugh=(), applause=(), music=(), n=None):
+    n = n or max(len(laugh), len(applause), len(music))
+
+    def fill(v):
+        return list(v) + [0.0] * (n - len(v))
+
+    return {
+        "model": "fake",
+        "window": 5.0,
+        "stride": 2.0,
+        "seconds": (n - 1) * 2.0 + 5.0,
+        "laugh": fill(laugh),
+        "applause": fill(applause),
+        "music": fill(music),
+    }
 
 
-def detect(a: np.ndarray) -> list[dict]:
-    db = rx.rms_db(a)
-    return rx.auto_reactions(db, rx.baseline(db))
+def kinds(doc):
+    return [(r["kind"], r["t0"], r["t1"]) for r in doc]
 
 
-def test_burst_over_speech_is_found():
-    """発話の上に重なる音を拾う（発話区間を除外しない）。"""
-    found = detect(speech_with((20.0, 2.0, -18.0)))
-    assert len(found) == 1
-    assert found[0]["t0"] == pytest.approx(20.0, abs=0.15)
-    assert found[0]["t1"] == pytest.approx(22.0, abs=0.15)
-    assert found[0]["method"] == "auto" and found[0]["strength_rank"] == 1
+def test_laugh_is_judged_within_the_koza():
+    """絶対値では判定しない。最大が 0.3 の高座では 0.15 以上、0.2 の高座では 0.1 以上が山。"""
+    low = [0.01, 0.12, 0.01, 0.01, 0.3, 0.01]
+    assert kinds(rx.auto_reactions(scores(laugh=low))) == [("laugh", 9.5, 11.5)]
+    high = [0.01, 0.12, 0.01, 0.01, 0.2, 0.01]
+    assert len(rx.auto_reactions(scores(laugh=high))) == 2
 
 
-def test_too_small_or_too_short_is_not_found():
-    assert detect(speech_with((20.0, 2.0, -35.0))) == []  # 基準との差が 6dB に届かない
-    assert detect(speech_with((20.0, 0.2, -18.0))) == []  # 0.4 秒に届かない
+def test_no_peak_means_no_laugh():
+    """山の無い抜粋で、弱い揺れを山と呼ばない。"""
+    assert rx.auto_reactions(scores(laugh=[0.01, 0.05, 0.02, 0.06])) == []
 
 
 def test_short_gap_is_merged_and_long_gap_is_not():
-    merged = detect(speech_with((20.0, 0.5, -18.0), (20.8, 0.5, -18.0)))
-    assert len(merged) == 1
-    apart = detect(speech_with((20.0, 0.5, -18.0), (21.2, 0.5, -18.0)))
+    merged = rx.auto_reactions(scores(laugh=[0.3, 0.0, 0.3]))
+    assert kinds(merged) == [("laugh", 1.5, 7.5)]
+    apart = rx.auto_reactions(scores(laugh=[0.3, 0.0, 0.0, 0.3]))
     assert len(apart) == 2
 
 
-def test_two_clicks_with_a_gap_are_not_a_reaction():
-    """基準を超えたのが 0.1 秒ずつの 2 点なら、つないでも候補にしない（超えた長さは 0.2 秒）。"""
-    db = np.full(200, -30.0)
-    base = np.full(200, -30.0)
-    db[50] = db[54] = -20.0
-    assert rx.find_spans(db, base) == []
+def test_end_never_passes_the_audio_length():
+    s = {**scores(laugh=[0.0, 0.3]), "seconds": 5.0}
+    assert rx.auto_reactions(s)[0]["t1"] == 5.0
 
 
-def test_chopped_laugh_survives():
-    """切れ切れの笑い（0.2 秒ずつ）は、つないでから長さを見るので残る。"""
-    bursts = [(20.0 + i * 0.4, 0.2, -18.0) for i in range(6)]
-    assert len(detect(speech_with(*bursts))) == 1
+def test_very_short_audio_keeps_start_before_end():
+    s = {**scores(laugh=[0.3]), "seconds": 1.0}
+    r = rx.auto_reactions(s)[0]
+    assert r["t0"] <= r["t1"] == 1.0
 
 
-def test_rank_is_by_size_within_the_koza():
-    found = detect(speech_with((10.0, 1.0, -22.0), (30.0, 3.0, -15.0), (50.0, 1.0, -20.0)))
-    assert [r["strength_rank"] for r in found] == [3, 1, 2]
+def test_applause_ignores_music():
+    """中手に出囃子が重なって Music が高くても、拍手として採用する。"""
+    s = scores(applause=[0.0, 0.65, 0.5, 0.0], music=[0.0, 0.44, 0.9, 0.0])
+    assert kinds(rx.auto_reactions(s)) == [("applause", 3.5, 7.5)]
 
 
-def test_rank_ignores_absolute_level():
-    """全体の音量が変わっても順位は同じ（自動音量調整があるので絶対値を使わない）。"""
-    a = speech_with((10.0, 1.0, -22.0), (30.0, 3.0, -15.0))
-    assert [r["strength_rank"] for r in detect(a)] == [r["strength_rank"] for r in detect(a * 0.25)]
+def test_applause_uses_an_absolute_line():
+    assert rx.auto_reactions(scores(applause=[0.1, 0.29, 0.1])) == []
 
 
-def test_slow_level_change_is_not_a_reaction():
-    """音量がゆっくり変わるだけなら候補にしない。"""
-    a = noise(120.0, -30.0) * np.linspace(1.0, 2.0, 120 * SR, dtype=np.float32)
-    assert detect(a) == []
+def test_music_never_becomes_a_reaction():
+    s = scores(music=[0.5, 0.8, 0.5, 0.0, 0.0, 0.6])
+    assert rx.auto_reactions(s) == []
+    assert rx.music_candidates(s) == [
+        {"t0": 1.5, "t1": 7.5, "score": 0.8},
+        {"t0": 11.5, "t1": 13.5, "score": 0.6},
+    ]
 
 
-def test_digital_silence_then_quiet_noise_is_not_a_reaction():
-    a = np.concatenate(
-        [np.zeros(30 * SR, dtype=np.float32), noise(1.0, -70.0), np.zeros(30 * SR, np.float32)]
+def test_rank_is_by_peak_and_ids_by_time():
+    s = scores(laugh=[0.2, 0.0, 0.0, 0.3], applause=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.8])
+    got = rx.auto_reactions(s)
+    assert [r["id"] for r in got] == ["react-0001", "react-0002", "react-0003"]
+    assert [r["strength_rank"] for r in got] == [3, 1, 2]  # 種類ごとの最大が同じ強さ。同じなら早い方
+
+
+def test_rank_does_not_let_applause_always_win():
+    """笑いの最大（0.3）と弱い拍手（0.4、最大 0.8）では、笑いが上に来る。"""
+    s = scores(laugh=[0.3, 0.0, 0.0, 0.0], applause=[0.0, 0.0, 0.0, 0.4, 0.0, 0.0, 0.8])
+    got = rx.auto_reactions(s)
+    assert [(r["kind"], r["strength_rank"]) for r in got] == [("laugh", 1), ("applause", 3), ("applause", 2)]
+
+
+def test_same_peak_rank_goes_to_the_earlier():
+    got = rx.auto_reactions(scores(laugh=[0.3, 0.0, 0.0, 0.3]))
+    assert [r["strength_rank"] for r in got] == [1, 2]
+
+
+def test_laugh_and_applause_may_overlap():
+    got = rx.auto_reactions(scores(laugh=[0.3], applause=[0.6]))
+    assert {r["kind"] for r in got} == {"laugh", "applause"}
+
+
+def test_empty_scores():
+    assert rx.auto_reactions(scores(n=1)) == []
+
+
+def test_covered_seconds_is_the_audio_length():
+    assert rx.covered_seconds({"scores": {**scores(n=3), "seconds": 7.5}}) == 7.5
+    assert rx.covered_seconds({}) is None
+
+
+@pytest.mark.parametrize(
+    ("samples", "want"),
+    [
+        (0, []),
+        (16000, [0]),
+        (80000, [0]),
+        (80001, [0, 32000]),  # 末尾の 1 サンプルも窓に入る
+        (112000, [0, 32000]),
+        (112001, [0, 32000, 64000]),
+        (144000, [0, 32000, 64000]),
+    ],
+)
+def test_window_starts(samples, want):
+    assert ast_scores.window_starts(samples) == want
+
+
+def test_score_batches_and_keeps_order():
+    import numpy as np
+
+    seen = []
+
+    def predict(batch):
+        seen.append(len(batch))
+        marks = np.array([float(b[0]) for b in batch])
+        return {"laugh": marks, "applause": marks * 0, "music": marks * 0}
+
+    audio = np.zeros(16000 * 60, dtype=np.float32)
+    for i, s in enumerate(ast_scores.window_starts(len(audio))):
+        audio[s] = i / 100
+    got = ast_scores.score(audio, predict=predict)
+    assert seen[0] == ast_scores.BATCH and sum(seen) == len(got["laugh"]) == 29
+    assert got["model"].startswith("MIT/ast-finetuned-audioset-10-10-0.4593@")
+    assert got["laugh"][:3] == [0.0, 0.01, 0.02]
+    assert (got["window"], got["stride"]) == (5.0, 2.0)
+
+
+def test_laugh_labels_match_the_spec():
+    assert ast_scores.GROUPS["laugh"] == ("Laughter", "Giggle", "Chuckle, chortle", "Belly laugh")
+    assert ast_scores.GROUPS["applause"] == ("Applause", "Clapping")
+
+
+def test_prep_does_not_import_torch_for_other_commands():
+    """torch は AST を回すときだけ読み込む（札の経路に持ち込まない）。"""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; import netacho.cli, netacho.guide, netacho.reactions; assert 'torch' not in sys.modules"
     )
-    assert detect(a) == []
-
-
-def test_laugh_over_loud_speech():
-    """台詞が基準を持ち上げていても、その上に重なる笑いを拾う。"""
-    found = detect(speech_with((30.0, 2.0, -12.0), level=-20.0))
-    assert len(found) == 1
-    assert found[0]["t0"] == pytest.approx(30.0, abs=0.2)
-
-
-def test_level_step_is_not_a_reaction():
-    """途中で音量が一段上がっても（自動音量調整）、段差は候補にならない。"""
-    a = np.concatenate([noise(60.0, -30.0), noise(60.0, -22.0, seed=1)])
-    assert detect(a) == []
-
-
-def test_finds_laugh_after_level_step():
-    a = np.concatenate([noise(60.0, -30.0), noise(60.0, -22.0, seed=1)])
-    i = 90 * SR
-    a[i : i + 2 * SR] += noise(2.0, -10.0, seed=2)[: 2 * SR]
-    found = detect(a)
-    assert len(found) == 1 and found[0]["t0"] == pytest.approx(90.0, abs=0.2)
-
-
-def test_long_laugh_limit():
-    """基準は前後 10 秒の中央値なので、10 秒を超えて続く音は中央値が持ち上がって拾えない（既知の限界）。"""
-    assert len(detect(speech_with((30.0, 8.0, -18.0), seconds=90.0))) == 1
-    assert detect(speech_with((30.0, 16.0, -18.0), seconds=90.0)) == []
-
-
-def test_reflected_edge_finds_opening_laugh():
-    found = detect(speech_with((0.5, 1.5, -18.0)))
-    assert len(found) == 1
-
-
-def test_same_strength_rank_goes_to_the_earlier():
-    db = np.full(100, -30.0)
-    base = np.full(100, -30.0)
-    db[10:20] = -20.0
-    db[60:70] = -20.0
-    assert [r["strength_rank"] for r in rx.auto_reactions(db, base)] == [1, 2]
-
-
-def test_edges_do_not_crash():
-    assert rx.rms_db(np.zeros(10, dtype=np.float32)).size == 0
-    assert rx.baseline(np.zeros(0)).size == 0
-    assert detect(np.zeros(0, dtype=np.float32)) == []
-    assert detect(noise(0.1, -30.0)) == []
-    assert detect(noise(3.0, -30.0)) == []  # 基準の窓より短い音
-
-
-def test_wave_keeps_short_peak():
-    a = speech_with((20.0, 0.2, -10.0))
-    db = rx.rms_db(a)
-    w = rx.wave(db, rx.baseline(db))
-    assert w["hop"] == 0.5 and len(w["db"]) == len(w["baseline_db"]) == 120
-    assert max(w["db"]) > -15  # 間引いても山が残る
+    subprocess.run([sys.executable, "-c", code], check=True)
 
 
 def _transcript(segments, vad=()):
@@ -186,9 +203,11 @@ def test_build_validates_against_schema():
     from netacho.schema import validate
 
     t = _transcript([{**_seg(1, 0.0, 2.0, pause=None)}])
-    doc = rx.build(speech_with((20.0, 2.0, -18.0)), t)
+    doc = rx.build(scores(laugh=[0.3, 0.0], music=[0.6, 0.0]), t)
     validate(doc, "reactions")
     assert [r["id"] for r in doc["reactions"]] == ["react-0001"]
+    assert doc["music"][0]["score"] == 0.6
+    assert doc["params"]["model"] == "fake"
 
 
 def test_parse_marks(tmp_path):

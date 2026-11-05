@@ -151,15 +151,16 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 
 ### 反応の候補
 
-笑いは台詞に重なるので、発話区間を除外しない。
+音量の方式から AST（Audio Spectrogram Transformer）に置き換えた（理由は progress.md）。
 
-1. 100ms ごとの RMS（dB）を取る
-2. 前後 10 秒の移動中央値を基準にする
-3. 基準を 6dB 以上、0.4 秒以上超える区間を候補にする。隙間 0.5 秒未満はつなぐ
-4. 強さは同じ高座の中の順位にする（スマホの自動音量調整があるので絶対値は使わない）
-5. `pause_after` が長い区間と、VAD が発話で文字起こしが空の区間は、補助の手がかりとして記録する
+1. モデルは `MIT/ast-finetuned-audioset-10-10-0.4593`。窓は 5 秒、2 秒刻み。多ラベルなので sigmoid を取る
+2. 笑いは Laughter、Giggle、Chuckle, chortle、Belly laugh の最大。絶対値では判定できない（最大でも約 0.3）ので、同じ高座の最大値の半分以上を山とする（下限 0.08）
+3. 拍手は Applause、Clapping の最大が 0.3 以上。Music のスコアに関係なく採用する
+4. Music は太鼓でも節回しでも 0.5 前後になるので、はめものの判定には使わない。0.5 以上を音楽の候補として別に残すだけ
+5. 切れ目が 1 窓までならつなぐ。強さは山の高さの、同じ高座の中の順位にする
+6. `pause_after` が長い区間と、VAD が発話で文字起こしが空の区間は、補助の手がかりとして記録する
 
-数値は暫定。上位 10 件と下位を耳で確かめて調整する。自動で読めなければ、耳で聞いて付けた時刻を `netacho mark` で入れ、`method: manual` にして画面に「手で付けた」と出す。
+数値は暫定。耳で確かめて調整する。自動で読めなければ、耳で聞いて付けた時刻を `netacho mark` で入れ、`method: manual` にして画面に「手で付けた」と出す。
 
 ### 「薄い」候補の選び方
 
@@ -207,7 +208,7 @@ hanashi / kata: scenes[{id,title,order,segs}], characters[], items[]
 koza: id, date, venue, neta, performer_id, audio_sha256, excerpt{from,to}?
 transcript: segments[{id,start,end,text,words,no_speech_prob,pause_after}], vad[]
 timeline: segments[{seg_id,scene_id,speaker(null可),confidence}]
-reactions: reactions[{id,t0,t1,kind(reaction),strength_rank,method(auto|manual)}]
+reactions: reactions[{id,t0,t1,kind(laugh|applause|reaction),strength_rank(null可),method(auto|manual)}], music[], hints[], scores
 note_candidates: candidates[{id,item_id,payoff_t,window,reaction_ids,why(no_candidate|low_rank)}]
 review: issues[{id,role,kind,anchor{scene_id|item_id},attempt,what_is_missing,round,resolved}]
 questions: questions[{id,issue_id,scene_id,text,answer?}]

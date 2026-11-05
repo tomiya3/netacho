@@ -17,13 +17,20 @@ def item(i, t1, *, held=False, koza="k"):
 
 
 def react(i, t0, t1, rank, method="auto"):
-    return {"id": f"react-{i:04d}", "t0": t0, "t1": t1, "strength_rank": rank, "method": method}
+    return {
+        "id": f"react-{i:04d}",
+        "t0": t0,
+        "t1": t1,
+        "strength_rank": rank,
+        "method": method,
+        "kind": "laugh",
+    }
 
 
 def doc(*rows, seconds=None):
     d = {"koza_id": "k", "reactions": list(rows)}
     if seconds is not None:
-        d["wave"] = {"hop": 1.0, "db": [0.0] * seconds, "baseline_db": [0.0] * seconds}
+        d["scores"] = {"seconds": float(seconds)}
     return d
 
 
@@ -54,6 +61,16 @@ def test_boundary_tie_is_left_out():
     """近い回収が同じ反応を指して境目が同順位なら、時刻で片方だけ選ばない。"""
     items = [item(i, 10.0 * i) for i in range(1, 5)] + [item(5, 41.0)]
     rows = [react(i, 10.0 * i + 1, 10.0 * i + 2, rank=i) for i in range(1, 5)]
+    assert whys(candidates.select(items, doc(*rows))) == []
+
+
+def test_applause_does_not_count_as_strength():
+    """窓に拍手だけがある回収は、候補はあるが、笑いの強さの比較には入らない。"""
+    items = [item(i, 10.0 * i) for i in range(1, 5)]
+    rows = [react(i, 10.0 * i + 1, 10.0 * i + 2, rank=i) for i in range(1, 4)]
+    rows.append({**react(4, 41.0, 42.0, 9), "kind": "applause"})
+    for r in rows[:3]:
+        r["kind"] = "laugh"
     assert whys(candidates.select(items, doc(*rows))) == []
 
 
