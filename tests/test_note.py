@@ -104,7 +104,6 @@ def test_bad_note_is_replaced_and_counted(data, tmp_path, bad):
         "回収の後に、反応候補が少ない所です。",
         "見立ての回収の後は、反応候補が見つからない所です。原音で確かめてください。",
         "サゲの後の反応候補が、この高座の中では小さい方です。",
-        "「利息」の後は、文字からは笑いどころと読めませんでした。ここでは何をしていますか。",
     ],
 )
 def test_allowed_note_wording(text):
@@ -147,6 +146,12 @@ def test_note_source_tells_who_wrote_it(data, tmp_path):
     assert store.read(path, "note_candidates")["candidates"][0]["note_source"] == "claude"
     run_note(data, tmp_path, note_doc(("cand-0001", "ここは受けなかった。")))
     assert store.read(path, "note_candidates")["candidates"][0]["note_source"] == "fixed"
+
+
+def test_question_wording_is_only_for_questions():
+    text = "「利息」の後は、文字からは笑いどころと読めませんでした。ここでは何をしていますか。"
+    assert pipeline.note_is_ok(text, pipeline.QUESTION_ALLOWED)
+    assert not pipeline.note_is_ok(text)
 
 
 def test_failed_note_leaves_no_old_note(data, tmp_path):

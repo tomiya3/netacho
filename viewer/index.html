@@ -177,7 +177,7 @@ function renderWave(d) {
     if (!g.judged) root.append(el("p", {}, "自動で拾った笑いが無いので、比べていません。"));
     else {
       root.append(el("p", { class: "big" }, `的中 ${g.hits.length}  空振り ${g.misses.length}  予測なしで反応あり ${g.surprise_total}`));
-      root.append(el("p", { class: "quote" }, `Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。笑い ${g.laughs_total} か所のうち ${g.laughs_hit} か所が予測の窓に入り、窓は音声の ${Math.round(g.window_share * 100)}% を覆っています。`));
+      root.append(el("p", { class: "quote" }, `Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。笑い ${g.laughs_total} か所のうち ${g.laughs_hit} か所が予測の窓に入り、窓は音声の ${Math.round(g.window_share * 100)}% を覆っています。空振りは、検出できなかっただけのこともあります。`));
       for (const s of g.surprises) {
         const fixed = s.question_source !== "claude";
         root.append(card(fixed ? "script" : "claude", fixed ? "スクリプトの決まった文" : "Claude の問い", `${clock(s.t0)}  文字からは読めなかった所`,

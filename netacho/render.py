@@ -81,6 +81,7 @@ def gaps_markdown(gaps: dict, items: dict) -> list[str]:
         f"予測なしで反応あり {gaps['surprise_total']}",
         f"- 笑い {gaps['laughs_total']} か所のうち、予測の窓に入ったのは {gaps['laughs_hit']} か所。"
         f"窓は音声の {gaps['window_share']:.0%} を覆っている",
+        "- 空振りは、検出できなかっただけのこともあります。反応が無かったという意味ではありません",
         "",
     ]
     if gaps["surprises"]:
