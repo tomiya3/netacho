@@ -108,19 +108,26 @@ class Handler(BaseHTTPRequestHandler):
         if not 0 < length <= MAX_BODY:
             self._json(400, {"error": "長さが合わない"})
             return
-        with self.server.lock:  # 帳面の読み書きが重ならないように
-            self._save(action, length)
-
-    def _save(self, action: Callable[[dict], Callable[[], None]], length: int) -> None:
         try:
-            body = json.loads(self.rfile.read(length))
+            raw = self.rfile.read(length)  # 本文の来ない接続が書き込みを止めないように、鍵の外で読む
+        except OSError:
+            self._json(400, {"error": "本文が来ない"})
+            return
+        with self.server.lock:  # 帳面の読み書きが重ならないように
+            self._save(action, raw)
+
+    def _save(self, action: Callable[[dict], Callable[[], None]], raw: bytes) -> None:
+        try:
+            body = json.loads(raw)
             if not isinstance(body, dict):
                 raise ValueError
             after = action(body)
         except performer.PerformerError as e:
             self._json(400, {"error": str(e)})
+            return
         except ValueError:
             self._json(400, {"error": "形が違う"})
+            return
         except Exception:  # 演者の言葉を応答に出さない
             self._json(500, {"error": "保存できなかった"})
             return

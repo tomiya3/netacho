@@ -256,3 +256,41 @@ def test_note_does_not_bring_a_dismissed_question_back(running):
         ],
     }
     assert gaps.add_questions(found, rv, qs) == 0
+
+
+def raw_exchange(srv, payload):
+    """1 本の接続で送り、切れるまで全部読む。"""
+    head = (
+        f"POST /api/answer HTTP/1.0\r\nHost: 127.0.0.1:{srv.port}\r\n"
+        f"Content-Type: application/json\r\nX-Netacho-Token: {srv.token}\r\n"
+        f"Content-Length: {len(payload)}\r\n\r\n"
+    ).encode()
+    with socket.create_connection(("127.0.0.1", srv.port)) as sock:
+        sock.sendall(head + payload)
+        got = b""
+        while chunk := sock.recv(4096):
+            got += chunk
+    return got
+
+
+@pytest.mark.parametrize(
+    "payload", [b"{", json.dumps({"question": "q-9999", "speaker": "本人", "words": "言"}).encode()]
+)
+def test_a_refused_write_gets_exactly_one_response(running, payload):
+    got = raw_exchange(running, payload)
+    assert got.count(b"HTTP/1.0 ") == 1 and got.startswith(b"HTTP/1.0 400")
+
+
+def test_silent_body_does_not_hold_the_lock(running):
+    q = add_question(running)
+    head = (
+        f"POST /api/answer HTTP/1.0\r\nHost: 127.0.0.1:{running.port}\r\n"
+        f"Content-Type: application/json\r\nX-Netacho-Token: {running.token}\r\n"
+        "Content-Length: 100\r\n\r\n"
+    ).encode()
+    with socket.create_connection(("127.0.0.1", running.port)) as sock:
+        sock.sendall(head)
+        time.sleep(0.1)
+        started = time.monotonic()
+        assert call(running, "/api/answer", {"question": q, "speaker": "本人", "words": "言葉"})[0] == 200
+    assert time.monotonic() - started < 2

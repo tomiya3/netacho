@@ -274,10 +274,10 @@ async function send(path, body, note) {
 
 function answerForm(q) {
   const speaker = el("input", { type: "text", "aria-label": "答える人", placeholder: "答える人" });
-  speaker.value = localStorage.getItem("netacho-speaker") || "";
+  speaker.value = sessionStorage.getItem("netacho-speaker") || "";
   const words = el("textarea", { rows: "4", "aria-label": "答え、または捨てる理由", placeholder: "答え（このまま型に残ります）。問いを捨てるときは、その理由" });
   const note = el("p", { class: "quote", role: "status" });
-  const who = () => { localStorage.setItem("netacho-speaker", speaker.value); return speaker.value; };
+  const who = () => { sessionStorage.setItem("netacho-speaker", speaker.value); return speaker.value; };
   const ok = el("button", { type: "button" }, "答える");
   ok.addEventListener("click", () => send("/api/answer", { question: q.id, speaker: who(), words: words.value }, note));
   const drop = el("button", { type: "button" }, "この問いを捨てる");
