@@ -205,6 +205,16 @@ def cmd_top(args: argparse.Namespace) -> None:
     _print_top(store.read(kdir / "reactions.json", "reactions"), args.n)
 
 
+def cmd_build(args: argparse.Namespace) -> None:
+    from . import pipeline, runner
+
+    stats = pipeline.build(
+        args.performer, args.neta, args.koza, client=runner.make_client(), reuse=args.reuse
+    )
+    print(f"項目 {stats['evidence']['kept']}、落とした数 {sum(stats['evidence']['dropped'].values())}")
+    print(f"照合 {stats['checker']}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="netacho", description="一席の音声から演者の根多帳を作る")
     sub = p.add_subparsers(dest="command", required=True)
@@ -233,6 +243,13 @@ def build_parser() -> argparse.ArgumentParser:
     top.add_argument("--performer")
     top.add_argument("--neta")
     top.set_defaults(func=cmd_top)
+
+    build = sub.add_parser("build", help="噺・型（構成作家役、根拠の検証、照合役、マージ）")
+    build.add_argument("--performer", required=True)
+    build.add_argument("--neta", required=True)
+    build.add_argument("--koza", required=True)
+    build.add_argument("--reuse", action="store_true", help="同じ入力の役の出力を使い回す")
+    build.set_defaults(func=cmd_build)
     return p
 
 

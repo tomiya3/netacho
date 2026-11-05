@@ -126,6 +126,10 @@
         "unchecked_knowledge": {
           "type": "integer",
           "minimum": 0
+        },
+        "no_verdict": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
