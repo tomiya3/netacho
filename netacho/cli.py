@@ -272,11 +272,23 @@ def cmd_run(args: argparse.Namespace) -> None:
     cmd_note(args)
 
 
+def _title(value: str | None) -> str | None:
+    """指定して空なのは打ち間違い。黙ってフォルダの名前に戻さない。"""
+    if value is None:
+        return None
+    if not value.strip():
+        raise SystemExit("--title が空です")
+    return value.strip()
+
+
 def cmd_seisho(args: argparse.Namespace) -> None:
     from . import pipeline, runner
 
     client = runner.make_client()
-    doc = pipeline.clean_copy(args.performer, args.neta, args.koza, client=client, reuse=args.reuse)
+    title = _title(args.title)
+    doc = pipeline.clean_copy(
+        args.performer, args.neta, args.koza, client=client, reuse=args.reuse, title=title
+    )
     s = doc["seisho"]
     print(f"清書 {s['lines']} 行、直した行 {s['changed']}、大きく直した行 {s['heavy']}")
     print(f"原文に戻した行 {s['kept_raw']}、抜け {s['missing']}、重複 {s['duplicate']}")
@@ -429,6 +441,9 @@ def build_parser() -> argparse.ArgumentParser:
     clean.add_argument("--performer", required=True)
     clean.add_argument("--neta", required=True)
     clean.add_argument("--koza", required=True)
+    clean.add_argument(
+        "--title", help="演目の題（漢字）。無いとフォルダの名前を渡すので、聞き違いが残りやすい"
+    )
     clean.add_argument("--reuse", action="store_true")
     clean.set_defaults(func=cmd_seisho)
 

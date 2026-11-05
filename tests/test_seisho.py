@@ -7,7 +7,7 @@ import pytest
 from fakes import ScriptedClient, text_of
 from test_build import K, N, P, draft, draft_item, verdicts
 
-from netacho import pipeline, runner, seisho, store
+from netacho import cli, pipeline, runner, seisho, store
 from netacho.budget import Budget
 
 DUMMY = Path(__file__).parent / "fixtures" / "dummy_koza" / P / N / "koza" / K
@@ -221,3 +221,32 @@ def test_scribe_sees_no_reactions(built, data, tmp_path):
 def test_role_promises():
     text = runner.role_prompt("scribe")
     assert "言い換え、要約" in text and "見せないもの" not in text
+
+
+def test_title_reaches_the_scribe_instead_of_the_folder_name(built, data, tmp_path):
+    doc = json.loads((DUMMY.parent.parent / "drafts" / "scribe.json").read_text(encoding="utf-8"))
+    client = ScriptedClient(scribe=[doc])
+    pipeline.clean_copy(
+        P, N, K, client=client, budget=Budget(tmp_path / "ledger.json"), root=data, title="正しい題"
+    )
+    assert "正しい題" in text_of(client.calls["scribe"][0])
+    run = store.read(store.Neta(P, N, data).koza_dir(K) / "run.json", "run")
+    assert run["seisho"]["title"] == "正しい題"
+
+
+def test_scribe_is_opus_high():
+    assert runner.ROLES["scribe"][:2] == (runner.OPUS, "high")
+
+
+def test_title_is_trimmed_and_a_blank_one_stops():
+    assert cli._title(None) is None and cli._title(" 題 ") == "題"
+    with pytest.raises(SystemExit):
+        cli._title("  ")
+
+
+def test_without_a_title_the_folder_name_goes_and_none_is_recorded(built, data, tmp_path):
+    doc = json.loads((DUMMY.parent.parent / "drafts" / "scribe.json").read_text(encoding="utf-8"))
+    client = ScriptedClient(scribe=[doc])
+    pipeline.clean_copy(P, N, K, client=client, budget=Budget(tmp_path / "ledger.json"), root=data)
+    assert N in text_of(client.calls["scribe"][0])
+    assert "title" not in store.read(store.Neta(P, N, data).koza_dir(K) / "run.json", "run")["seisho"]

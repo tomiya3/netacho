@@ -571,9 +571,12 @@ def note(
 SCRIBE_CHUNK = 120  # 1 回に渡す区間の数。40 分の高座でも切れない長さ。暫定
 
 
-def scribe_content(ctx: Context, segments: list[dict]) -> list[dict]:
-    """速記役に見せる物：文字起こし、演目名、人物の名前。反応は見せない。"""
-    head = {"演目": ctx.koza["neta"], "人物": [c["name"] for c in ctx.hanashi["characters"]]}
+def scribe_content(ctx: Context, segments: list[dict], title: str | None = None) -> list[dict]:
+    """速記役に見せる物：文字起こし、演目の題、人物の名前。反応は見せない。
+
+    `koza.neta` はフォルダの名前で、演目の題とは限らない。題が分かると聞き違いを直せる。
+    """
+    head = {"演目": title or ctx.koza["neta"], "人物": [c["name"] for c in ctx.hanashi["characters"]]}
     lines = [{"seg_id": s["id"], "text": s["text"]} for s in segments if s["text"].strip()]
     return [
         {"type": "text", "text": json.dumps(head, ensure_ascii=False, indent=1)},
@@ -590,6 +593,7 @@ def clean_copy(
     budget: Budget | None = None,
     reuse: bool = False,
     root: Path | None = None,
+    title: str | None = None,
 ) -> dict:
     """清書を作る。返すのは run.json の中身。正本には触らない。"""
     ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
@@ -603,7 +607,7 @@ def clean_copy(
             chunk = segs[i : i + SCRIBE_CHUNK]
             if not any(s["text"].strip() for s in chunk):
                 continue
-            content = scribe_content(ctx, chunk)
+            content = scribe_content(ctx, chunk, title)
             part = call_role(ctx.client, "scribe", content, "scribe", ctx.usage, ctx.budget, ctx.cache)
             lines += part["lines"]
     except Exception:
@@ -617,7 +621,7 @@ def clean_copy(
     doc, stats = seisho.build(draft, ctx.transcript, reactions, names)
     store.write(kdir / "seisho.json", doc, "seisho")
     (kdir / "seisho.md").write_text(seisho.markdown(ctx.koza, doc, stats), encoding="utf-8")
-    ctx.usage.extra["seisho"] = stats
+    ctx.usage.extra["seisho"] = {**stats, "title": title} if title else stats
     result = ctx.usage.to_json()
     store.write(run_path, result, "run")
     return result
