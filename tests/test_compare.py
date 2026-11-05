@@ -167,7 +167,7 @@ def test_words_changed_without_a_laugh_is_shown_not_asked():
     d = draft(row("same", (0, 3), (0, 3)), row("changed", (4, 7), (4, 7)))
     found = spots(side("a", LINES, MANY[:1]), side("b", LINES, MANY[:1]), d)
     assert [s["kind"] for s in found if s["laugh_a"] is None] == ["changed"]
-    assert all(s["kind"] != "changed" for s in compare.select(found, 5))
+    assert all(s["kind"] != "changed" for s in compare.candidates(found, 60)[0])
 
 
 def test_stories_that_do_not_correspond_are_not_compared():
@@ -218,36 +218,52 @@ def test_score_size_is_never_used():
     assert not hasattr(side("a", LINES, [15.0]), "scores")
 
 
-def make_spot(n, kind, t):
-    return {"id": f"spot-{n:04d}", "kind": kind, "a": {"t": t}}
-
-
-def test_select_mixes_kinds_and_keeps_distance():
-    rows = [
-        make_spot(1, "kept", 0.0),
-        make_spot(2, "kept", 10.0),
-        make_spot(3, "kept", 100.0),
-        make_spot(4, "moved", 200.0),
-    ]
-    chosen = compare.select(rows, 3)
-    assert sorted(c["id"] for c in chosen) == ["spot-0001", "spot-0003", "spot-0004"]
-
-
-def test_rarer_kinds_come_first_so_the_limit_does_not_cut_them():
-    rows = [make_spot(n, "kept", n * 100.0) for n in range(9)] + [make_spot(9, "added", 5000.0)]
-    assert compare.select(rows, 3)[0]["id"] == "spot-0009"
+def make_spot(n, laugh=True):
+    t = n * 10.0
+    return {
+        "id": f"spot-{n:04d}",
+        "kind": "kept",
+        "a": {"t": t},
+        "laugh_a": t if laugh else None,
+        "laugh_b": None,
+    }
 
 
 def test_candidates_are_every_laugh_not_the_earliest_ones():
-    """価値を計算で決めない。遅い時刻の笑いも役に見せる。"""
-    rows = [{**make_spot(n, "kept", n * 10.0), "laugh_a": n * 10.0, "laugh_b": None} for n in range(38)]
-    rows.append({**make_spot(99, "changed", 5.0), "laugh_a": None, "laugh_b": None})
-    assert len(compare.candidates(rows, 60)) == 38
-    assert len(compare.candidates(rows, 10)) == 10
+    rows = [make_spot(n) for n in range(38)] + [make_spot(99, laugh=False)]
+    assert compare.candidates(rows, 60) == (rows[:38], 0)
 
 
-def test_select_stops_at_the_limit():
-    assert len(compare.select([make_spot(n, "kept", n * 100.0) for n in range(9)], 5)) == 5
+def test_too_many_candidates_are_spread_and_counted():
+    """上限で切っても、後半が丸ごと落ちない。切った数は残す。"""
+    rows = [make_spot(n) for n in range(100)]
+    picked, cut = compare.candidates(rows, 10)
+    assert len(picked) == 10 and cut == 90
+    assert picked[-1]["id"] == "spot-0090"
+
+
+def test_slow_recording_does_not_make_everything_moved():
+    """テンポの遅い 2 本目は頭からの秒が積もる。くだりの長さの比で写す。"""
+    b = side("b", LINES, [h * 2 for h in MANY], step=20.0)
+    a = side("a", LINES, MANY)
+    found = spots(a, b, draft(row("same", (0, 7), (0, 7))))
+    assert {s["kind"] for s in found} == {"kept"}
+
+
+def test_a_far_laugh_is_not_paired():
+    a = side("a", LINES, [5.0, *MANY[1:]])
+    b = side("b", LINES, [75.0, *MANY[1:-1], 79.0])
+    found = spots(a, b, draft(row("same", (0, 7), (0, 7))))
+    assert any(s["laugh_a"] == 5.0 and s["kind"] == "one_side" for s in found)
+
+
+def test_long_passage_shows_only_the_lines_around_the_place():
+    texts = [f"長いくだりの{n}行目でございます" for n in range(100)]
+    a, b = side("a", texts, [505.0]), side("b", texts, [])
+    spot = {"laugh_a": 505.0, "a": {"t": 500.0}, "span_a": [0, 99], "span_b": [0, 99]}
+    rows = compare.context_rows(spot, a, b)["lines_b"]
+    assert len(rows) == compare.LINES_B_MAX
+    assert any(r["seg_id"] == seg(50) for r in rows)
 
 
 @pytest.mark.parametrize("value", ["", "。、 "])
@@ -394,40 +410,61 @@ def test_context_shows_the_laugh_and_the_whole_passage_with_measured_pauses():
 def test_asker_chooses_the_lines_and_they_replace_the_guess():
     a, b, spot, rows = shown_lines()
     spot["kind"] = "kept"
-    assert compare.settle(spot, answer(), a, b, rows)
-    assert spot["a"]["quote"] == LINES[1] and spot["b"]["quote"] == LINES[2]
+    new = compare.settle(spot, answer(), a, b, rows)
+    assert new["a"]["quote"] == LINES[1] and new["b"]["quote"] == LINES[2]
+    assert spot["a"] == {"t": 10.0}  # 元の所は書き換えない
 
 
 def test_lines_that_were_not_shown_are_refused():
     a, b, spot, rows = shown_lines()
     spot["kind"] = "kept"
-    assert not compare.settle(spot, answer(a_seg=seg(99)), a, b, rows)
-    assert not compare.settle(spot, answer(b_seg=seg(99)), a, b, rows)
+    assert compare.settle(spot, answer(a_seg=seg(99)), a, b, rows) is None
+    assert compare.settle(spot, answer(b_seg=seg(99)), a, b, rows) is None
 
 
 def test_relation_none_needs_no_line_and_makes_it_added():
     a, b, spot, rows = shown_lines()
     spot["kind"] = "kept"
-    assert not compare.settle(spot, answer(relation="none"), a, b, rows)
-    assert compare.settle(spot, answer(relation="none", b_seg=None), a, b, rows)
-    assert spot["kind"] == "added" and spot["b"] is None
+    assert compare.settle(spot, answer(relation="none"), a, b, rows) is None
+    new = compare.settle(spot, answer(relation="none", b_seg=None), a, b, rows)
+    assert new["kind"] == "added" and new["b"] is None
+
+
+@pytest.mark.parametrize("kind", ["moved", "one_side"])
+def test_no_counterpart_is_always_called_added(kind):
+    """もう 1 本に無い行なのに「ずれた」と言わない。"""
+    a, b, spot, rows = shown_lines()
+    spot["kind"] = kind
+    assert compare.settle(spot, answer(relation="none", b_seg=None), a, b, rows)["kind"] == "added"
 
 
 def test_speaking_of_a_pause_needs_a_measured_difference():
     a, b, spot, rows = shown_lines()
     spot["kind"] = "kept"
-    assert not compare.settle(spot, answer(text="ここ、間が違いますね。"), a, b, rows)
+    assert compare.settle(spot, answer(text="ここ、間が違いますね。"), a, b, rows) is None
     b.silences = [[18.5, 20.0]]  # b の 3 行目の前の無音
-    spot["a"], spot["b"] = {"t": 10.0}, {"t": 0.0}
-    assert compare.settle(spot, answer(text="ここ、間が違いますね。"), a, b, rows)
-    assert spot["kind"] == "ma" and spot["ma_b"] == 1.5
+    new = compare.settle(spot, answer(text="ここ、間が違いますね。"), a, b, rows)
+    assert new["kind"] == "ma" and new["ma_b"] == 1.5
 
 
-def test_the_word_for_pause_inside_a_quote_is_not_a_pause():
+@pytest.mark.parametrize(
+    "text",
+    [
+        "「人間」は同じですね。",
+        "時間の話ですね。",
+        "ここを間違えたのですか？",
+        "仲間に教えるなら何て言います？",
+    ],
+)
+def test_words_with_the_same_letter_are_not_a_pause(text):
     a, b, spot, rows = shown_lines()
     spot["kind"] = "kept"
-    assert compare.settle(spot, answer(text="「人間」は同じですね。"), a, b, rows)
-    assert spot["kind"] == "kept"
+    assert compare.settle(spot, answer(text=text), a, b, rows)["kind"] == "kept"
+
+
+@pytest.mark.parametrize("text", ["ここの間は何て言います？", "長い間を取っています。", "一呼吸の間ですね。"])
+def test_real_talk_of_a_pause_is_seen(text):
+    assert compare.speaks_of_pause(text)
 
 
 def test_pause_is_not_told_when_a_laugh_comes_just_before():
@@ -489,6 +526,70 @@ def test_failed_asker_keeps_the_cost_and_no_questions(tmp_path):
         run(root, client_of(broken), tmp_path)
     assert "compare" in store.read(neta.koza_dir(K1) / "run.json", "run")
     assert not any("spot_id" in q for q in store.read(neta.questions, "questions")["questions"])
+
+
+def test_a_place_with_an_answer_is_not_asked_again(tmp_path):
+    root, neta = two_books(tmp_path)
+    run(root, client_of(answer_all), tmp_path)
+    first = next(q for q in store.read(neta.questions, "questions")["questions"] if "spot_id" in q)
+    performer.answer(neta, question=first["id"], speaker="本人", words="わざとです")
+    doc = run(root, client_of(answer_all), tmp_path)
+    assert any(s["id"] == first["spot_id"] for s in doc["spots"])
+    after = store.read(neta.questions, "questions")["questions"]
+    assert sum(q.get("spot_id") == first["spot_id"] for q in after) == 1
+
+
+def test_open_questions_of_another_pair_stay(tmp_path):
+    root, neta = two_books(tmp_path)
+    run(root, client_of(answer_all), tmp_path)
+    rv = store.read(neta.review, "review")
+    qs = store.read(neta.questions, "questions")
+    for issue in rv["issues"]:
+        if issue["role"] == "asker":
+            issue["attempt"] = issue["attempt"].replace(K2, "別の高座")
+    store.write(neta.review, rv, "review")
+    pipeline.drop_open_asks(rv, qs, f"（{K1} と {K2}、")
+    assert any("spot_id" in q for q in qs["questions"])
+    pipeline.drop_open_asks(rv, qs, f"（{K1} と 別の高座、")
+    assert not any("spot_id" in q for q in qs["questions"])
+
+
+def test_a_refused_question_does_not_change_the_place(tmp_path):
+    root, neta = two_books(tmp_path)
+
+    def bad(kw):
+        rows = json.loads(text_of(kw))
+        return json.dumps(
+            {
+                "schema_version": 1,
+                "questions": [
+                    {
+                        "spot_id": r["spot_id"],
+                        "a_seg": r["lines_a"][-1]["seg_id"],
+                        "b_seg": r["lines_b"][-1]["seg_id"],
+                        "relation": "changed",
+                        "text": "ここは受けなかったですね。",
+                    }
+                    for r in rows
+                ],
+            },
+            ensure_ascii=False,
+        )
+
+    doc = run(root, client_of(bad), tmp_path)
+    assert all(s["kind"] != "words" or s["laugh_a"] is None for s in doc["spots"])
+    assert doc["counts"] == compare.count(doc["spots"])
+
+
+def test_failed_aligner_records_no_share(tmp_path):
+    root, neta = two_books(tmp_path)
+
+    def broken(kw):
+        raise RuntimeError("途中で落ちた")
+
+    with pytest.raises(RuntimeError):
+        run(root, ScriptedClient(aligner=[broken], asker=[]), tmp_path)
+    assert store.read(neta.koza_dir(K1) / "run.json", "run")["compare"]["share"] is None
 
 
 def test_second_run_rewrites_open_questions_and_keeps_touched_ones(tmp_path):
