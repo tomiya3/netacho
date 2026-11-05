@@ -240,8 +240,11 @@ def cmd_compare(args: argparse.Namespace) -> None:
     if not doc["comparable"]:
         print("2 本の対応が付かないので、比べていません")
         return
+    print(f"笑いの山 1 本目 {doc['humps_a']}、2 本目 {doc['humps_b']}")
     if doc["practice"]:
         print("2 本目に笑いがほぼ無いので、稽古と見て本番の笑いを軸に比べました")
+    elif not doc["laughs_compared"]:
+        print("笑いの山かスコアが無いので、笑いは比べていません")
     print(f"所 {len(doc['spots'])}、種類ごと {doc['counts']}")
     skipped = [s["title"] or s["scene_id"] for s in doc["scenes"] if not s["compared"]]
     if skipped:

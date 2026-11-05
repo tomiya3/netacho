@@ -144,6 +144,19 @@ def test_practice_recording_does_not_make_everything_one_sided():
     assert {s["kind"] for s in doc["spots"]} <= {"kept", "ma", "words"}
 
 
+def test_missing_scores_are_not_called_practice():
+    """スコアが無いのは未検出。客のいない稽古とは言えない。"""
+    b = side("b", LINES, [])
+    b.scored = False
+    doc = compare.compare(side("a", LINES, MANY), b, ALL_SAME, {})
+    assert doc["practice"] is False and doc["laughs_compared"] is False
+
+
+def test_a_laugh_at_the_edge_of_two_passages_is_told_once():
+    found = spots(side("a", LINES, [41.0, *MANY[2:]]), side("b", LINES, [41.0, *MANY[2:]]))
+    assert sum(s["laugh_a"] == 41.0 for s in found) == 1
+
+
 def test_laugh_on_words_only_in_the_first_is_added():
     """本番で来た言葉が、もう 1 本に無い。"""
     d = draft(row("same", (0, 3), (0, 3)), row("only_a", (4, 5)), row("same", (6, 7), (4, 5)))
@@ -507,6 +520,37 @@ def test_old_clean_copy_stops_the_comparison(tmp_path):
     store.write(path, doc, "seisho")
     with pytest.raises(store.StoreError, match="古い"):
         run(root, client_of(REPLY), tmp_path)
+
+
+def test_practice_as_the_first_recording_stops_with_a_hint(tmp_path):
+    root, neta = two_books(tmp_path)
+    doc = store.read(neta.koza_dir(K1) / "reactions.json", "reactions")
+    doc["scores"]["laugh"] = [0.0] * len(doc["scores"]["laugh"])
+    store.write(neta.koza_dir(K1) / "reactions.json", doc, "reactions")
+    other = store.read(neta.koza_dir(K2) / "reactions.json", "reactions")
+    other["scores"]["laugh"] = [0.2 if n % 4 == 0 else 0.0 for n in range(len(other["scores"]["laugh"]))]
+    store.write(neta.koza_dir(K2) / "reactions.json", other, "reactions")
+    with pytest.raises(store.StoreError, match="本番"):
+        run(root, client_of(REPLY), tmp_path)
+
+
+def test_failed_comparison_drops_open_questions_from_before(tmp_path):
+    root, neta = two_books(tmp_path)
+    run(root, client_of(REPLY), tmp_path)
+    apart = {
+        "schema_version": 1,
+        "passages": [
+            {
+                "relation": "only_a",
+                "a_first": "seg-0001",
+                "a_last": "seg-0012",
+                "b_first": None,
+                "b_last": None,
+            }
+        ],
+    }
+    run(root, client_of(aligner=apart), tmp_path)
+    assert not any("spot_id" in q for q in store.read(neta.questions, "questions")["questions"])
 
 
 def test_compare_is_written_for_the_screen(tmp_path):

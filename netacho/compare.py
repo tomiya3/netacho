@@ -43,6 +43,7 @@ class Side:
     lines: list[dict]
     humps: list[float]
     silences: list[list[float]] = field(default_factory=list)  # VAD の声の無い所
+    scored: bool = True  # 笑いのスコアがあるか。無ければ未検出で、笑いが無いとは言えない
     index: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -89,8 +90,9 @@ def side_of(koza_id: str, transcript: dict, lines: dict, reactions: dict, timeli
                     "scene_id": scene_of.get(seg["id"]),
                 }
             )
-    humps = [sum(h) / len(h) for h in laugh_humps(reactions) or []]
-    return Side(koza_id, rows, humps, silences_of(transcript.get("vad") or []))
+    found = laugh_humps(reactions)
+    humps = [sum(h) / len(h) for h in found or []]
+    return Side(koza_id, rows, humps, silences_of(transcript.get("vad") or []), found is not None)
 
 
 def check_passages(draft: dict, a: Side, b: Side) -> tuple[list[dict], int]:
@@ -204,14 +206,19 @@ def _paired_spots(p: dict, a: Side, b: Side, practice: bool) -> list[dict]:
 
 
 def _unique(spots: list[dict]) -> list[dict]:
-    """同じ所は 1 件にする。"""
+    """同じ所は 1 件にする。くだりの境目の笑いは、前のくだりの後ろと次のくだりの頭で 2 度拾われる。"""
     seen: set[tuple] = set()
+    laughs: set[float] = set()
     out = []
     for s in spots:
         key = (s["kind"], s["a"]["t"], (s["b"] or {}).get("t"))
-        if key not in seen:
-            seen.add(key)
-            out.append(s)
+        laugh = s["laugh_a"]
+        if key in seen or (laugh is not None and laugh in laughs):
+            continue
+        seen.add(key)
+        if laugh is not None:
+            laughs.add(laugh)
+        out.append(s)
     return out
 
 
@@ -223,6 +230,8 @@ def _spot_id(spot: dict) -> str:
 
 def is_practice(a: Side, b: Side) -> bool:
     """2 本目に笑いがほぼ無いか。客のいない稽古なら、笑いの有無を比べても意味が無い。"""
+    if not a.scored or not b.scored:  # スコアが無いのは未検出。客がいないとは言えない
+        return False
     return len(b.humps) < PRACTICE_HUMPS and len(b.humps) < PRACTICE_RATIO * len(a.humps)
 
 
@@ -233,7 +242,7 @@ def compare(a: Side, b: Side, draft: dict, titles: dict) -> dict:
     covered = sum(b.size(*p["b"]) for p in paired)
     short = min(a.total, b.total)
     share = round(min(covered / short, 1.0), 3) if short else 0.0
-    laughs = bool(a.humps)
+    laughs = bool(a.humps) and a.scored and b.scored
     practice = laughs and is_practice(a, b)
     head = {
         "schema_version": 1,

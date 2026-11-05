@@ -653,6 +653,8 @@ def compare_koza(
     other = store.Neta(performer, other_neta or neta_name, root)
     a = compare_side(ctx.neta, koza_id)
     b = compare_side(other, other_koza)
+    if compare.is_practice(b, a):  # 本番の笑いを軸に比べるので、本番を 1 本目にする
+        raise store.StoreError("1 本目に笑いがほぼ無い。--koza に本番、--with-koza に稽古を指定する")
     titles = {s["id"]: s["title"] for s in ctx.hanashi["scenes"]}
     kdir = ctx.neta.koza_dir(koza_id)
     fallback = added = 0
@@ -733,7 +735,12 @@ def compare_koza(
             )  # 先に書く。落ちても、指す先の無い問いを残さない
             save_review(ctx, review_doc, questions)
         else:
+            review_doc, questions = read_review(
+                ctx.neta
+            )  # 比べられなければ、前の比較の未回答の問いも残さない
+            drop_open_asks(review_doc, questions)
             store.write(kdir / "compare.json", doc, "compare")
+            save_review(ctx, review_doc, questions)
     finally:  # 落ちても、使った費用は実測として残す
         ctx.usage.extra["compare"] = {
             "share": doc["share"],
