@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gaps",
+  "description": "笑いどころの予測と実際の笑いの比較。スクリプトが作る。未検出は空振りと呼ばず judged を false にする",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "koza_id",
+    "judged",
+    "hits",
+    "misses",
+    "surprises"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "koza_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "judged": {
+      "type": "boolean",
+      "description": "自動の反応が無い高座は false"
+    },
+    "hits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item_id",
+          "reaction_ids"
+        ],
+        "properties": {
+          "item_id": {
+            "type": "string"
+          },
+          "reaction_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "misses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item_id"
+        ],
+        "properties": {
+          "item_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "surprises": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "reaction_id",
+          "t0",
+          "t1",
+          "scene_id",
+          "before_quote"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^gap-\\d{4,}$"
+          },
+          "reaction_id": {
+            "type": "string"
+          },
+          "t0": {
+            "type": "number",
+            "minimum": 0
+          },
+          "t1": {
+            "type": "number",
+            "minimum": 0
+          },
+          "scene_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "before_quote": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "question_source": {
+            "enum": [
+              "claude",
+              "fixed"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

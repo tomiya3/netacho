@@ -43,7 +43,10 @@
             "pattern": "^issue-\\d{4,}$"
           },
           "role": {
-            "const": "deshi"
+            "enum": [
+              "deshi",
+              "noter"
+            ]
           },
           "kind": {
             "enum": [
