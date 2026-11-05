@@ -157,6 +157,42 @@ def test_failed_scribe_keeps_old_copy(built, data, tmp_path):
     assert (kdir / "seisho.md").read_text(encoding="utf-8") == "前の清書"
 
 
+def test_long_koza_is_split_and_put_back_in_order(built, data, tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline, "SCRIBE_CHUNK", 5)
+    seg = store.read(built.koza_dir(K) / "transcript.json", "transcript")["segments"]
+    replies = [
+        draft_lines(*(line(s["id"], s["text"]) for s in seg[i : i + 5])) for i in range(0, len(seg), 5)
+    ]
+    client = ScriptedClient(scribe=replies)
+    run = pipeline.clean_copy(P, N, K, client=client, budget=Budget(tmp_path / "ledger.json"), root=data)
+    assert len(client.calls["scribe"]) == 3
+    assert run["seisho"]["missing"] == 0
+    assert [x["seg_id"] for x in store.read(built.koza_dir(K) / "seisho.json", "seisho")["lines"]][:2] == [
+        "seg-0001",
+        "seg-0002",
+    ]
+
+
+def test_cost_stays_when_scribe_is_cut(built, data, tmp_path):
+    bad = ScriptedClient(scribe=[lambda kw: '{"schema_version": 1}'])
+    with pytest.raises(ValueError):
+        pipeline.clean_copy(P, N, K, client=bad, budget=Budget(tmp_path / "ledger.json"), root=data)
+    run = store.read(built.koza_dir(K) / "run.json", "run")
+    assert "scribe" in {r["name"] for r in run["roles"]}
+    assert run["evidence"]["kept"] == 1  # build の数字も残る
+
+
+def test_newlines_in_text_are_flattened():
+    doc, _ = one("傘を貸して", "傘を\n貸して")
+    assert "\n" not in doc["lines"][0]["text"]
+
+
+def test_mark_removes_clean_copy_with_old_marks():
+    from netacho import cli
+
+    assert {"seisho.json", "seisho.md"} <= set(cli.STALE_AFTER_MARK)
+
+
 def test_scribe_sees_no_reactions(built, data, tmp_path):
     client = ScriptedClient(scribe=[draft_lines()])
     pipeline.clean_copy(P, N, K, client=client, budget=Budget(tmp_path / "ledger.json"), root=data)

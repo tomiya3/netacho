@@ -47,7 +47,7 @@ def build(
             stats["duplicate"] += 1
         elif row is None and raw:  # 空の区間は役に渡していない
             stats["missing"] += 1
-        text = row["text"].strip() if row else raw
+        text = " ".join(row["text"].split()) if row else raw  # 改行で読み物が崩れないように
         speaker = (row["speaker"] or None) if row else None
         if speaker is not None and names is not None and speaker not in names:
             speaker = None
@@ -79,6 +79,8 @@ def markdown(koza: dict, doc: dict, stats: dict | None = None) -> str:
         f"# 清書：{koza['neta']}（{koza['id']}）",
         "",
     ]
+    if stats and stats["extra"]:
+        out += [f"**速記役が余分に返した行が {stats['extra']} あり、捨てました。**", ""]
     if stats and (stats["missing"] or stats["duplicate"]):
         count = stats["missing"] + stats["duplicate"]
         out += [f"**速記役が返さなかった区間が {count} あります。その行は原文のままです。**", ""]
