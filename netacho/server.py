@@ -21,7 +21,7 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import guide, performer, pipeline, store, view
+from . import performer, pipeline, store, view
 
 MAX_BODY = 64 * 1024
 POSITIONS = ("before", "within", "after")
@@ -198,7 +198,13 @@ class Handler(BaseHTTPRequestHandler):
             after()
             view.write(self.server.neta, self.server.koza_id, self.server.out)
         except Exception:
-            self._json(200, {"ok": True, "warning": "保存しましたが、画面を更新できませんでした"})
+            self._json(
+                200,
+                {
+                    "ok": True,
+                    "warning": "保存しましたが、札や画面を更新できませんでした。netacho guide で作り直せます",
+                },
+            )
             return
         self._json(200, {"ok": True})
 
@@ -226,12 +232,7 @@ class Handler(BaseHTTPRequestHandler):
             scene=_text(body, "scene"),
             position=position,
         )
-
-        def after() -> None:
-            pipeline.after_performer(neta)
-            guide.write(neta)  # 札がまだ無くても作る
-
-        return after
+        return lambda: pipeline.after_performer(neta, first_card=True)
 
     def _dismiss(self, body: dict) -> Callable[[], None]:
         neta = self.server.neta

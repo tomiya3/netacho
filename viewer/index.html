@@ -268,10 +268,11 @@ async function send(path, body, note, tab = "#deshi") {
     const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Netacho-Token": TOKEN }, body: JSON.stringify(body) });
     const doc = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(doc.error || String(res.status));
-    if (doc.warning) { note.textContent = doc.warning; return; }
+    if (doc.warning) { note.textContent = doc.warning; return true; }
     history.replaceState(null, "", location.search + tab);
     location.reload();
-  } catch (e) { note.textContent = `保存できませんでした：${e.message}`; }
+    return true;
+  } catch (e) { note.textContent = `保存できませんでした：${e.message}`; return false; }
 }
 
 function decideForm(d) {
@@ -283,9 +284,11 @@ function decideForm(d) {
   const why = el("input", { type: "text", "aria-label": "理由", placeholder: "理由" });
   const note = el("p", { class: "quote", role: "status" });
   const ok = el("button", { type: "button" }, "札に出す");
-  ok.addEventListener("click", () => {
+  ok.addEventListener("click", async () => {
+    ok.disabled = true;  // 2 度押しで「同じ札がある」と出さない。保存できたら押し直さない
     sessionStorage.setItem("netacho-speaker", speaker.value);
-    send("/api/decide", { scene: scene.value, position: "within", speaker: speaker.value, words: words.value, card: text.value, why: why.value }, note, "#cards");
+    const saved = await send("/api/decide", { scene: scene.value, position: "within", speaker: speaker.value, words: words.value, card: text.value, why: why.value }, note, "#cards");
+    if (!saved) ok.disabled = false;
   });
   return el("div", { class: "answer" }, scene, speaker, words, text, why, el("div", {}, ok), note);
 }

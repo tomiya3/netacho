@@ -341,10 +341,16 @@ def settled_scenes(questions: dict) -> set[str]:
     return {q["scene_id"] for q in questions["questions"] if "answer" in q or "dismissed" in q}
 
 
-def after_performer(neta: store.Neta) -> None:
-    """演者が答えたか問いを捨てた後の更新。指摘が解決になると札が変わる。CLI と画面で同じにする。"""
+def after_performer(neta: store.Neta, *, first_card: bool = False) -> None:
+    """演者が決めた後の更新。指摘が解決になると札が変わる。CLI と画面で同じにする。
+
+    `first_card` は札がまだ無くても作る。答えだけでは札を作らない。
+    """
     write_markdown(neta, store.read(neta.hanashi, "book"), store.read(neta.kata, "book"))
-    guide.refresh(neta)
+    if first_card:
+        guide.write(neta)
+    else:
+        guide.refresh(neta)
 
 
 def reread(

@@ -455,3 +455,29 @@ def test_decide_needs_the_token(running):
 def test_static_viewer_has_no_decide_form_without_a_token():
     html = (Path(__file__).parents[1] / "viewer" / "index.html").read_text(encoding="utf-8")
     assert 'if (TOKEN) root.append(el("h2", {}, "札に出す")' in html
+
+
+def test_decision_stays_in_kata_when_the_card_cannot_be_written(running, monkeypatch):
+    def broken(neta):
+        raise OSError("札を書けない")
+
+    monkeypatch.setattr(guide, "write", broken)
+    status, body = call(running, "/api/decide", decide_body(running))
+    assert status == 200 and "netacho guide" in json.loads(body)["warning"]
+    assert any(
+        i["source"].get("words") == "扇子を置く" for i in store.read(running.neta.kata, "book")["items"]
+    )
+
+
+def test_the_same_card_twice_is_refused_and_kept_once(running):
+    assert call(running, "/api/decide", decide_body(running))[0] == 200
+    assert call(running, "/api/decide", decide_body(running))[0] == 400
+    items = store.read(running.neta.kata, "book")["items"]
+    assert sum(i["source"].get("words") == "扇子を置く" for i in items) == 1
+
+
+def test_answer_alone_does_not_make_a_first_card(running):
+    q = add_question(running)
+    running.neta.guide.unlink()
+    assert call(running, "/api/answer", {"question": q, "speaker": "本人", "words": "言葉"})[0] == 200
+    assert not running.neta.guide.exists()
