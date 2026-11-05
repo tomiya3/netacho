@@ -163,6 +163,16 @@ def test_ma_skips_checker_and_stays_visible(data, tmp_path):
     assert "held" not in books(data)[1]["items"][0]
 
 
+def test_mixed_items_send_only_non_ma_to_checker(data, tmp_path):
+    ma = draft_item(kind="間", book="kata", text="短い間", source={"segs": ["seg-0003", "seg-0003"]})
+    client = ScriptedClient(writer=[draft(ma, draft_item())], checker=[verdicts(("item-0002", "supported"))])
+    doc = build(client, data, tmp_path)
+    rows = json.loads(text_of(client.calls["checker"][0]))
+    assert [r["item_id"] for r in rows] == ["item-0002"]
+    assert doc["checker"]["ma_by_script"] == 1
+    store.read(store.Neta(P, N, data).koza_dir(K) / "run.json", "run")  # schema を通る
+
+
 def test_long_blank_is_shown_as_blank_not_ma(data, tmp_path):
     neta = store.Neta(P, N, data)
     path = neta.koza_dir(K) / "transcript.json"
