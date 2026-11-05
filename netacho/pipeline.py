@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import candidates, evidence, gaps, guide, merge, render, review, store
+from . import candidates, evidence, gaps, guide, merge, render, review, seisho, store
 from .budget import Budget
 from .runner import RoleCache, Usage, call_role
 from .schema import check_refs
@@ -531,6 +531,61 @@ def note(
     ctx.usage.extra["notes"] = {"candidates": len(cands["candidates"]), "fallback": len(fixed)}
     ctx.usage.extra["gaps"] = gaps.counts(found)
     ctx.usage.extra["questions"] = len(questions["questions"])
+    result = ctx.usage.to_json()
+    store.write(run_path, result, "run")
+    return result
+
+
+SCRIBE_CHUNK = 120  # 1 回に渡す区間の数。40 分の高座でも切れない長さ。暫定
+
+
+def scribe_content(ctx: Context, segments: list[dict]) -> list[dict]:
+    """速記役に見せる物：文字起こし、演目名、人物の名前。反応は見せない。"""
+    head = {"演目": ctx.koza["neta"], "人物": [c["name"] for c in ctx.hanashi["characters"]]}
+    lines = [{"seg_id": s["id"], "text": s["text"]} for s in segments if s["text"].strip()]
+    return [
+        {"type": "text", "text": json.dumps(head, ensure_ascii=False, indent=1)},
+        {"type": "text", "text": json.dumps(lines, ensure_ascii=False)},
+    ]
+
+
+def clean_copy(
+    performer: str,
+    neta_name: str,
+    koza_id: str,
+    *,
+    client,
+    budget: Budget | None = None,
+    reuse: bool = False,
+    root: Path | None = None,
+) -> dict:
+    """清書を作る。返すのは run.json の中身。正本には触らない。"""
+    ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
+    kdir = ctx.neta.koza_dir(koza_id)
+    run_path = kdir / "run.json"
+    segs = ctx.transcript["segments"]
+    lines: list[dict] = []
+    try:
+        # 1 回の出力が max_tokens で切れないように、区間を分けて呼ぶ
+        for i in range(0, len(segs), SCRIBE_CHUNK):
+            chunk = segs[i : i + SCRIBE_CHUNK]
+            if not any(s["text"].strip() for s in chunk):
+                continue
+            content = scribe_content(ctx, chunk)
+            part = call_role(ctx.client, "scribe", content, "scribe", ctx.usage, ctx.budget, ctx.cache)
+            lines += part["lines"]
+    except Exception:
+        store.write(run_path, ctx.usage.to_json(), "run")  # 費用は実測として残す
+        raise
+    draft = {"schema_version": 1, "lines": lines}
+    store.write(ctx.neta.drafts / "scribe.json", draft, "scribe")
+    reactions_path = kdir / "reactions.json"
+    reactions = store.read(reactions_path, "reactions") if reactions_path.exists() else None
+    names = {c["name"] for c in ctx.hanashi["characters"]}
+    doc, stats = seisho.build(draft, ctx.transcript, reactions, names)
+    store.write(kdir / "seisho.json", doc, "seisho")
+    (kdir / "seisho.md").write_text(seisho.markdown(ctx.koza, doc, stats), encoding="utf-8")
+    ctx.usage.extra["seisho"] = stats
     result = ctx.usage.to_json()
     store.write(run_path, result, "run")
     return result

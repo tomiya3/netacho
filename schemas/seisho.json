@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "seisho",
+  "description": "清書。原文を必ず残す。text と speaker は Claude の推定で、raw が文字起こしのまま",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "koza_id",
+    "lines"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "koza_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "seg_id",
+          "speaker",
+          "text",
+          "raw",
+          "changed"
+        ],
+        "properties": {
+          "seg_id": {
+            "type": "string",
+            "pattern": "^seg-\\d{4,}$"
+          },
+          "speaker": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "raw": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "boolean"
+          },
+          "marks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "proposal": {
+            "type": "string",
+            "description": "原文に戻した行の、速記役の案"
+          },
+          "heavy": {
+            "type": "boolean",
+            "description": "原文から大きく変わった行。歌の表記の修正など"
+          }
+        }
+      }
+    }
+  }
+}

@@ -267,6 +267,59 @@
           "type": "number"
         }
       }
+    },
+    "seisho": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lines",
+        "changed",
+        "kept_raw",
+        "missing",
+        "extra",
+        "duplicate",
+        "empty",
+        "heavy",
+        "unknown_speaker"
+      ],
+      "properties": {
+        "lines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kept_raw": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "extra": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicate": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "empty": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "heavy": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unknown_speaker": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     }
   }
 }

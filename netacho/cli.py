@@ -16,7 +16,7 @@ from pathlib import Path
 from . import reactions, store
 
 SCHEMA_VERSION = 1
-STALE_AFTER_MARK = ("note_candidates.json", "gaps.json", "note.md", "sokki.md")
+STALE_AFTER_MARK = ("note_candidates.json", "gaps.json", "note.md", "sokki.md", "seisho.json", "seisho.md")
 # prep をやり直すと意味を失う物
 PREP_OUTPUTS = (
     "koza.json",
@@ -28,6 +28,8 @@ PREP_OUTPUTS = (
     "gaps.json",
     "note.md",
     "sokki.md",
+    "seisho.json",
+    "seisho.md",
 )
 
 
@@ -258,6 +260,22 @@ def cmd_run(args: argparse.Namespace) -> None:
     cmd_note(args)
 
 
+def cmd_seisho(args: argparse.Namespace) -> None:
+    from . import pipeline, runner
+
+    client = runner.make_client()
+    doc = pipeline.clean_copy(args.performer, args.neta, args.koza, client=client, reuse=args.reuse)
+    s = doc["seisho"]
+    print(f"清書 {s['lines']} 行、直した行 {s['changed']}、大きく直した行 {s['heavy']}")
+    print(f"原文に戻した行 {s['kept_raw']}、抜け {s['missing']}、重複 {s['duplicate']}")
+    if s["missing"] or s["duplicate"] or s["extra"] or s["unknown_speaker"]:
+        print(
+            f"確かめる：余分な行 {s['extra']}、人物に無い話者 {s['unknown_speaker']}。"
+            "返らなかった区間は原文のまま",
+            file=sys.stderr,
+        )
+
+
 def cmd_decide(args: argparse.Namespace) -> None:
     from . import performer
 
@@ -382,6 +400,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--reuse", action="store_true", help="同じ入力の役の出力を使い回す。外れると prep の後で鍵が要る"
     )
     run.set_defaults(func=cmd_run)
+
+    clean = sub.add_parser("seisho", help="清書（速記役。原文も残す）")
+    clean.add_argument("--performer", required=True)
+    clean.add_argument("--neta", required=True)
+    clean.add_argument("--koza", required=True)
+    clean.add_argument("--reuse", action="store_true")
+    clean.set_defaults(func=cmd_seisho)
 
     decide = sub.add_parser("decide", help="演者の決定を型に入れる（LLM 0 回）")
     _who(decide)

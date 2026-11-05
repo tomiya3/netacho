@@ -20,7 +20,13 @@ class _Stream:
 
 NO_ISSUES = {"schema_version": 1, "issues": []}
 NO_NOTES = {"schema_version": 1, "notes": []}
-ROLE_MARKS = {"構成作家役": "writer", "照合役": "checker", "ノート役": "noter", "弟子役": "deshi"}
+ROLE_MARKS = {
+    "構成作家役": "writer",
+    "照合役": "checker",
+    "ノート役": "noter",
+    "弟子役": "deshi",
+    "速記役": "scribe",
+}
 
 
 class ScriptedClient:
