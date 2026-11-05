@@ -30,8 +30,10 @@ netacho run     --audio 録音 --performer ID --neta 演目 --koza 日付-会場
 netacho seisho  --performer ID --neta 演目 --koza 日付-会場   # 清書
 netacho decide  --performer ID --neta 演目 --speaker 名 --words 言葉 --card 札の文 --why 理由 --scene 場面
 netacho answer  --performer ID --neta 演目 --question Q --speaker 名 --words 言葉
+netacho dismiss --performer ID --neta 演目 --question Q --speaker 名 --reason 理由
 netacho guide   --performer ID --neta 演目                    # 札（LLM 0 回）
 netacho view    --performer ID --neta 演目 --koza 日付-会場
+netacho serve   --performer ID --neta 演目 --koza 日付-会場  # 演者が画面で問いに答える
 ```
 
 `--reuse` は、同じ入力の役の出力を使い回します。正本が変わると入力も変わるので、途中で落ちたときのやり直しに使います。

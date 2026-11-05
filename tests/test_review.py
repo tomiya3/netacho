@@ -321,3 +321,21 @@ def test_books_are_saved_before_deshi_reads(data, tmp_path):
     run(client(NO_ISSUES), data, tmp_path)
     hanashi, _ = books(data)
     assert hanashi["items"]
+
+
+def test_rebuild_does_not_ask_again_on_a_dismissed_scene(data, tmp_path):
+    run(client(deshi(issue(kind="ask_performer", scene="scene-02", missing="なぜ"))), data, tmp_path)
+    neta = store.Neta(P, N, data)
+    doc, questions = saved(data)
+    questions["questions"][0]["dismissed"] = {"speaker": P, "recorded_at": "t", "reason": "的外れ"}
+    doc["issues"][0]["resolved"] = True
+    store.write(neta.questions, questions, "questions")
+    store.write(neta.review, doc, "review")
+
+    c = ScriptedClient(
+        writer=[draft(draft_item(id="item-0001"))],
+        checker=[verdicts(("item-0001", "supported"))],
+        deshi=[deshi(issue(kind="ask_performer", scene="scene-02", missing="なぜ（言い直し）"))],
+    )
+    run(c, data, tmp_path)
+    assert len(saved(data)[1]["questions"]) == 1

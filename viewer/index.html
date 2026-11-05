@@ -56,6 +56,9 @@ h2 { font-size: 16px; margin: 24px 0 8px; }
 table { border-collapse: collapse; font-size: 13px; }
 th, td { border-bottom: 1px solid var(--line); padding: 4px 12px 4px 0; text-align: left; }
 .held { opacity: .6; }
+.answer { display: grid; gap: 8px; margin-top: 12px; max-width: 720px; }
+.answer input, .answer textarea { font: inherit; padding: 10px; width: 100%; box-sizing: border-box; }
+.answer button { font: inherit; padding: 8px 16px; margin-right: 8px; }
 .script-line { margin: 10px 0 0; }
 #seisho .quote { margin: 0; }
 details { margin-top: 12px; color: var(--text-2); font-size: 13px; }
@@ -255,6 +258,36 @@ function renderCards(d) {
   }
 }
 
+const TOKEN = new URLSearchParams(location.search).get("t");
+
+async function send(path, body, note) {
+  note.textContent = "";
+  try {
+    const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Netacho-Token": TOKEN }, body: JSON.stringify(body) });
+    const doc = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(doc.error || String(res.status));
+    if (doc.warning) { note.textContent = doc.warning; return; }
+    history.replaceState(null, "", location.search + "#deshi");
+    location.reload();
+  } catch (e) { note.textContent = `保存できませんでした：${e.message}`; }
+}
+
+function answerForm(q) {
+  const speaker = el("input", { type: "text", "aria-label": "答える人", placeholder: "答える人" });
+  speaker.value = sessionStorage.getItem("netacho-speaker") || "";
+  const words = el("textarea", { rows: "4", "aria-label": "答え", placeholder: "答え（このまま型に残ります）" });
+  const note = el("p", { class: "quote", role: "status" });
+  const who = () => { sessionStorage.setItem("netacho-speaker", speaker.value); return speaker.value; };
+  const ok = el("button", { type: "button" }, "答える");
+  ok.addEventListener("click", () => send("/api/answer", { question: q.id, speaker: who(), words: words.value }, note));
+  const drop = el("button", { type: "button" }, "この問いを捨てる");
+  drop.addEventListener("click", () => {
+    const reason = window.prompt("この問いを捨てます。元に戻せません。捨てる理由を書いてください。", "");
+    if (reason !== null) send("/api/dismiss", { question: q.id, speaker: who(), reason }, note);
+  });
+  return el("div", { class: "answer" }, speaker, words, el("div", {}, ok, drop), note);
+}
+
 function renderDeshi(d) {
   const root = document.getElementById("deshi");
   const stat = d.run?.deshi;
@@ -268,6 +301,8 @@ function renderDeshi(d) {
   for (const q of questions) {
     const body = [el("p", {}, q.text)];
     if (q.answer) body.push(el("div", { class: "meta" }, tag("performer", "演者の決定"), `「${q.answer.words}」`));
+    if (q.dismissed) body.push(el("div", { class: "meta" }, tag("performer", "演者が捨てた"), `「${q.dismissed.reason}」`));
+    if (TOKEN && !q.answer && !q.dismissed) body.push(answerForm(q));
     root.append(card("claude", "Claude の候補", `${q.id}  ${titles[q.scene_id] || ""}`, ...body));
   }
   root.append(el("h2", {}, "弟子役の指摘"));

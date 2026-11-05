@@ -233,7 +233,7 @@ reactions: reactions[{id,t0,t1,kind(laugh|applause|reaction),strength_rank(null�
 note_candidates: candidates[{id,item_id,payoff_t,window,reaction_ids,why(no_candidate|low_rank)}]
 gaps: judged, hits[], weak[], misses[], surprises[{id,reaction_id,t0,t1,scene_id,before_quote,question?}], peak_rate, baseline_rate, humps_total, humps_hit, humps_expected
 review: issues[{id,role,kind,anchor{scene_id|item_id},attempt,what_is_missing,round,resolved}]
-questions: questions[{id,issue_id,scene_id,text,answer?}]
+questions: questions[{id,issue_id,scene_id,text,answer?,dismissed?}]
 guide: cards[{order,scene_id,item_id,text,copied_fields,llm_fields}]
 drafts/writer: scenes, characters, items（source.segs と payoff だけ。時刻・引用は書かない）
 drafts/checker: verdicts[{item_id,verdict,reason}]
@@ -284,9 +284,11 @@ netacho reread  --performer ID --neta 演目 --koza KOZA             # 演者の
 netacho seisho  --performer ID --neta 演目 --koza KOZA             # 清書（速記役）
 netacho guide   --performer ID --neta 演目                         # LLM 0 回
 netacho view    --performer ID --neta 演目 --koza KOZA             # out/view/ へ書き出す
+netacho serve   --performer ID --neta 演目 --koza KOZA [--port N]  # 画面で問いに答える。LLM 0 回
+netacho dismiss --performer ID --neta 演目 --question Q --speaker S --reason R  # 的外れの問いを捨てる
 ```
 
-`netacho view` の後、`make viewer` で `http://localhost:8000/`（配信は `out/view` だけ）。画面は 5 枚：反応の波と候補、型、札、弟子役の指摘と質問、清書。「Claude の候補」「演者の決定」「スクリプトの転記」を色とラベルで見分けられるようにする。
+`netacho view` の後、`make viewer` で `http://localhost:8000/`（配信は `out/view` だけ。読むだけ）。答えるときは `netacho serve` が出す URL を開く。127.0.0.1 だけで待ち受け、書き込みには起動ごとのトークン、Host、Origin を確かめる。読み取りは `make viewer` と同じでトークンを求めない。`serve` は CLI のサブコマンドで、書き込みは `netacho answer` と同じ `performer` を通す（演者本人がコマンドを打たずに答えるため）。画面は 5 枚：反応の波と候補、型、札、弟子役の指摘と質問、清書。「Claude の候補」「演者の決定」「スクリプトの転記」を色とラベルで見分けられるようにする。
 
 ### 費用の管理（`budget.py`）
 

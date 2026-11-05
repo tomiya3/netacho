@@ -308,15 +308,27 @@ def cmd_decide(args: argparse.Namespace) -> None:
 
 
 def cmd_answer(args: argparse.Namespace) -> None:
-    from . import performer
+    from . import performer, pipeline
 
     neta = store.Neta(args.performer, args.neta)
-    from . import guide
-
     item = performer.answer(neta, question=args.question, speaker=args.speaker, words=args.words)
-    _rewrite_markdown(neta)
-    guide.refresh(neta)
+    pipeline.after_performer(neta)
     print(f"型に入れた：{item['id']}")
+
+
+def cmd_dismiss(args: argparse.Namespace) -> None:
+    from . import performer, pipeline
+
+    neta = store.Neta(args.performer, args.neta)
+    performer.dismiss(neta, question=args.question, speaker=args.speaker, reason=args.reason)
+    pipeline.after_performer(neta)
+    print(f"捨てた：{args.question}")
+
+
+def cmd_serve(args: argparse.Namespace) -> None:
+    from . import server
+
+    server.serve(store.Neta(args.performer, args.neta), args.koza, port=args.port)
 
 
 def cmd_guide(args: argparse.Namespace) -> None:
@@ -438,6 +450,19 @@ def build_parser() -> argparse.ArgumentParser:
     answer.add_argument("--speaker", required=True)
     answer.add_argument("--words", required=True, help="演者の言葉のまま")
     answer.set_defaults(func=cmd_answer)
+
+    dismiss = sub.add_parser("dismiss", help="的外れの問いを捨てる（LLM 0 回）")
+    _who(dismiss)
+    dismiss.add_argument("--question", required=True)
+    dismiss.add_argument("--speaker", required=True)
+    dismiss.add_argument("--reason", required=True)
+    dismiss.set_defaults(func=cmd_dismiss)
+
+    serve = sub.add_parser("serve", help="画面を開き、演者が問いに答える（LLM 0 回）")
+    _who(serve)
+    serve.add_argument("--koza", required=True)
+    serve.add_argument("--port", type=int, default=8765)
+    serve.set_defaults(func=cmd_serve)
 
     guide = sub.add_parser("guide", help="案内の札（LLM 0 回）")
     _who(guide)

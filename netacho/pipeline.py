@@ -301,6 +301,7 @@ def build(
     """噺・型を作り、弟子役に読ませ、差し戻しを 1 回だけ反映する。返すのは run.json の中身。"""
     ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
     doc, questions = read_review(ctx.neta)
+    ctx.asked_scenes |= settled_scenes(questions)
     base_round = max((i["round"] for i in doc["issues"]), default=0)
 
     def record(first: list[dict], second: list[dict] | None) -> None:
@@ -335,6 +336,17 @@ def build(
     return result
 
 
+def settled_scenes(questions: dict) -> set[str]:
+    """演者が答えたか捨てた問いの場面。同じ場面を言い方を変えて問い直さない。"""
+    return {q["scene_id"] for q in questions["questions"] if "answer" in q or "dismissed" in q}
+
+
+def after_performer(neta: store.Neta) -> None:
+    """演者が答えたか問いを捨てた後の更新。指摘が解決になると札が変わる。CLI と画面で同じにする。"""
+    write_markdown(neta, store.read(neta.hanashi, "book"), store.read(neta.kata, "book"))
+    guide.refresh(neta)
+
+
 def reread(
     performer: str,
     neta_name: str,
@@ -350,7 +362,7 @@ def reread(
     run_path = ctx.neta.koza_dir(koza_id) / "run.json"
     write_markdown(ctx.neta, ctx.hanashi, ctx.kata)
     doc, questions = read_review(ctx.neta)
-    ctx.asked_scenes |= {q["scene_id"] for q in questions["questions"] if "answer" in q}
+    ctx.asked_scenes |= settled_scenes(questions)
     try:
         current, _ = deshi_pass(ctx, doc, questions, max((i["round"] for i in doc["issues"]), default=0) + 1)
         suppressed = doc.pop("suppressed_answered", 0)
