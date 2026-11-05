@@ -567,7 +567,7 @@ def clean_copy(
     names = {c["name"] for c in ctx.hanashi["characters"]}
     doc, stats = seisho.build(draft, ctx.transcript, reactions, names)
     store.write(kdir / "seisho.json", doc, "seisho")
-    (kdir / "seisho.md").write_text(seisho.markdown(ctx.koza, doc), encoding="utf-8")
+    (kdir / "seisho.md").write_text(seisho.markdown(ctx.koza, doc, stats), encoding="utf-8")
     ctx.usage.extra["seisho"] = stats
     result = ctx.usage.to_json()
     store.write(run_path, result, "run")
