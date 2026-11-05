@@ -52,8 +52,36 @@ def _window_share(windows: list[list[float]], seconds: float | None) -> float:
 
 
 def _humps_hit(humps: list[list[float]], windows: list[list[float]]) -> int:
-    """どれかの窓に入った山の数。同じ山に窓が 2 つ重なっても 1 つと数える。"""
-    return sum(any(h0 < w1 and h1 >= w0 for w0, w1 in windows) for h0, h1 in humps)
+    """どれかの窓に入った山の数。同じ山に窓が 2 つ重なっても 1 つと数える。
+
+    窓の判定は window_peak と同じ半開区間。スコアの窓の中央が入れば、その山に触れている。
+    """
+    return sum(any(w0 <= c < w1 for w0, w1 in windows for c in hump) for hump in humps)
+
+
+def _touch_chance(hump: list[float], width: float, seconds: float) -> float:
+    """長さ width の窓を音声のどこかに一様に置いたとき、山に触れる確率。山の幅の分だけ高くなる。"""
+    room = seconds - width
+    if room <= 0:
+        return 1.0
+    return max(0.0, min(room, hump[-1]) - max(0.0, hump[0] - width)) / room
+
+
+def _humps_expected(humps: list[list[float]], windows: list[list[float]], seconds: float) -> float | None:
+    """同じ長さの窓を、音声全体に一様に置いたときに入る山の割合の見込み。山の幅も入れる。
+
+    窓の割合と比べると、幅のある山に触れやすい分だけ予測に有利になるので、これと比べる。
+    窓どうしは独立に置くとして計算する。乱数は使わない。
+    """
+    if not humps:
+        return None
+    missed = []
+    for hump in humps:
+        chance = 1.0
+        for w0, w1 in windows:
+            chance *= 1.0 - _touch_chance(hump, w1 - w0, seconds)
+        missed.append(chance)
+    return round(1.0 - sum(missed) / len(missed), 3)
 
 
 def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict | None) -> dict:
@@ -119,6 +147,7 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
         "window_share": _window_share(windows, end),
         "humps_total": None if humps is None else len(humps),
         "humps_hit": None if humps is None else _humps_hit(humps, windows),
+        "humps_expected": None if not humps or not end else _humps_expected(humps, windows, end),
         # 予測と基準は同じ定義で数える。録音の末尾で切れた窓は両方から外す
         "peak_rate": _rate(sum(p >= LAUGH_FLOOR for p in peaks), sum(p < LAUGH_FLOOR for p in peaks)),
         "peak_n": len(peaks),
@@ -146,6 +175,7 @@ def counts(doc: dict) -> dict:
         "window_share": doc["window_share"],
         "humps_total": doc["humps_total"],
         "humps_hit": doc["humps_hit"],
+        "humps_expected": doc["humps_expected"],
     }
 
 

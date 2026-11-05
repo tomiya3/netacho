@@ -233,7 +233,8 @@ def cmd_note(args: argparse.Namespace) -> None:
     print(f"予測なしで反応あり {g['surprise']}")
     print(f"山のある割合 予測 {g['peak_rate']}、音声全体 {g['baseline_rate']}、質問 {doc['questions']}")
     print(f"笑い {g['laughs_total']} のうち窓に入った {g['laughs_hit']}、窓の割合 {g['window_share']:.0%}")
-    print(f"笑いの山 {g['humps_total']} のうち窓に入った {g['humps_hit']}")
+    if g["humps_total"] is not None:
+        print(f"笑いの山 {g['humps_total']} のうち窓に入った {g['humps_hit']}、見込み {g['humps_expected']}")
 
 
 def _rewrite_markdown(neta: store.Neta) -> None:

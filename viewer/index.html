@@ -180,10 +180,11 @@ function renderWave(d) {
     if (!g.judged) root.append(el("p", {}, "自動で拾った笑いが無いので、比べていません。"));
     else {
       root.append(el("p", { class: "big" }, `笑い ${g.laughs_total} か所のうち ${g.laughs_hit} か所が予測の窓に入った`));
-      if (g.humps_total) root.append(el("p", { class: "big" }, `笑いの山 ${g.humps_total} 個のうち ${g.humps_hit} 個（${Math.round(g.humps_hit / g.humps_total * 100)}%）。窓が音声を覆う割合は ${Math.round(g.window_share * 100)}%`));
+      if (g.humps_total === 0) root.append(el("p", {}, "笑いの山は 0 個でした。"));
+      else if (g.humps_total != null) root.append(el("p", { class: "big" }, `笑いの山 ${g.humps_total} 個のうち ${g.humps_hit} 個（${Math.round(g.humps_hit / g.humps_total * 100)}%）${g.humps_expected != null ? `。同じ長さの窓を音声全体に置くと、見込みは ${Math.round(g.humps_expected * 100)}%` : ""}`));
       root.append(el("p", {}, `項目ごとの内訳：的中 ${g.hits.length}${g.weak ? `  弱い山 ${g.weak.length}` : ""}  空振り ${g.misses.length}  予測なしで反応あり ${g.surprise_total}。1 つの笑いに項目が重なることがあります。`));
       if (!g.weak) root.append(el("p", {}, "前の版の数え方です。空振りに弱い山を含みます。note をやり直すと分かれます。"));
-      if (!g.humps_total && g.peak_rate != null && g.baseline_rate != null) root.append(el("p", {}, `予測の窓 ${g.peak_n} 件のうち笑いの山がある割合 ${Math.round(g.peak_rate * 100)}%（同じ長さの窓を音声全体に置くと ${Math.round(g.baseline_rate * 100)}%）`));
+      if (g.humps_total == null && g.peak_rate != null && g.baseline_rate != null) root.append(el("p", {}, `予測の窓 ${g.peak_n} 件のうち笑いの山がある割合 ${Math.round(g.peak_rate * 100)}%（同じ長さの窓を音声全体に置くと ${Math.round(g.baseline_rate * 100)}%）`));
       root.append(el("p", { class: "quote" }, `Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。笑い ${g.laughs_total} か所のうち ${g.laughs_hit} か所が予測の窓に入り、窓は音声の ${Math.round(g.window_share * 100)}% を覆っています。空振りは、検出できなかっただけのこともあります。`));
       for (const s of g.surprises) {
         const fixed = s.question_source !== "claude";

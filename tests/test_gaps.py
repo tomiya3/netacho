@@ -222,7 +222,7 @@ def test_peak_rate_uses_the_same_rule_and_leaves_clipped_windows_out():
     assert r["peak_n"] == 2 and r["peak_rate"] == 0.5  # 末尾で切れた item-0003 は分母に入らない
 
 
-ADDED_LATER = ("weak", "peak_rate", "baseline_rate", "peak_n", "humps_total", "humps_hit")
+ADDED_LATER = ("weak", "peak_rate", "baseline_rate", "peak_n", "humps_total", "humps_hit", "humps_expected")
 
 
 def to_previous_version(kdir):
@@ -302,7 +302,7 @@ def test_fields_of_the_previous_version_stay_required():
 
 def test_humps_are_runs_of_scores_above_the_floor():
     d = scored(100.0, {12.5: 0.1, 14.5: 0.2, 40.5: 0.08, 60.5: 0.07})
-    assert reactions.laugh_humps(d) == [[12.5, 14.5], [40.5, 40.5]]
+    assert reactions.laugh_humps(d) == [[12.5, 14.5], [40.5]]
 
 
 def test_humps_are_none_without_scores():
@@ -324,12 +324,41 @@ def test_hump_edge_outside_every_window_is_not_hit():
 def test_no_automatic_laugh_writes_no_hump_count():
     r = compare([item(1, 10.0)], doc())
     assert r["judged"] is False and r["humps_total"] is None and r["humps_hit"] is None
+    assert r["humps_expected"] is None
+
+
+def test_hump_hit_agrees_with_window_peak():
+    d = scored(100.0, {12.5: 0.1, 14.5: 0.1, 40.5: 0.1})
+    humps = reactions.laugh_humps(d)
+    for t0, t1 in ([12.6, 14.4], [12.5, 13.0], [14.5, 20.0], [15.0, 40.0], [40.5, 41.0], [0.0, 12.5]):
+        touched = gaps._humps_hit(humps, [[t0, t1]]) > 0
+        assert touched == (reactions.window_peak(d, t0, t1) >= reactions.LAUGH_FLOOR), (t0, t1)
+
+
+def test_expected_share_includes_the_width_of_a_hump():
+    thin = gaps._humps_expected([[50.0]], [[0.0, 10.0]], 110.0)
+    wide = gaps._humps_expected([[50.0, 60.0, 70.0]], [[0.0, 10.0]], 110.0)
+    assert thin == 0.1 and wide == 0.3  # 10 / 100 と 30 / 100
+
+
+def test_expected_share_of_many_windows_does_not_exceed_one():
+    assert gaps._humps_expected([[50.0]], [[0.0, 200.0]], 110.0) == 1.0
+    assert gaps._humps_expected([], [[0.0, 10.0]], 110.0) is None
+
+
+def test_zero_humps_is_written_as_measured():
+    found = compare([item(1, 10.0)], scored(100.0, {}))
+    assert (found["humps_total"], found["humps_hit"], found["humps_expected"]) == (0, 0, None)
+    assert "笑いの山（弱い山を含む）は 0 個でした" in "\n".join(
+        render.gaps_markdown(found, {"item-0001": item(1, 10.0)})
+    )
 
 
 def test_markdown_leads_with_laughs_and_humps():
     r = compare([item(1, 10.0), item(2, 12.0)], scored(100.0, {12.5: 0.1, 60.5: 0.1}))
     text = "\n".join(render.gaps_markdown(r, {}))
     assert "笑いの山（弱い山を含む）2 個のうち、予測の窓に入ったのは 1 個（50%）" in text
+    assert "同じ長さの窓を音声全体に置くと、見込みは" in text
     assert text.index("笑いの山") < text.index("項目ごとの内訳")
     assert "1 つの笑いに項目が重なる" in text
 

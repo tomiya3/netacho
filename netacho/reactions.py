@@ -124,7 +124,7 @@ def window_peak(doc: dict, t0: float, t1: float) -> float:
 
 
 def laugh_humps(doc: dict, floor: float = LAUGH_FLOOR) -> list[list[float]] | None:
-    """floor 以上のスコアのひと続きを 1 つの山とする。[最初の窓の中央, 最後の窓の中央] の並び。
+    """floor 以上のスコアのひと続きを 1 つの山とする。山ごとの、スコアの窓の中央の並び。
 
     項目の窓に関係なく音声全体から決まるので、項目の数が変わっても動かない。スコアが無ければ None。
     """
@@ -137,11 +137,10 @@ def laugh_humps(doc: dict, floor: float = LAUGH_FLOOR) -> list[list[float]] | No
     for n, score in enumerate(scores["laugh"]):
         if score < floor:
             continue
-        center = half + n * stride
         if n == last + 1:
-            humps[-1][1] = center
+            humps[-1].append(half + n * stride)
         else:
-            humps.append([center, center])
+            humps.append([half + n * stride])
         last = n
     return humps
 

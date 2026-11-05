@@ -69,13 +69,17 @@ def clock(t: float) -> str:
 
 
 def _rate_line(gaps: dict) -> list[str]:
-    if gaps.get("humps_total"):
+    if gaps.get("humps_total") == 0:
+        return ["- 笑いの山（弱い山を含む）は 0 個でした"]
+    if gaps.get("humps_total") is not None:
         share = gaps["humps_hit"] / gaps["humps_total"]
-        return [
+        line = (
             f"- 笑いの山（弱い山を含む）{gaps['humps_total']} 個のうち、予測の窓に入ったのは "
-            f"{gaps['humps_hit']} 個（{share:.0%}）。"
-            f"窓が音声を覆う割合 {gaps['window_share']:.0%} と比べて見ます"
-        ]
+            f"{gaps['humps_hit']} 個（{share:.0%}）"
+        )
+        if gaps.get("humps_expected") is not None:
+            line += f"。同じ長さの窓を音声全体に置くと、見込みは {gaps['humps_expected']:.0%}"
+        return [line]
     if gaps.get("peak_rate") is None or gaps.get("baseline_rate") is None:  # 前の版の gaps.json には無い
         return []
     return [
