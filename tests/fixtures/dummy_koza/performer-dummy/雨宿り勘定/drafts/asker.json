@@ -6,7 +6,6 @@
       "a_seg": "seg-0003",
       "b_seg": "seg-0003",
       "relation": "same",
-      "ask": true,
       "text": "ここは 2 本とも同じ言葉ですね。変えない所ですか？"
     }
   ]

@@ -360,6 +360,12 @@ def scene_rows(a: Side, paired: list[dict], titles: dict) -> list[dict]:
     ]
 
 
+def candidates(spots: list[dict], limit: int) -> list[dict]:
+    """聞き役に見せる所。笑いのあった所を全部。どれを聞くかは計算で決めず、役に読ませる。"""
+    laughs = [s for s in spots if s["laugh_a"] is not None or s["laugh_b"] is not None]
+    return laughs[:limit]
+
+
 def select(spots: list[dict], limit: int) -> list[dict]:
     """問う所を選ぶ。種類を順に回して、1 種類で埋めない。近い所は重ねない。順は選んだ順。"""
     queues = {kind: [s for s in spots if s["kind"] == kind] for kind in ROTATION}

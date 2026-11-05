@@ -238,6 +238,14 @@ def test_rarer_kinds_come_first_so_the_limit_does_not_cut_them():
     assert compare.select(rows, 3)[0]["id"] == "spot-0009"
 
 
+def test_candidates_are_every_laugh_not_the_earliest_ones():
+    """価値を計算で決めない。遅い時刻の笑いも役に見せる。"""
+    rows = [{**make_spot(n, "kept", n * 10.0), "laugh_a": n * 10.0, "laugh_b": None} for n in range(38)]
+    rows.append({**make_spot(99, "changed", 5.0), "laugh_a": None, "laugh_b": None})
+    assert len(compare.candidates(rows, 60)) == 38
+    assert len(compare.candidates(rows, 10)) == 10
+
+
 def test_select_stops_at_the_limit():
     assert len(compare.select([make_spot(n, "kept", n * 100.0) for n in range(9)], 5)) == 5
 
@@ -317,7 +325,6 @@ def answer_all(kw):
                     "a_seg": r["lines_a"][-1]["seg_id"],
                     "b_seg": r["lines_b"][-1]["seg_id"],
                     "relation": "same",
-                    "ask": True,
                     "text": "ここは変えない所ですか？",
                 }
                 for r in rows

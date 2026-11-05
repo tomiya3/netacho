@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "asker",
-  "description": "聞き役の出力",
+  "description": "聞き役の出力。聞く価値の高い順",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -22,7 +22,6 @@
           "a_seg",
           "b_seg",
           "relation",
-          "ask",
           "text"
         ],
         "properties": {
@@ -44,9 +43,6 @@
               "changed",
               "none"
             ]
-          },
-          "ask": {
-            "type": "boolean"
           },
           "text": {
             "type": "string"

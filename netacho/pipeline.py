@@ -569,7 +569,7 @@ def note(
 
 
 COMPARE_QUESTIONS = 5  # 2 本の比較で演者に問う数。多いと答えてもらえない
-COMPARE_CANDIDATES = 10  # 聞き役に見せる所の数。聞く価値が無ければ飛ばすので、多めに渡す
+COMPARE_CANDIDATES = 60  # 聞き役に見せる所の上限。価値の判断は計算でせず、役に読ませる。費用の歯止め
 CLEAN_MIN = 0.9  # 文字起こしの行のうち、清書で読める割合の下限
 
 
@@ -653,7 +653,7 @@ def compare_koza(
         doc = {**compare.compare(a, b, draft, titles), "other_neta": other.neta}
         if doc["comparable"]:
             known = [s for s in doc["spots"] if s["scene_id"] in titles]
-            chosen = compare.select(known, COMPARE_CANDIDATES)
+            chosen = compare.candidates(known, COMPARE_CANDIDATES)
             other_name = "稽古" if doc["practice"] else "もう 1 本"
             rows = ask_rows(chosen, a, b, other_name)
             content = [{"type": "text", "text": json.dumps(rows, ensure_ascii=False, indent=1)}]
@@ -666,26 +666,29 @@ def compare_koza(
                 ctx.neta.drafts / "asker.json", reply or {"schema_version": 1, "questions": []}, "asker"
             )
             shown = {r["spot_id"]: r for r in rows}
-            written: dict[str, list[dict]] = {}
-            for row in (reply or {"questions": []})["questions"]:
-                written.setdefault(row["spot_id"], []).append(row)
+            by_id = {s["id"]: s for s in chosen}
+            picks = (reply or {"questions": []})["questions"]  # 聞く価値の高い順
+            skipped = len(chosen) - len({row["spot_id"] for row in picks})
             review_doc, questions = read_review(ctx.neta)
             drop_open_asks(review_doc, questions)
             issue_of = {i["attempt"]: i["id"] for i in review_doc["issues"]}
             n_issue = max((int(i["id"].split("-")[1]) for i in review_doc["issues"]), default=0) + 1
             n_q = max((int(q["id"].split("-")[1]) for q in questions["questions"]), default=0) + 1
-            for spot in chosen:
+            asked: list[dict] = []
+            for row in picks:
                 if added == COMPARE_QUESTIONS:
                     break
-                got = written.get(spot["id"], [])
-                row = got[0] if len(got) == 1 else None
-                if row is None or not row["ask"]:
-                    skipped += 1
-                    continue
+                spot = by_id.get(row["spot_id"])
                 words = row["text"].strip()
+                if spot is None or spot in asked:
+                    fallback += 1
+                    continue
                 if not compare.settle(spot, row, a, b, shown[spot["id"]]) or not ask_is_ok(words, spot):
                     fallback += 1  # 場所の合わない問いは出さない
                     continue
+                if any(abs(spot["a"]["t"] - s["a"]["t"]) < compare.SPOT_GAP for s in asked):
+                    continue  # 同じ所を 2 度聞かない
+                asked.append(spot)
                 # 種類も入れる。やり直しで種類が変わった所に、古い問いの文を残さない
                 attempt = (
                     f"{render.clock(spot['a']['t'])} の比較（{koza_id} と {other_koza}、{spot['kind']}）"
