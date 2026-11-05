@@ -221,6 +221,17 @@ def test_peak_rate_uses_the_same_rule_and_leaves_clipped_windows_out():
     assert r["peak_n"] == 2 and r["peak_rate"] == 0.5  # 末尾で切れた item-0003 は分母に入らない
 
 
+def test_old_run_json_can_be_read_and_replaced(data, tmp_path):
+    """前の版の run.json があっても note をやり直せる（足した欄で止めない）。"""
+    built(data, tmp_path)
+    kdir = store.Neta(P, N, data).koza_dir(K)
+    old = store.read(kdir / "run.json", "run")
+    old["gaps"] = {"hit": 1, "miss": 2, "surprise": 3, "hit_rate": 0.333}
+    store.write(kdir / "run.json", old, "run")
+    _, run = run_note(data, tmp_path, note_reply())
+    assert "peak_rate" in run["gaps"]
+
+
 def test_no_prediction_rate_is_none():
     assert gaps.counts(compare([], doc()))["hit_rate"] is None
 
