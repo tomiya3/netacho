@@ -1,11 +1,12 @@
 """笑いどころの予測と実際の比較のテスト。"""
 
 import json
+from pathlib import Path
 
 from fakes import ScriptedClient, text_of
 from test_build import K, N, P, draft, draft_item, verdicts
 
-from netacho import gaps, performer, pipeline, reactions, store
+from netacho import gaps, performer, pipeline, reactions, render, store, view
 from netacho.budget import Budget
 
 
@@ -221,15 +222,57 @@ def test_peak_rate_uses_the_same_rule_and_leaves_clipped_windows_out():
     assert r["peak_n"] == 2 and r["peak_rate"] == 0.5  # 末尾で切れた item-0003 は分母に入らない
 
 
-def test_old_run_json_can_be_read_and_replaced(data, tmp_path):
-    """前の版の run.json があっても note をやり直せる（足した欄で止めない）。"""
+ADDED_LATER = ("weak", "peak_rate", "baseline_rate", "peak_n")
+
+
+def to_previous_version(kdir):
+    """run.json と gaps.json を、足した欄の無い 1 つ前の版の形にする。"""
+    for name, schema, key in (("run.json", "run", "gaps"), ("gaps.json", "gaps", None)):
+        doc_ = store.read(kdir / name, schema)
+        target = doc_[key] if key else doc_
+        for k in ADDED_LATER:
+            target.pop(k)
+        store.write(kdir / name, doc_, schema)
+
+
+def test_previous_version_can_run_note_again(data, tmp_path):
     built(data, tmp_path)
+    run_note(data, tmp_path, note_reply())
     kdir = store.Neta(P, N, data).koza_dir(K)
-    old = store.read(kdir / "run.json", "run")
-    old["gaps"] = {"hit": 1, "miss": 2, "surprise": 3, "hit_rate": 0.333}
-    store.write(kdir / "run.json", old, "run")
+    to_previous_version(kdir)
     _, run = run_note(data, tmp_path, note_reply())
-    assert "peak_rate" in run["gaps"]
+    assert set(ADDED_LATER) <= set(run["gaps"])
+    assert set(ADDED_LATER) <= set(store.read(kdir / "gaps.json", "gaps"))
+
+
+def test_previous_version_can_be_viewed(data, tmp_path):
+    built(data, tmp_path)
+    run_note(data, tmp_path, note_reply())
+    neta = store.Neta(P, N, data)
+    to_previous_version(neta.koza_dir(K))
+    assert "weak" not in view.payload(neta, K)["gaps"]
+
+
+def test_what_was_not_measured_is_not_written_as_zero():
+    found = compare([item(1, 10.0)], doc(react(1, 11.0, 12.0, 1)))
+    assert "弱い山 0" in "\n".join(render.gaps_markdown(found, {}))
+    for k in ADDED_LATER:
+        found.pop(k)
+    text = "\n".join(render.gaps_markdown(found, {}))
+    assert "弱い山" not in text and "山がある割合" not in text
+
+
+def test_new_output_always_has_the_optional_fields():
+    """任意にしたのは前の版を読むため。新しい出力からは欠けない。"""
+    found = compare([item(1, 10.0)], doc(react(1, 11.0, 12.0, 1)))
+    schema = json.loads((Path(__file__).parents[1] / "schemas" / "run.json").read_text())
+    assert set(gaps.counts(found)) == set(schema["properties"]["gaps"]["properties"])
+    assert set(ADDED_LATER) <= set(found) and set(ADDED_LATER) <= set(compare([], doc()))
+
+
+def test_fields_of_the_previous_version_stay_required():
+    run = json.loads((Path(__file__).parents[1] / "schemas" / "run.json").read_text())
+    assert {"laughs_total", "laughs_hit", "window_share"} <= set(run["properties"]["gaps"]["required"])
 
 
 def test_no_prediction_rate_is_none():

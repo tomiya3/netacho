@@ -69,7 +69,7 @@ def clock(t: float) -> str:
 
 
 def _rate_line(gaps: dict) -> list[str]:
-    if gaps["peak_rate"] is None or gaps["baseline_rate"] is None:
+    if gaps.get("peak_rate") is None or gaps.get("baseline_rate") is None:  # 前の版の gaps.json には無い
         return []
     return [
         f"- 予測の窓 {gaps['peak_n']} 件のうち、笑いの山（弱い山を含む）がある割合 {gaps['peak_rate']:.0%}。"
@@ -81,12 +81,13 @@ def gaps_markdown(gaps: dict, items: dict) -> list[str]:
     """予測と実際の比較。判定できない高座では、そう書く。"""
     if not gaps["judged"]:
         return ["## 笑いどころの予測と実際", "", "自動で拾った笑いが無いので、比べていません。", ""]
+    weak = f"、弱い山 {len(gaps['weak'])}" if "weak" in gaps else ""  # 前の版は測っていない。0 と書かない
     out = [
         "## 笑いどころの予測と実際",
         "",
         "Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。",
         "",
-        f"- 的中 {len(gaps['hits'])}、弱い山 {len(gaps['weak'])}、空振り {len(gaps['misses'])}、"
+        f"- 的中 {len(gaps['hits'])}{weak}、空振り {len(gaps['misses'])}、"
         f"予測なしで反応あり {gaps['surprise_total']}",
         f"- 笑い {gaps['laughs_total']} か所のうち、予測の窓に入ったのは {gaps['laughs_hit']} か所。"
         f"窓は音声の {gaps['window_share']:.0%} を覆っている",

@@ -230,7 +230,10 @@
         "hit",
         "miss",
         "surprise",
-        "hit_rate"
+        "hit_rate",
+        "laughs_total",
+        "laughs_hit",
+        "window_share"
       ],
       "description": "笑いどころの予測と実際の比較",
       "properties": {
