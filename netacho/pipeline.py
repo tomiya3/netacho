@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
@@ -596,6 +597,17 @@ def ask_rows(spots: list[dict], a: compare.Side, b: compare.Side, other: str) ->
     ]
 
 
+def previous_spots(path: Path) -> list[dict]:
+    """前回の比較の所。読めなければ無いものとして続ける。比較をやり直せば書き直される。"""
+    if not path.exists():
+        return []
+    try:
+        return store.read(path, "compare")["spots"]
+    except ValueError:
+        print("前回の compare.json が読めないので、無いものとして続ける", file=sys.stderr)
+        return []
+
+
 def drop_open_asks(review_doc: dict, questions: dict, pair: str) -> None:
     """同じ 2 本の比較の問いのうち、答えも捨ても無い物を外す。作り直すので。
 
@@ -654,6 +666,7 @@ def compare_koza(
     fallback = added = skipped = cut = 0
     doc = {"share": None, "spots": [], "dropped": 0}  # 対応づけが落ちたら、測っていないと残す
     pair = f"（{koza_id} と {other_koza}、"
+    old_spots = previous_spots(kdir / "compare.json")  # API を使う前に読む
     try:
         content = align_content(a, b, title or ctx.koza["neta"])
         draft = call_role(ctx.client, "aligner", content, "aligner", ctx.usage, ctx.budget, ctx.cache)
@@ -684,9 +697,7 @@ def compare_koza(
             n_issue = max((int(i["id"].split("-")[1]) for i in review_doc["issues"]), default=0) + 1
             n_q = max((int(q["id"].split("-")[1]) for q in questions["questions"]), default=0) + 1
             # 演者が答えた所は、前回の所のまま残す。また問わず、種類も戻さない
-            before = kdir / "compare.json"
-            old = store.read(before, "compare")["spots"] if before.exists() else []
-            kept = {s["id"]: s for s in old if s["id"] in done}
+            kept = {s["id"]: s for s in old_spots if s["id"] in done}
             doc["spots"] = [kept.get(s["id"], s) for s in doc["spots"]]
             asked = [s for s in doc["spots"] if s["id"] in done]
             for row in picks:
@@ -745,6 +756,8 @@ def compare_koza(
         else:
             review_doc, questions = read_review(ctx.neta)  # 比べられなければ、前の問いも残さない
             drop_open_asks(review_doc, questions, pair)
+            done = {q.get("spot_id") for q in questions["questions"] if "answer" in q or "dismissed" in q}
+            doc["spots"] = [s for s in old_spots if s["id"] in done]  # 答えの指す先を消さない
             store.write(kdir / "compare.json", doc, "compare")
             save_review(ctx, review_doc, questions)
     finally:  # 落ちても、使った費用は実測として残す

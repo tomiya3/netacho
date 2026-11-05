@@ -273,6 +273,14 @@ def test_lines_shown_stay_full_at_both_ends_of_a_long_passage(t):
     assert len(compare.context_rows(spot, a, b)["lines_b"]) == compare.LINES_B_MAX
 
 
+def test_long_passage_shows_the_line_of_the_other_laugh():
+    texts = [f"長いくだりの{n}行目でございます" for n in range(100)]
+    a, b = side("a", texts, [100.0]), side("b", texts, [850.0])
+    spot = {"laugh_a": 100.0, "laugh_b": 850.0, "a": {"t": 100.0}, "span_a": [0, 99], "span_b": [0, 99]}
+    rows = compare.context_rows(spot, a, b)["lines_b"]
+    assert any(r["seg_id"] == seg(85) for r in rows)
+
+
 def test_a_far_laugh_is_not_paired():
     a = side("a", LINES, [5.0, *MANY[1:]])
     b = side("b", LINES, [75.0, *MANY[1:-1], 79.0])
@@ -574,6 +582,33 @@ def test_an_answered_place_keeps_what_the_asker_decided(tmp_path):
     performer.answer(neta, question=first["id"], speaker="本人", words="わざとです")
     after = run(root, client_of(REPLY), tmp_path)
     assert next(s for s in after["spots"] if s["id"] == first["spot_id"])["kind"] == "added"
+
+
+def test_broken_previous_comparison_does_not_waste_the_call(tmp_path):
+    root, neta = two_books(tmp_path)
+    (neta.koza_dir(K1) / "compare.json").write_text("{", encoding="utf-8")
+    assert run(root, client_of(answer_all), tmp_path)["comparable"] is True
+
+
+def test_failed_comparison_keeps_what_the_answers_point_at(tmp_path):
+    root, neta = two_books(tmp_path)
+    run(root, client_of(answer_all), tmp_path)
+    first = next(q for q in store.read(neta.questions, "questions")["questions"] if "spot_id" in q)
+    performer.answer(neta, question=first["id"], speaker="本人", words="わざとです")
+    apart = {
+        "schema_version": 1,
+        "passages": [
+            {
+                "relation": "only_a",
+                "a_first": "seg-0001",
+                "a_last": "seg-0012",
+                "b_first": None,
+                "b_last": None,
+            }
+        ],
+    }
+    doc = run(root, client_of(aligner=apart), tmp_path)
+    assert doc["comparable"] is False and [s["id"] for s in doc["spots"]] == [first["spot_id"]]
 
 
 def test_open_questions_of_another_pair_stay(tmp_path):

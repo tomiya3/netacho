@@ -228,8 +228,10 @@ def context_rows(spot: dict, a: Side, b: Side) -> dict:
         j0, j1 = spot["span_b"]
         first, last = max(j0 - CONTEXT_EDGE, 0), min(j1 + CONTEXT_EDGE, len(b.lines) - 1)
         if last - first >= LINES_B_MAX:  # 長いくだりは、同じ割合の位置の前後だけ見せる
-            ratio = (i - i0) / max(i1 - i0, 1)
-            center = first + round(ratio * (last - first))
+            if spot.get("laugh_b") is not None:  # 笑いの場所が分かれば、そこを見せる
+                center = b.line_at(spot["laugh_b"])
+            else:
+                center = first + round((i - i0) / max(i1 - i0, 1) * (last - first))
             first = max(first, min(center - LINES_B_MAX // 2, last - LINES_B_MAX + 1))
             last = first + LINES_B_MAX - 1
         rows_b = [
