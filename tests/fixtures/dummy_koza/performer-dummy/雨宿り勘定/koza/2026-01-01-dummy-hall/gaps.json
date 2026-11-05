@@ -26,5 +26,9 @@
    "question": "「骨折り賃」の後は、文字からは笑いどころと読めませんでした。ここでは何をしていますか。",
    "question_source": "claude"
   }
- ]
+ ],
+ "surprise_total": 1,
+ "laughs_total": 2,
+ "laughs_hit": 1,
+ "window_share": 0.2
 }

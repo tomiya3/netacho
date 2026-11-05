@@ -78,11 +78,13 @@ def gaps_markdown(gaps: dict, items: dict) -> list[str]:
         "Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。",
         "",
         f"- 的中 {len(gaps['hits'])}、空振り {len(gaps['misses'])}、"
-        f"予測なしで反応あり {len(gaps['surprises'])}",
+        f"予測なしで反応あり {gaps['surprise_total']}",
+        f"- 笑い {gaps['laughs_total']} か所のうち、予測の窓に入ったのは {gaps['laughs_hit']} か所。"
+        f"窓は音声の {gaps['window_share']:.0%} を覆っている",
         "",
     ]
     if gaps["surprises"]:
-        out += ["### 文字からは読めなかった所", ""]
+        out += [f"### 文字からは読めなかった所（{gaps['surprise_total']} か所から、離れた強い順に）", ""]
         for s in gaps["surprises"]:
             out += [
                 f"- {clock(s['t0'])} {s.get('question', '')}",

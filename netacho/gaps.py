@@ -16,7 +16,9 @@ from . import candidates
 from .reactions import clock, covered_seconds
 
 SURPRISE_MAX = 5  # 演者に問う数の上限。強い順
+BUNDLE_SEC = 15.0  # これより近い笑いは 1 つの山として、問いは強い 1 件だけにする
 BEFORE_SEC = 12.0  # 笑いの前の台詞を見せる長さ
+QUOTE_IN_QUESTION = 40  # 問いの文に添える直前の台詞の長さ
 FALLBACK_QUESTION = "文字からは笑いどころと読めなかった所です。ここで何をしているのか、教えてください。"
 
 
@@ -27,31 +29,51 @@ def _before_quote(transcript: dict, t0: float, t1: float) -> str:
     return "".join(rows)[-160:]
 
 
+def _bundled(rows: list[dict]) -> list[dict]:
+    """強い順に見て、既に選んだ笑いの近くの物を飛ばす（1 つの山の言い換えで問いを埋めない）。"""
+    picked: list[dict] = []
+    for r in rows:
+        if all(abs(r["t0"] - p["t0"]) >= BUNDLE_SEC for p in picked):
+            picked.append(r)
+    return picked
+
+
+def _window_share(windows: list[list[float]], seconds: float | None) -> float:
+    """窓の和集合が音声を覆う割合。窓が高座の大半を覆うと的中率は意味を失うので、一緒に見る。"""
+    if not seconds:
+        return 0.0
+    covered, end = 0.0, 0.0
+    for t0, t1 in sorted(windows):
+        covered += max(0.0, t1 - max(t0, end))
+        end = max(end, t1)
+    return round(covered / seconds, 3)
+
+
 def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict | None) -> dict:
-    """3 区分を作る。surprises は強い順に上限まで。"""
+    """3 区分を作る。surprises は演者に問う分だけで、全数は surprise_total に持つ。"""
     koza_id = reactions["koza_id"]
     judged = any(r["method"] == "auto" for r in reactions["reactions"])
     end = covered_seconds(reactions)
-    laughs = [r for r in reactions["reactions"] if r["kind"] == "laugh"]
-    hits, misses = [], []
+    laughs = [r for r in reactions["reactions"] if r["kind"] == "laugh" and r["method"] == "auto"]
+    hits, misses, windows = [], [], []
     used: set[str] = set()
-    for it in candidates.payoff_items(items, koza_id):
+    for it in candidates.payoff_items(items, koza_id) if judged else []:
         window, clipped = candidates.window_of(it, end)
+        windows.append(window)
         found = candidates.overlapping(laughs, window[0], window[1])
         if found:
             hits.append({"item_id": it["id"], "reaction_ids": [r["id"] for r in found]})
             used |= {r["id"] for r in found}
-        elif judged and not clipped:
+        elif not clipped:
             misses.append({"item_id": it["id"]})
     scene_of = {s["seg_id"]: s["scene_id"] for s in (timeline or {"segments": []})["segments"]}
 
     def scene_at(t: float) -> str | None:
-        seg = max(
-            (s for s in transcript["segments"] if s["start"] <= t), key=lambda s: s["start"], default=None
-        )
+        started = [s for s in transcript["segments"] if s["start"] <= t]
+        seg = max(started, key=lambda s: s["start"], default=None)
         return scene_of.get(seg["id"]) if seg else None
 
-    rest = [r for r in laughs if r["id"] not in used and r["method"] == "auto"]
+    rest = [r for r in laughs if r["id"] not in used]
     rest.sort(key=lambda r: (r["strength_rank"] is None, r["strength_rank"] or 0))
     surprises = [
         {
@@ -62,7 +84,7 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
             "scene_id": scene_at(r["t0"]),
             "before_quote": _before_quote(transcript, r["t0"], r["t1"]),
         }
-        for n, r in enumerate(rest[:SURPRISE_MAX], start=1)
+        for n, r in enumerate(_bundled(rest)[:SURPRISE_MAX], start=1)
     ]
     return {
         "schema_version": 1,
@@ -70,17 +92,24 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
         "judged": judged,
         "hits": hits,
         "misses": misses,
-        "surprises": surprises if judged else [],
+        "surprises": surprises,
+        "surprise_total": len(rest),
+        "laughs_total": len(laughs),
+        "laughs_hit": len(used),
+        "window_share": _window_share(windows, end),
     }
 
 
-def counts(doc: dict, surprise_total: int | None = None) -> dict:
+def counts(doc: dict) -> dict:
     hit, miss = len(doc["hits"]), len(doc["misses"])
     return {
         "hit": hit,
         "miss": miss,
-        "surprise": len(doc["surprises"]) if surprise_total is None else surprise_total,
+        "surprise": doc["surprise_total"],
         "hit_rate": round(hit / (hit + miss), 3) if hit + miss else None,
+        "laughs_total": doc["laughs_total"],
+        "laughs_hit": doc["laughs_hit"],
+        "window_share": doc["window_share"],
     }
 
 
@@ -91,7 +120,7 @@ def add_questions(doc: dict, review: dict, questions: dict) -> int:
     asked = {i["attempt"] for i in review["issues"]}
     added = 0
     for s in doc["surprises"]:
-        attempt = f"{clock(s['t0'])} の笑いの所"
+        attempt = f"{clock(s['t0'])} の笑いの所（{doc['koza_id']}）"  # 別の高座の同じ時刻と区別する
         if s["scene_id"] is None or attempt in asked:
             continue
         issue_id = f"issue-{n_issue:04d}"
@@ -112,7 +141,7 @@ def add_questions(doc: dict, review: dict, questions: dict) -> int:
                 "id": f"q-{n_q:04d}",
                 "issue_id": issue_id,
                 "scene_id": s["scene_id"],
-                "text": f"{attempt}：{s['question']}",
+                "text": f"{attempt}「…{s['before_quote'][-QUOTE_IN_QUESTION:]}」：{s['question']}",
             }
         )
         n_issue += 1

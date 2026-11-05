@@ -54,7 +54,10 @@ def test_three_groups():
     assert [m["item_id"] for m in r["misses"]] == ["item-0002"]
     assert [s["reaction_id"] for s in r["surprises"]] == ["react-0002"]
     assert r["surprises"][0]["scene_id"] == "scene-02"
-    assert gaps.counts(r) == {"hit": 1, "miss": 1, "surprise": 1, "hit_rate": 0.5}
+    c = gaps.counts(r)
+    assert (c["hit"], c["miss"], c["surprise"], c["hit_rate"]) == (1, 1, 1, 0.5)
+    assert (c["laughs_total"], c["laughs_hit"]) == (2, 1)
+    assert c["window_share"] == 0.14  # 窓 [9, 16] と [29, 36] で 14 秒 / 100 秒
 
 
 def test_applause_is_not_a_hit_or_a_surprise():
@@ -79,11 +82,46 @@ def test_clipped_window_is_not_a_miss():
     assert r["misses"] == []
 
 
-def test_surprises_are_strongest_first_and_capped():
-    rows = [react(i, 10.0 * i, 10.0 * i + 1, 9 - i) for i in range(1, 9)]
-    r = compare([], doc(*rows))
+def test_surprises_are_capped_but_counted_in_full():
+    rows = [react(i, 20.0 * i, 20.0 * i + 1, 9 - i) for i in range(1, 9)]
+    r = compare([], doc(*rows, seconds=200.0))
     assert len(r["surprises"]) == gaps.SURPRISE_MAX
+    assert r["surprise_total"] == 8 and gaps.counts(r)["surprise"] == 8
     assert r["surprises"][0]["reaction_id"] == "react-0008"
+
+
+def test_close_laughs_are_one_question():
+    """続く笑いが割れても、問いを同じ所の言い換えで埋めない。"""
+    rows = [react(1, 50.0, 52.0, 1), react(2, 54.0, 55.0, 2), react(3, 80.0, 81.0, 3)]
+    r = compare([], doc(*rows))
+    assert [s["reaction_id"] for s in r["surprises"]] == ["react-0001", "react-0003"]
+    assert r["surprise_total"] == 3
+
+
+def test_manual_laugh_is_not_a_hit_when_not_judged():
+    manual = compare([item(1, 10.0)], doc(react(1, 11.0, 12.0, None, kind="laugh", method="manual")))
+    assert manual["judged"] is False and manual["hits"] == []
+    assert gaps.counts(manual)["hit_rate"] is None
+
+
+def test_window_share_merges_overlaps():
+    r = compare([item(1, 10.0), item(2, 12.0)], doc(react(1, 80.0, 81.0, 1)))
+    assert r["window_share"] == 0.09  # [9, 16] と [11, 18] の和集合は 9 秒
+
+
+def test_same_clock_on_another_koza_is_asked():
+    review = {"issues": []}
+    questions = {"questions": []}
+    s = {
+        "t0": 60.0,
+        "scene_id": "scene-01",
+        "before_quote": "台詞",
+        "question": "何をしていますか。",
+    }
+    assert gaps.add_questions({"koza_id": "a", "surprises": [s]}, review, questions) == 1
+    assert gaps.add_questions({"koza_id": "a", "surprises": [s]}, review, questions) == 0
+    assert gaps.add_questions({"koza_id": "b", "surprises": [s]}, review, questions) == 1
+    assert "台詞" in questions["questions"][0]["text"]
 
 
 def test_no_prediction_rate_is_none():
@@ -135,7 +173,7 @@ def test_note_makes_a_question_from_a_surprise(data, tmp_path):
     kdir = neta.koza_dir(K)
     found = store.read(kdir / "gaps.json", "gaps")
     assert found["surprises"][0]["question"] == q and found["surprises"][0]["question_source"] == "claude"
-    assert run["gaps"]["surprise"] == 2  # ダミーの笑いは 2 か所とも予測の外
+    assert run["gaps"]["surprise"] == 2  # ダミーの笑いは 2 か所とも予測の外。近いので問いは 1 つ
     questions = store.read(neta.questions, "questions")["questions"]
     assert q in questions[0]["text"]
     assert "文字からは読めなかった所" in (kdir / "note.md").read_text(encoding="utf-8")
@@ -156,7 +194,7 @@ def test_note_twice_does_not_ask_twice(data, tmp_path):
     built(data, tmp_path)
     run_note(data, tmp_path, note_reply(("gap-0001", "何をしていますか。")))
     run_note(data, tmp_path, note_reply(("gap-0001", "何をしていますか。")))
-    assert len(store.read(store.Neta(P, N, data).questions, "questions")["questions"]) == 2
+    assert len(store.read(store.Neta(P, N, data).questions, "questions")["questions"]) == 1
 
 
 def test_answer_to_a_surprise_enters_the_kata(data, tmp_path):
