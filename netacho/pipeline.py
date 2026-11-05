@@ -680,8 +680,12 @@ def compare_koza(
                 )
                 spot["question_id"] = q_id
                 n_issue, n_q, added = n_issue + 1, n_q + 1, added + 1
+            store.write(
+                kdir / "compare.json", doc, "compare"
+            )  # 先に書く。落ちても、指す先の無い問いを残さない
             save_review(ctx, review_doc, questions)
-        store.write(kdir / "compare.json", doc, "compare")
+        else:
+            store.write(kdir / "compare.json", doc, "compare")
     finally:  # 落ちても、使った費用は実測として残す
         ctx.usage.extra["compare"] = {
             "share": doc["share"],

@@ -128,6 +128,24 @@ def test_pause_counts_only_when_the_line_before_also_aligns():
     assert all(s["kind"] != "ma" for s in spots(a, b))
 
 
+def test_laugh_on_the_line_before_is_not_called_a_pause():
+    """笑いが声として拾われない所は無音に見える。笑いの長さの違いを間と呼ばない。"""
+    a = side("a", LINES, [5.0, 15.0], pauses={0: 0.3})
+    b = side("b", LINES, [5.0, 15.0], pauses={0: 1.5})
+    assert all(s["kind"] != "ma" for s in spots(a, b))
+
+
+def test_repeated_phrases_keep_the_order_of_the_lines():
+    """同じ決まり文句が何度も出ても、揃える順は入れ替わらない。"""
+    phrase = "ありがとうございますありがとうございます"
+    texts = [
+        f"{phrase}{word}" for word in ("傘を貸してくれ", "骨が三本やで", "風が吹いてきた", "空へ飛んでいった")
+    ]
+    a, b = side("a", texts, []), side("b", texts, [])
+    pairs = compare.align(a, b).pairs
+    assert list(pairs.items()) == sorted(pairs.items(), key=lambda kv: kv[1])
+
+
 def test_score_size_is_never_used():
     """山の高さの違いは Side に入らない。来ているかどうかだけ。"""
     assert not hasattr(side("a", LINES, [15.0]), "scores")
@@ -358,6 +376,22 @@ def test_stories_that_do_not_align_ask_nothing_and_call_no_llm(tmp_path):
     doc = run(root, client, tmp_path)
     assert transcript and doc["comparable"] is False and client.calls["asker"] == []
     assert not any("spot_id" in q for q in store.read(neta.questions, "questions")["questions"])
+
+
+def test_failure_writing_the_comparison_leaves_no_question(tmp_path, monkeypatch):
+    root, neta = two_books(tmp_path)
+    before = neta.questions.read_bytes()
+    real = store.write
+
+    def stop(path, obj, schema):
+        if schema == "compare":
+            raise OSError("書けない")
+        real(path, obj, schema)
+
+    monkeypatch.setattr(store, "write", stop)
+    with pytest.raises(OSError):
+        run(root, ScriptedClient(asker=[REPLY]), tmp_path)
+    assert neta.questions.read_bytes() == before
 
 
 def test_compare_is_written_for_the_screen(tmp_path):

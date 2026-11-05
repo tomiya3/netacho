@@ -135,6 +135,14 @@ def _pause_before(side: Side, n: int) -> float:
     return round(max(near, default=0.0), 2)
 
 
+def _laugh_before(side: Side, n: int) -> bool:
+    """前の行の所に笑いの山があるか。あれば無音に笑いの長さが混ざるので、間と言えない。"""
+    if n == 0:
+        return False
+    t0, t1 = side.lines[n - 1]["start"], side.lines[n]["start"]
+    return any(t0 <= h < t1 for h in side.humps)
+
+
 def _laugh_spot(a: Side, b: Side, al: Alignment, t: float) -> dict | None:
     i = a.line_at(t)
     if i is None or i not in al.pairs:
@@ -150,7 +158,8 @@ def _laugh_spot(a: Side, b: Side, al: Alignment, t: float) -> dict | None:
         return {**spot, "kind": "moved", "laugh_a": t, "laugh_b": near}
     ma_a, ma_b = _pause_before(a, i), _pause_before(b, j)
     joined = al.pairs.get(i - 1) == j - 1  # 前の行も揃っているときだけ、同じ切れ目の間と言える
-    if joined and abs(ma_a - ma_b) >= MA_DIFF:
+    quiet = not _laugh_before(a, i) and not _laugh_before(b, j)
+    if joined and quiet and abs(ma_a - ma_b) >= MA_DIFF:
         return {**spot, "kind": "ma", "laugh_a": t, "laugh_b": near, "ma_a": ma_a, "ma_b": ma_b}
     if al.matched.get(i, 0.0) >= KEPT_RATIO:
         return {**spot, "kind": "kept", "laugh_a": t, "laugh_b": near}
