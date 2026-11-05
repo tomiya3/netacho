@@ -1,4 +1,4 @@
-"""VAD と文字起こし。どちらも faster-whisper 同梱のものを使う。
+"""VAD と文字起こし。VAD は faster-whisper 同梱の物。文字起こしは MLX か faster-whisper。
 
 VAD（Silero）の発話区間と、Whisper の区間は別物として両方残す。
 Whisper の区間には固定の ID（seg-0001）と、次の区間までの間（pause_after）を付ける。
@@ -7,12 +7,14 @@ Whisper の区間には固定の ID（seg-0001）と、次の区間までの間�
 from __future__ import annotations
 
 import wave
+from importlib.util import find_spec
 from pathlib import Path
 
 import numpy as np
 
 SAMPLE_RATE = 16000
 DEFAULT_MODEL = "medium"
+MLX_MODEL = "mlx-community/whisper-large-v3-turbo"
 
 
 def load_wav(wav: Path) -> np.ndarray:
@@ -48,16 +50,62 @@ def number_segments(segments: list[dict]) -> list[dict]:
     return segments
 
 
-def transcribe(audio: np.ndarray, *, terms: list[str] | None = None, model_size: str = DEFAULT_MODEL) -> dict:
+def default_model() -> str:
+    """Apple の GPU で動くなら MLX、無ければ CPU の faster-whisper。CI は Linux なので後者になる。"""
+    return MLX_MODEL if find_spec("mlx_whisper") else DEFAULT_MODEL
+
+
+def _prompt(terms: list[str] | None) -> str | None:
+    # 演目の語を initial_prompt に入れると固有名詞の書き起こしが安定する
+    return "、".join(terms) + "。" if terms else None
+
+
+def _row(start: float, end: float, text: str, no_speech: float, words: list[dict]) -> dict:
+    return {
+        "start": round(float(start), 3),
+        "end": round(float(end), 3),
+        "text": text.strip(),
+        "no_speech_prob": round(float(no_speech), 3),
+        "words": words,
+        "source": "asr",
+    }
+
+
+def _transcribe_mlx(audio: np.ndarray, terms: list[str] | None, model: str) -> dict:
+    import mlx_whisper
+
+    result = mlx_whisper.transcribe(
+        audio,
+        path_or_hf_repo=model,
+        language="ja",
+        initial_prompt=_prompt(terms),
+        condition_on_previous_text=False,
+        word_timestamps=True,
+    )
+    out = []
+    for s in result["segments"]:
+        words = [
+            {
+                "start": round(float(w["start"]), 3),
+                "end": round(float(w["end"]), 3),
+                "word": w["word"],
+                "p": round(float(w["probability"]), 2),
+            }
+            for w in s.get("words") or []
+        ]
+        if s["text"].strip():  # 空の行を返すことがある
+            out.append(_row(s["start"], s["end"], s["text"], s.get("no_speech_prob") or 0.0, words))
+    return {"model": model, "language": result.get("language") or "ja", "segments": number_segments(out)}
+
+
+def _transcribe_cpu(audio: np.ndarray, terms: list[str] | None, model_size: str) -> dict:
     from faster_whisper import WhisperModel
 
     model = WhisperModel(model_size, device="cpu", compute_type="int8")
-    # 演目の語を initial_prompt に入れると固有名詞の書き起こしが安定する
-    prompt = "、".join(terms) + "。" if terms else None
     segments, info = model.transcribe(
         audio,
         language="ja",
-        initial_prompt=prompt,
+        initial_prompt=_prompt(terms),
         vad_filter=False,  # VAD は別に取る
         condition_on_previous_text=False,
         word_timestamps=True,
@@ -68,20 +116,18 @@ def transcribe(audio: np.ndarray, *, terms: list[str] | None = None, model_size:
             {"start": round(w.start, 3), "end": round(w.end, 3), "word": w.word, "p": round(w.probability, 2)}
             for w in (s.words or [])
         ]
-        out.append(
-            {
-                "start": round(s.start, 3),
-                "end": round(s.end, 3),
-                "text": s.text.strip(),
-                "no_speech_prob": round(s.no_speech_prob, 3),
-                "words": words,
-                "source": "asr",
-            }
-        )
+        out.append(_row(s.start, s.end, s.text, s.no_speech_prob, words))
     return {"model": model_size, "language": info.language, "segments": number_segments(out)}
 
 
-def detect(wav: Path, *, terms: list[str] | None = None, model_size: str = DEFAULT_MODEL) -> dict:
+def transcribe(audio: np.ndarray, *, terms: list[str] | None = None, model_size: str | None = None) -> dict:
+    model = model_size or default_model()
+    if model == MLX_MODEL:
+        return _transcribe_mlx(audio, terms, model)
+    return _transcribe_cpu(audio, terms, model)
+
+
+def detect(wav: Path, *, terms: list[str] | None = None, model_size: str | None = None) -> dict:
     audio = load_wav(wav)
     return {
         "speech": {"segments": vad_segments(audio)},
