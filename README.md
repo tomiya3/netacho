@@ -27,7 +27,7 @@ make viewer   # http://localhost:8000/（ポートが塞がっていれば make 
 
 ```
 netacho run     --audio 録音 --performer ID --neta 演目 --koza 日付-会場
-netacho seisho  --performer ID --neta 演目 --koza 日付-会場   # 清書
+netacho seisho  --performer ID --neta 演目 --koza 日付-会場 --title 題   # 清書
 netacho decide  --performer ID --neta 演目 --speaker 名 --words 言葉 --card 札の文 --why 理由 --scene 場面
 netacho answer  --performer ID --neta 演目 --question Q --speaker 名 --words 言葉
 netacho dismiss --performer ID --neta 演目 --question Q --speaker 名 --reason 理由
@@ -58,7 +58,7 @@ netacho serve   --performer ID --neta 演目 --koza 日付-会場  # 演者が�
 | 照合役 | Sonnet 5.5 | 項目の文と引用だけ | 文字起こしの全体、演目名 |
 | ノート役 | Sonnet 5.5 | 選ばれた候補、前後の引用、場面の尺 | 反応の全体、型の全文 |
 | 弟子役 | Opus 5.5 | 確定した噺・型の `.md` だけ | 文字起こし、録音、反応、差し戻しの履歴 |
-| 速記役 | Sonnet 5.5 | 文字起こし、演目名、人物 | 反応 |
+| 速記役 | Opus 5.5 | 文字起こし、演目の題、人物 | 反応 |
 
 見せる物を分けるのがこの構成の要点です。構成作家役に反応を見せないのは、結果から型を逆算させないためで、だからこそ「文字からは読めなかった笑い」が見つかります。弟子役に録音を見せないのは、読めない所がそのまま伝承の抜けになるからです。
 
@@ -72,7 +72,7 @@ netacho serve   --performer ID --neta 演目 --koza 日付-会場  # 演者が�
 | AST（反応の検出） | 47 秒 | 70 秒 |
 | Claude の役の費用（清書を除く） | $0.90 | $0.71 |
 | Claude の役の時間（清書を除く） | 338 秒 | 259 秒 |
-| 清書 | $0.21、90 秒 | 実行していない |
+| 清書 | $0.21（Sonnet） | $0.94（Opus、演目の題を渡す。直さない語の約束を足す前の値） |
 | 帳面の項目 | 62 件 | 58 件 |
 | 根拠の検証を通った項目（延べ） | 71 件 | 63 件 |
 | 根拠の検証で落とした項目 | 0 件 | 0 件 |
