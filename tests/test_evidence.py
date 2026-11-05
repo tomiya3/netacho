@@ -216,3 +216,15 @@ def test_scenes_and_timeline(transcript):
     assert tl["segments"][0]["scene_id"] == "scene-01"
     assert tl["segments"][3]["scene_id"] == "scene-02"
     assert tl["segments"][11] == {"seg_id": "seg-0012", "scene_id": None, "speaker": None, "confidence": None}
+
+
+@pytest.mark.parametrize(
+    "text", ["scene-07 の最後", "item-0048 の後", "char-01 が言う", "seg-0012", "ｓｃｅｎｅ－０７ の最後"]
+)
+def test_internal_id_is_found(text):
+    assert evidence.has_internal_id(text)
+
+
+@pytest.mark.parametrize("text", ["結びの一番の最後", "item の話", "scene が変わる", "二番-3"])
+def test_ordinary_text_is_not_an_internal_id(text):
+    assert not evidence.has_internal_id(text)

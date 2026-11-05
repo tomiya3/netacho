@@ -3,11 +3,14 @@
 - `edited_by: performer` の項目は変えない
 - item の id は作成時に振り、編集しても変えない
 - 照合で unsupported の項目は held にする
+- 文に内部の番号が残った項目も held にする。落とさない（噺が欠けるより、直すまで出さない）
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+
+from .evidence import has_internal_id
 
 
 def empty_book(book: str, performer: str, neta: str) -> dict:
@@ -81,6 +84,9 @@ def merge(
         # knowledge は照合を通らないので、保留の項目を knowledge に書き換えても保留は外れない
         if it["id"] in held_ids or (old is not None and old.get("held") and row["basis"] == "knowledge"):
             row["held"] = True
+        if has_internal_id(row["text"]):
+            row["held"] = True
+            row["held_reason"] = "internal_id"
         target = books[it["book"]]
         other = books["kata" if it["book"] == "hanashi" else "hanashi"]
         other["items"] = [i for i in other["items"] if i["id"] != it["id"]]  # 帳面を移ったとき

@@ -85,7 +85,7 @@ def test_build_writes_books_and_counts(data, tmp_path):
         checker=[verdicts(("item-0001", "supported"), ("item-0002", "weak"), ("item-0003", "unsupported"))],
     )
     doc = build(client, data, tmp_path)
-    assert doc["evidence"] == {"kept": 4, "dropped": {"bad_seg": 1}}
+    assert doc["evidence"] == {"kept": 4, "dropped": {"bad_seg": 1}, "held_internal_id": 0}
     assert doc["checker"] == {
         "supported": 1,
         "weak": 1,
@@ -418,3 +418,15 @@ def test_role_files_have_the_promises():
     assert "`上下` は録音から分からない" in writer
     checker = runner.role_prompt("checker")
     assert "落語の知識で補いません" in checker
+
+
+def test_item_with_internal_id_stays_in_book_but_not_in_markdown(data, tmp_path):
+    text = "scene-02 で太助が傘を借りる"
+    client = ScriptedClient(
+        writer=[draft(draft_item(text=text))], checker=[verdicts(("item-0001", "supported"))]
+    )
+    stats = build(client, data, tmp_path)
+    item = books(data)[0]["items"][0]
+    assert item["text"] == text and item["held_reason"] == "internal_id"
+    assert text not in store.Neta(P, N, data).hanashi.with_suffix(".md").read_text(encoding="utf-8")
+    assert stats["evidence"]["held_internal_id"] == 1

@@ -97,6 +97,11 @@
             "type": "integer",
             "minimum": 0
           }
+        },
+        "held_internal_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "文に内部の番号が残って保留にした項目の数"
         }
       },
       "description": "根拠の検証で残した数と、理由ごとに落とした数"

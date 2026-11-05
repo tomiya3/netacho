@@ -1,6 +1,7 @@
 """netacho note のテスト。"""
 
 import json
+from pathlib import Path
 
 import pytest
 from fakes import ScriptedClient, text_of
@@ -207,3 +208,14 @@ def test_no_candidates_skips_noter_and_says_so(data, tmp_path):
     assert client.calls["noter"] == []
     assert run["notes"]["candidates"] == 0
     assert "反応が十分だったという意味ではありません" in (kdir / "note.md").read_text(encoding="utf-8")
+
+
+def test_volume_is_not_used_to_explain_reactions():
+    assert not pipeline.note_is_ok("回収の後に、反応候補が少ない所です。音量だけでは分かりません。")
+    assert pipeline.note_is_ok("回収の後に、反応候補が少ない所です。")
+
+
+def test_old_wording_is_gone_from_what_the_performer_reads():
+    root = Path(__file__).parents[1]
+    assert "音量" not in (root / "roles" / "noter.md").read_text(encoding="utf-8")
+    assert "音量" not in (root / "netacho" / "render.py").read_text(encoding="utf-8")

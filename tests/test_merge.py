@@ -68,3 +68,28 @@ def test_scene_order_is_renumbered_without_collision():
     h["scenes"] = [old]
     merge.merge(h, k, items=[], scenes=[new], characters=[], held_ids=set())
     assert [(s["id"], s["order"]) for s in k["scenes"]] == [("scene-01", 1), ("scene-02", 2)]
+
+
+def test_item_with_internal_id_is_held_not_dropped():
+    h, k = book("hanashi"), book("kata")
+    text = "scene-07 の item-0048 の後"
+    merge.merge(h, k, items=[row("item-0001", text=text)], scenes=[], characters=[], held_ids=set())
+    assert h["items"][0]["text"] == text  # 消さない
+    assert h["items"][0]["held"] is True and h["items"][0]["held_reason"] == "internal_id"
+
+
+def test_fixed_text_is_released_from_hold():
+    h, k = book("hanashi"), book("kata")
+    h["items"] = [
+        {**strip(row("item-0001", text="scene-07 の後")), "held": True, "held_reason": "internal_id"}
+    ]
+    merge.merge(
+        h, k, items=[row("item-0001", text="結びの一番の後")], scenes=[], characters=[], held_ids=set()
+    )
+    assert "held" not in h["items"][0] and "held_reason" not in h["items"][0]
+
+
+def test_checker_hold_has_no_reason_and_stays_in_book_shape():
+    h, k = book("hanashi"), book("kata")
+    merge.merge(h, k, items=[row("item-0001")], scenes=[], characters=[], held_ids={"item-0001"})
+    assert h["items"][0]["held"] is True and "held_reason" not in h["items"][0]
