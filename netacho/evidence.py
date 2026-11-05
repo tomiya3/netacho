@@ -15,6 +15,7 @@ MAX_SPAN_SEC = 180.0  # 1 項目の根拠の長さの上限。暫定
 MAX_MA_SEC = 5.0  # これより長い空白は間と呼ばない。文字起こしの抜けか客の反応のことが多い。暫定
 MA_SECONDS_TOLERANCE = 0.3  # 間の文に書いた秒数と pause_after の許容差
 MIN_PAUSE_SEC = 0.5  # 間の根拠に使える pause_after の下限。構成作家役にもこの長さから見せる。暫定
+INTERNAL_ID = re.compile(r"(?<![a-z])(?:item|scene|char|seg|issue|cand|gap|react)[-_]\d+", re.IGNORECASE)
 
 
 class Segments:
@@ -39,6 +40,11 @@ class Segments:
         if not quote:
             return None
         return {"segs": list(span), "t0": segs[0]["start"], "t1": max(s["end"] for s in segs), "quote": quote}
+
+
+def has_internal_id(text: str) -> bool:
+    """演者の読む文に内部の番号が残っているか。全角も見る。"""
+    return INTERNAL_ID.search(unicodedata.normalize("NFKC", text)) is not None
 
 
 def is_blank(pause: float) -> bool:

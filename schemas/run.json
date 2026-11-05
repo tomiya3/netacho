@@ -97,6 +97,11 @@
             "type": "integer",
             "minimum": 0
           }
+        },
+        "held_internal_id": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "今の帳面で、文に内部の番号が残って保留の項目の数（この実行の分ではない）"
         }
       },
       "description": "根拠の検証で残した数と、理由ごとに落とした数"

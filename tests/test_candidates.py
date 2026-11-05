@@ -199,3 +199,15 @@ def test_ids_come_from_the_item_and_rows_follow_time():
 @pytest.mark.parametrize("n", [0])
 def test_no_payoffs(n):
     assert candidates.select([], doc())["candidates"] == []
+
+
+def test_held_payoff_is_told_not_hidden():
+    r = candidates.select([item(1, 10.0, held=True), item(2, 30.0)], doc(react(1, 50.0, 51.0, 1)))
+    assert whys(r) == [("item-0002", "no_candidate")]
+    assert "保留の回収が 1 件あり、候補としては見ていません。" in r["notices"]
+
+
+def test_no_notice_without_held_payoff():
+    r = candidates.select([item(1, 10.0)], doc())
+    assert not any("保留" in n for n in r["notices"])
+

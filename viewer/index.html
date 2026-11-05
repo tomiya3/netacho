@@ -218,8 +218,9 @@ function itemCard(i) {
   const body = [el("p", {}, i.text + (i.basis === "knowledge" ? "（暫定）" : ""))];
   if (i.source.words) body.push(el("p", { class: "quote" }, `演者の言葉：「${i.source.words}」`));
   if (i.reason) body.push(el("p", { class: "quote" }, `理由：${i.reason}`));
-  if (i.source.quote) body.push(el("p", { class: "quote" }, `${i.held ? "引用（照合で支えられなかった）" : "根拠"}：「${i.source.quote}」`));
-  const c = card(who, i.held ? "保留（引用で言えない）" : label, `${i.id}  ${i.kind}`, ...body);
+  const idLeft = i.held_reason === "internal_id";
+  if (i.source.quote) body.push(el("p", { class: "quote" }, `${i.held && !idLeft ? "引用（照合で支えられなかった）" : "根拠"}：「${i.source.quote}」`));
+  const c = card(who, idLeft ? "保留（文に内部の番号が残っている）" : i.held ? "保留（引用で言えない）" : label, `${i.id}  ${i.kind}`, ...body);
   if (i.held) c.classList.add("held");
   return c;
 }

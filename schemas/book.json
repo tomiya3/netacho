@@ -319,6 +319,12 @@
         "held": {
           "type": "boolean"
         },
+        "held_reason": {
+          "enum": [
+            "internal_id"
+          ],
+          "description": "照合以外の理由で保留にしたとき。internal_id は文に内部の番号が残っている"
+        },
         "edited_by": {
           "enum": [
             "tool",

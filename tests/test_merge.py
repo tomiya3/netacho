@@ -68,3 +68,70 @@ def test_scene_order_is_renumbered_without_collision():
     h["scenes"] = [old]
     merge.merge(h, k, items=[], scenes=[new], characters=[], held_ids=set())
     assert [(s["id"], s["order"]) for s in k["scenes"]] == [("scene-01", 1), ("scene-02", 2)]
+
+
+def test_item_with_internal_id_is_held_not_dropped():
+    h, k = book("hanashi"), book("kata")
+    text = "scene-07 の item-0048 の後"
+    merge.merge(h, k, items=[row("item-0001", text=text)], scenes=[], characters=[], held_ids=set())
+    assert h["items"][0]["text"] == text  # 消さない
+    assert h["items"][0]["held"] is True and h["items"][0]["held_reason"] == "internal_id"
+
+
+def test_fixed_text_is_released_from_hold():
+    h, k = book("hanashi"), book("kata")
+    h["items"] = [
+        {**strip(row("item-0001", text="scene-07 の後")), "held": True, "held_reason": "internal_id"}
+    ]
+    merge.merge(
+        h, k, items=[row("item-0001", text="結びの一番の後")], scenes=[], characters=[], held_ids=set()
+    )
+    assert "held" not in h["items"][0] and "held_reason" not in h["items"][0]
+
+
+def test_checker_hold_has_no_reason_and_stays_in_book_shape():
+    h, k = book("hanashi"), book("kata")
+    merge.merge(h, k, items=[row("item-0001")], scenes=[], characters=[], held_ids={"item-0001"})
+    assert h["items"][0]["held"] is True and "held_reason" not in h["items"][0]
+
+
+def test_rewritten_as_knowledge_is_released_from_the_id_hold():
+    h, k = book("hanashi"), book("kata")
+    h["items"] = [
+        {**strip(row("item-0001", text="scene-07 の後")), "held": True, "held_reason": "internal_id"}
+    ]
+    fixed = {**row("item-0001", text="結びの一番の後"), "basis": "knowledge"}
+    merge.merge(h, k, items=[fixed], scenes=[], characters=[], held_ids=set())
+    assert "held" not in h["items"][0]
+
+
+def test_old_book_is_held_even_if_the_item_is_not_rewritten():
+    h, k = book("hanashi"), book("kata")
+    h["items"] = [strip(row("item-0001", text="scene-07 の後"))]
+    merge.merge(h, k, items=[row("item-0002")], scenes=[], characters=[], held_ids=set())
+    assert h["items"][0]["held_reason"] == "internal_id"
+
+
+def test_performer_item_is_never_held_for_ids():
+    h, k = book("hanashi"), book("kata")
+    h["items"] = [strip(row("item-0001", by="performer", text="scene-07 の後"))]
+    merge.merge(h, k, items=[row("item-0002")], scenes=[], characters=[], held_ids=set())
+    assert "held" not in h["items"][0]
+    assert merge.id_rework(h, k) == []
+
+
+def test_checker_hold_is_not_overwritten_by_the_id_hold():
+    h, k = book("hanashi"), book("kata")
+    h["items"] = [{**strip(row("item-0001", text="scene-07 の後")), "held": True}]
+    fixed = {**row("item-0001", text="結びの一番の後"), "basis": "knowledge"}
+    merge.merge(h, k, items=[row("item-0002")], scenes=[], characters=[], held_ids=set())
+    assert "held_reason" not in h["items"][0]
+    merge.merge(h, k, items=[fixed], scenes=[], characters=[], held_ids=set())
+    assert h["items"][0]["held"] is True  # 照合で落ちた項目は、knowledge に書き換えても解けない
+
+
+def test_checker_held_item_with_id_is_also_sent_back():
+    h, k = book("hanashi"), book("kata")
+    h["items"] = [{**strip(row("item-0001", text="scene-07 の後")), "held": True}]
+    assert [r["anchor"] for r in merge.id_rework(h, k)] == [{"item_id": "item-0001"}]
+

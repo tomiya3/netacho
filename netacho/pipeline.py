@@ -169,7 +169,9 @@ def write_pass(ctx: Context, *, rework: list[dict] | None = None, suffix: str = 
     save_books(ctx)
     ctx.kept += len(items)  # 正本に入ってから数える
     lookup = render.scene_lookup(timelines(ctx.neta))
-    return {render.scene_of_item(i, lookup) for i in changed if i["id"] not in held}
+    # 保留の文は弟子役に見えない。直ったと数えない
+    shown = [i for i in changed if i["id"] not in held and not evidence.has_internal_id(i["text"])]
+    return {render.scene_of_item(i, lookup) for i in shown}
 
 
 def save_books(ctx: Context) -> None:
@@ -222,7 +224,13 @@ def _context(
 def _finish(ctx: Context) -> dict:
     """run.json を書いて、数字を返す。"""
     ctx.usage.extra |= {
-        "evidence": {"kept": ctx.kept, "dropped": dict(ctx.dropped)},
+        "evidence": {
+            "kept": ctx.kept,
+            "dropped": dict(ctx.dropped),
+            "held_internal_id": sum(
+                i.get("held_reason") == "internal_id" for i in ctx.hanashi["items"] + ctx.kata["items"]
+            ),
+        },
         "checker": {
             k: ctx.checker[k]
             for k in ("supported", "weak", "unsupported", "unchecked_knowledge", "no_verdict", "ma_by_script")
@@ -308,7 +316,7 @@ def build(
         first, _ = deshi_pass(ctx, doc, questions, base_round + 1)
         save_review(ctx, doc, questions)
         record(first, None)
-        rework = review.rework_of(first)
+        rework = review.rework_of(first) + merge.id_rework(ctx.hanashi, ctx.kata)
         if rework:
             touched = write_pass(ctx, rework=rework, suffix="-2")
             second, dropped = deshi_pass(ctx, doc, questions, base_round + 2)
@@ -375,7 +383,7 @@ QUESTION_ALLOWED = ("笑いどころと読めませんでした", "笑いどこ�
 NOTE_BANNED = re.compile(
     r"(反応|候補|笑い|ウケ|受け|手応え)[^。]{0,8}"
     r"(なし|無し|なかった|無かった|ない|無い|ません|起きな|起こらな|薄|弱|出な)"
-    r"|無反応|沈黙|静か|シーン|滑っ|滑り|スベ|盛り上がらな|失敗|ダメ|だめ|客"
+    r"|無反応|沈黙|静か|シーン|滑っ|滑り|スベ|盛り上がらな|失敗|ダメ|だめ|客|音量"
     r"|した方が|すべき|おすすめ|お勧め|てはどう|てみては|直すと|変えると"
     r"|[0-9〇一二三四五六七八九十百]+\s*(秒|分|回|件|位)"
 )

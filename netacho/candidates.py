@@ -82,6 +82,9 @@ def select(items: list[dict], reactions: dict) -> dict:
     )
     rows = sorted(rows[:NOTE_MAX], key=lambda r: r[0]["payoff"]["t1"])
     notices = []
+    held = sum(1 for i in items if "payoff" in i and i.get("held") and i["source"].get("koza_id") == koza_id)
+    if held:  # 見ていない物を、候補が無い物と混ぜない
+        notices.append(f"保留の回収が {held} 件あり、候補としては見ていません。")
     if total > NOTE_MAX:
         notices.append(f"候補 {total} 件のうち、仕込みのはっきりした物から {NOTE_MAX} 件を出しています。")
     if has_manual:
