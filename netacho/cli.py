@@ -312,19 +312,16 @@ def cmd_answer(args: argparse.Namespace) -> None:
 
     neta = store.Neta(args.performer, args.neta)
     item = performer.answer(neta, question=args.question, speaker=args.speaker, words=args.words)
-    pipeline.after_answer(neta)
+    pipeline.after_performer(neta)
     print(f"型に入れた：{item['id']}")
 
 
 def cmd_dismiss(args: argparse.Namespace) -> None:
-    from . import performer
+    from . import performer, pipeline
 
-    performer.dismiss(
-        store.Neta(args.performer, args.neta),
-        question=args.question,
-        speaker=args.speaker,
-        reason=args.reason,
-    )
+    neta = store.Neta(args.performer, args.neta)
+    performer.dismiss(neta, question=args.question, speaker=args.speaker, reason=args.reason)
+    pipeline.after_performer(neta)
     print(f"捨てた：{args.question}")
 
 

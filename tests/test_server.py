@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from netacho import gaps, performer, pipeline, server, store, view
+from netacho import gaps, guide, performer, pipeline, server, store, view
 
 DATA = Path(__file__).parent / "fixtures" / "dummy_koza"
 P, N, K = "performer-dummy", "雨宿り勘定", "2026-01-01-dummy-hall"
@@ -294,3 +294,12 @@ def test_silent_body_does_not_hold_the_lock(running):
         started = time.monotonic()
         assert call(running, "/api/answer", {"question": q, "speaker": "本人", "words": "言葉"})[0] == 200
     assert time.monotonic() - started < 2
+
+
+def test_dismissal_refreshes_the_cards(running, monkeypatch):
+    q = add_question(running)
+    seen = []
+    monkeypatch.setattr(guide, "refresh", lambda neta: seen.append(neta))
+    assert call(running, "/api/dismiss", {"question": q, "speaker": "本人", "reason": "演者の声"})[0] == 200
+    assert seen == [running.neta]
+

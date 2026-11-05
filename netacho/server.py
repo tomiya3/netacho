@@ -147,16 +147,17 @@ class Handler(BaseHTTPRequestHandler):
             speaker=_text(body, "speaker"),
             words=_text(body, "words"),
         )
-        return lambda: pipeline.after_answer(neta)
+        return lambda: pipeline.after_performer(neta)
 
     def _dismiss(self, body: dict) -> Callable[[], None]:
+        neta = self.server.neta
         performer.dismiss(
-            self.server.neta,
+            neta,
             question=_text(body, "question"),
             speaker=_text(body, "speaker"),
             reason=_text(body, "reason"),
         )
-        return lambda: None
+        return lambda: pipeline.after_performer(neta)
 
 
 def serve(neta: store.Neta, koza_id: str, *, port: int, out: Path = view.OUT) -> None:

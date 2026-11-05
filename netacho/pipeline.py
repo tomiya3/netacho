@@ -340,8 +340,8 @@ def settled_scenes(questions: dict) -> set[str]:
     return {q["scene_id"] for q in questions["questions"] if "answer" in q or "dismissed" in q}
 
 
-def after_answer(neta: store.Neta) -> None:
-    """答えが型に入った後の更新。CLI と画面で同じにする。"""
+def after_performer(neta: store.Neta) -> None:
+    """演者が答えたか問いを捨てた後の更新。指摘が解決になると札が変わる。CLI と画面で同じにする。"""
     write_markdown(neta, store.read(neta.hanashi, "book"), store.read(neta.kata, "book"))
     guide.refresh(neta)
 
