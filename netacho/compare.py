@@ -33,7 +33,7 @@ CONTEXT_EDGE = 3  # もう 1 本の同じくだりの前後に足す行の数
 KINDS = ("added", "moved", "words", "kept", "one_side", "ma", "changed")
 # 間（ま）ではない語。「間」の字だけでは判定できない
 NOT_PAUSE = re.compile(
-    r"時間|人間|仲間|合間|間違|瞬間|世間|期間|空間|間に合|昼間|夜間|年間|週間|月間|日間|民間|中間|区間|隙間|間隔|間際|間柄|間接"
+    r"時間|人間|仲間|合間|間違|瞬間|世間|期間|空間|間に合|昼間|夜間|年間|週間|月間|日間|民間|中間|区間|隙間|間隔|間際|間柄|間接|手間|居間|間もなく|その間"
 )
 RELATIONS = ("same", "changed", "only_a", "only_b")
 
@@ -184,7 +184,8 @@ def _paired_spots(p: dict, a: Side, b: Side, practice: bool) -> list[dict]:
     # テンポの違う 2 本は、頭からの秒が積もってずれる。くだりの長さの比で写してから比べる
     length_a = a.lines[i1]["end"] - head_a
     length_b = b.lines[j1]["end"] - head_b
-    scale = length_b / length_a if length_a > 0 else 1.0
+    # 区間が極端に短いと比が暴れる。話す速さの差はこの範囲に収まる
+    scale = min(max(length_b / length_a, 0.5), 2.0) if length_a > 0 else 1.0
     spots: list[dict] = []
     used: set[float] = set()
     for t in laughs_a:
@@ -251,6 +252,8 @@ def settle(spot: dict, row: dict, a: Side, b: Side, shown: dict) -> dict | None:
     j = b.index.get(row["b_seg"]) if row["b_seg"] in ids_b else None
     if (row["relation"] == "none") != (j is None):
         return None
+    if row["relation"] == "none" and spot.get("laugh_b") is not None:
+        return None  # もう 1 本にも笑いの山があるのに「無い」とは言えない
     ma = None if j is None else _ma(a, b, i, j)
     if speaks_of_pause(row["text"]) and ma is None:
         return None

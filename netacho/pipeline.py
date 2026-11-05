@@ -683,7 +683,11 @@ def compare_koza(
             issue_of = {i["attempt"]: i["id"] for i in review_doc["issues"]}
             n_issue = max((int(i["id"].split("-")[1]) for i in review_doc["issues"]), default=0) + 1
             n_q = max((int(q["id"].split("-")[1]) for q in questions["questions"]), default=0) + 1
-            # 演者が答えた所をまた問わない。行の選び方が変わっても、所の id で分かる
+            # 演者が答えた所は、前回の所のまま残す。また問わず、種類も戻さない
+            before = kdir / "compare.json"
+            old = store.read(before, "compare")["spots"] if before.exists() else []
+            kept = {s["id"]: s for s in old if s["id"] in done}
+            doc["spots"] = [kept.get(s["id"], s) for s in doc["spots"]]
             asked = [s for s in doc["spots"] if s["id"] in done]
             for row in picks:
                 if added == COMPARE_QUESTIONS:

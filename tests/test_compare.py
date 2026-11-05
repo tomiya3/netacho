@@ -250,6 +250,29 @@ def test_slow_recording_does_not_make_everything_moved():
     assert {s["kind"] for s in found} == {"kept"}
 
 
+def test_a_very_short_passage_does_not_blow_up_the_scale():
+    """1 行と 8 行の対応で、比をそのまま使うと 80 倍に写る。上限で止める。"""
+    a = side("a", LINES, [5.0, *MANY[1:]])
+    b = side("b", LINES, [8.0, *MANY[1:]], step=100.0)
+    found = spots(a, b, draft(row("same", (0, 0), (0, 7))))
+    assert [s["kind"] for s in found if s["laugh_a"] == 5.0] == ["kept"]  # 10 秒に写り、8 秒の山と組む
+
+
+def test_passage_with_no_length_does_not_divide_by_zero():
+    a = side("a", LINES, [5.0])
+    for line in a.lines:
+        line["end"] = line["start"]
+    assert isinstance(spots(a, side("b", LINES, [5.0])), list)
+
+
+@pytest.mark.parametrize("t", [5.0, 995.0])
+def test_lines_shown_stay_full_at_both_ends_of_a_long_passage(t):
+    texts = [f"長いくだりの{n}行目でございます" for n in range(100)]
+    a, b = side("a", texts, [t]), side("b", texts, [])
+    spot = {"laugh_a": t, "a": {"t": t}, "span_a": [0, 99], "span_b": [0, 99]}
+    assert len(compare.context_rows(spot, a, b)["lines_b"]) == compare.LINES_B_MAX
+
+
 def test_a_far_laugh_is_not_paired():
     a = side("a", LINES, [5.0, *MANY[1:]])
     b = side("b", LINES, [75.0, *MANY[1:-1], 79.0])
@@ -430,12 +453,12 @@ def test_relation_none_needs_no_line_and_makes_it_added():
     assert new["kind"] == "added" and new["b"] is None
 
 
-@pytest.mark.parametrize("kind", ["moved", "one_side"])
-def test_no_counterpart_is_always_called_added(kind):
-    """もう 1 本に無い行なのに「ずれた」と言わない。"""
+def test_no_counterpart_is_called_added_only_when_the_other_has_no_laugh():
     a, b, spot, rows = shown_lines()
-    spot["kind"] = kind
+    spot.update(kind="one_side", laugh_b=None)
     assert compare.settle(spot, answer(relation="none", b_seg=None), a, b, rows)["kind"] == "added"
+    spot.update(kind="moved", laugh_b=30.0)
+    assert compare.settle(spot, answer(relation="none", b_seg=None), a, b, rows) is None
 
 
 def test_speaking_of_a_pause_needs_a_measured_difference():
@@ -537,6 +560,20 @@ def test_a_place_with_an_answer_is_not_asked_again(tmp_path):
     assert any(s["id"] == first["spot_id"] for s in doc["spots"])
     after = store.read(neta.questions, "questions")["questions"]
     assert sum(q.get("spot_id") == first["spot_id"] for q in after) == 1
+
+
+def test_an_answered_place_keeps_what_the_asker_decided(tmp_path):
+    root, neta = two_books(tmp_path)
+    run(root, client_of(answer_all), tmp_path)
+    path = neta.koza_dir(K1) / "compare.json"
+    first = next(q for q in store.read(neta.questions, "questions")["questions"] if "spot_id" in q)
+    doc = store.read(path, "compare")
+    spot = next(s for s in doc["spots"] if s["id"] == first["spot_id"])
+    spot["kind"] = "added"  # 前回、聞き役がそう決めた
+    store.write(path, doc, "compare")
+    performer.answer(neta, question=first["id"], speaker="本人", words="わざとです")
+    after = run(root, client_of(REPLY), tmp_path)
+    assert next(s for s in after["spots"] if s["id"] == first["spot_id"])["kind"] == "added"
 
 
 def test_open_questions_of_another_pair_stay(tmp_path):
