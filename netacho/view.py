@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -70,6 +71,107 @@ def question_places(
     return places
 
 
+def clean_lines(transcript: dict | None, clean: dict | None) -> dict:
+    """区間 ID ごとの清書の行。文字起こしを作り直す前の古い行は使わない。"""
+    if not transcript or not clean:
+        return {}
+    raw = {s["id"]: s["text"].strip() for s in transcript["segments"]}
+    return {
+        row["seg_id"]: row
+        for row in clean["lines"]
+        if row["text"].strip() and raw.get(row["seg_id"]) == row["raw"].strip()
+    }
+
+
+def _clean_span(span: dict, order: list[str], lines: dict) -> dict:
+    """引用を清書にする。原文は `quote_raw` に残す。1 行でも清書が無ければ元のまま。"""
+    first, last = span["segs"]
+    if first not in order or last not in order:
+        return span
+    ids = order[order.index(first) : order.index(last) + 1]
+    if not all(i in lines for i in ids):
+        return span
+    return {**span, "quote": "".join(lines[i]["text"] for i in ids), "quote_raw": span["quote"]}
+
+
+def clean_items(items: list[dict], koza_id: str, transcript: dict, lines: dict) -> list[dict]:
+    """画面に渡す項目の引用を清書にする。正本は書き換えない。別の高座の項目は変えない。"""
+    order = [s["id"] for s in transcript["segments"]]
+    out = []
+    for item in items:
+        row = item
+        # 保留の引用は照合に通らなかった物。清書にすると直って見えるので、文字起こしのまま見せる
+        if (
+            lines
+            and not item.get("held")
+            and item["source"].get("koza_id") == koza_id
+            and item["source"].get("segs")
+        ):
+            row = {**item, "source": _clean_span(item["source"], order, lines)}
+            if "payoff" in item:
+                row["payoff"] = _clean_span(item["payoff"], order, lines)
+        out.append(row)
+    return out
+
+
+def clean_transcript(transcript: dict, lines: dict) -> dict:
+    """本文を清書に置き換えた文字起こし。画面の台詞を作るためだけに使う。"""
+    return {
+        **transcript,
+        "segments": [
+            {**s, "text": lines[s["id"]]["text"]} if s["id"] in lines else s for s in transcript["segments"]
+        ],
+    }
+
+
+def readable_question(question: str | None, before: str) -> str:
+    """問いが引いた語が清書にそのままあれば、問いを残す。無ければ決まった文にする。
+
+    問いは文字起こしの語を引いて書かれるので、聞き違いの語を画面に出さないように確かめる。
+    """
+    if question and all(q in before for q in re.findall(r"[「『](.+?)[」』]", question)):
+        return question
+    return gaps.FALLBACK_QUESTION
+
+
+def clean_gaps(gaps_doc: dict | None, transcript: dict, lines: dict) -> dict | None:
+    """読めなかった笑いの問いと直前の台詞を、清書で見せる。"""
+    if not gaps_doc or not lines:
+        return gaps_doc
+    overlay = clean_transcript(transcript, lines)
+    rows = []
+    for s in gaps_doc["surprises"]:
+        before = gaps.before_quote(overlay, s["t0"])
+        rows.append({**s, "question": readable_question(s.get("question"), before), "before_quote": before})
+    return {**gaps_doc, "surprises": rows}
+
+
+def clean_questions(questions: dict | None, cleaned: dict | None) -> dict | None:
+    """笑いへの問いの文を、清書で読める文にする。答えと id はそのまま。"""
+    if not questions or not cleaned:
+        return questions
+    texts: dict[str, str] = {}
+    for s in cleaned["surprises"]:
+        head = gaps.attempt_of(s, cleaned["koza_id"])
+        q = next((x for x in questions["questions"] if x["text"].startswith(head)), None)
+        if q is not None:
+            texts[q["id"]] = f"{gaps.clock(s['t0'])} の笑いの所：{s['question']}"
+    rows = [
+        {**q, "text": texts[q["id"]], "text_raw": q["text"]} if q["id"] in texts else q
+        for q in questions["questions"]
+    ]
+    return {**questions, "questions": rows}
+
+
+def clean_review(review: dict | None, questions: dict | None, shown: dict | None) -> dict | None:
+    """笑いへの問いから来た指摘だけ、画面の問いと同じ文にする。ほかの指摘は変えない。"""
+    if not review or not questions or not shown:
+        return review
+    texts = {q["issue_id"]: q["text"] for q in shown["questions"] if "text_raw" in q}
+    rows = [{**i, "what_is_missing": texts[i["id"]]} if i["id"] in texts else i for i in review["issues"]]
+    return {**review, "issues": rows}
+
+
 def payload(neta: store.Neta, koza_id: str) -> dict:
     """1 つの高座を見るのに要る物を 1 つの JSON にまとめる。"""
     kdir = neta.koza_dir(koza_id)
@@ -82,21 +184,26 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
     clean = _optional(kdir / "seisho.json", "seisho")
     questions = _optional(neta.questions, "questions")
     transcript = _optional(kdir / "transcript.json", "transcript")
+    lines = clean_lines(transcript, clean)
+    places = question_places(gaps_doc, questions, transcript, clean) if transcript else {}
+    empty = {"segments": []}
+    cleaned = clean_gaps(gaps_doc, transcript or empty, lines)
+    shown = clean_questions(questions, cleaned if lines else None)
     return {
         "koza": store.read(kdir / "koza.json", "koza"),
         "reactions": store.read(kdir / "reactions.json", "reactions"),
         "candidates": _optional(kdir / "note_candidates.json", "note_candidates"),
-        "gaps": gaps_doc,
+        "gaps": cleaned,
         "seisho": clean,
         "note": note.read_text(encoding="utf-8") if note.exists() else None,
         "scenes": sorted(hanashi["scenes"], key=lambda s: s["order"]),
         "characters": hanashi["characters"],
-        "hanashi": _with_scene(hanashi["items"], lookup),
-        "kata": _with_scene(kata["items"], lookup),
+        "hanashi": clean_items(_with_scene(hanashi["items"], lookup), koza_id, transcript or empty, lines),
+        "kata": clean_items(_with_scene(kata["items"], lookup), koza_id, transcript or empty, lines),
         "guide": _optional(neta.guide, "guide"),
-        "review": _optional(neta.review, "review"),
-        "questions": questions,
-        "places": question_places(gaps_doc, questions, transcript, clean) if transcript else {},
+        "review": clean_review(_optional(neta.review, "review"), questions, shown),
+        "questions": shown,
+        "places": places,
         "run": _optional(kdir / "run.json", "run"),
     }
 

@@ -23,7 +23,7 @@ QUOTE_IN_QUESTION = 40  # 問いの文に添える直前の台詞の長さ
 FALLBACK_QUESTION = "文字からは笑いどころと読めなかった所です。ここで何をしているのか、教えてください。"
 
 
-def _before_quote(transcript: dict, t0: float) -> str:
+def before_quote(transcript: dict, t0: float) -> str:
     """笑いが始まる前の台詞。笑いの後の台詞を混ぜない（問いの引用がずれる）。"""
     rows = [
         s["text"].strip() for s in transcript["segments"] if s["start"] < t0 and s["end"] > t0 - BEFORE_SEC
@@ -155,7 +155,7 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
             "t0": r["t0"],
             "t1": r["t1"],
             "scene_id": scene_at(r["t0"]),
-            "before_quote": _before_quote(transcript, r["t0"]),
+            "before_quote": before_quote(transcript, r["t0"]),
         }
         for n, r in enumerate(_bundled(askable)[:SURPRISE_MAX], start=1)
     ]
