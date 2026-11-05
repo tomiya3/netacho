@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
+from math import ceil
 from pathlib import Path
 
 LAUGH_PEAK_RATIO = 0.5  # 高座の笑いの最大値に対する割合
@@ -116,30 +118,30 @@ def window_peak(doc: dict, t0: float, t1: float) -> float:
     if not scores or not scores.get("laugh"):
         return 0.0
     half, stride = scores["window"] / 2, scores["stride"]
-    rows = [v for i, v in enumerate(scores["laugh"]) if t0 <= i * stride + half < t1]
-    return max(rows, default=0.0)
+    lo = max(ceil((t0 - half) / stride), 0)  # 中央が t0 以上の最初の窓。全部を走査しない
+    hi = ceil((t1 - half) / stride)
+    return max(scores["laugh"][lo:hi], default=0.0)
 
 
-def peak_share(doc: dict, widths: list[float]) -> float | None:
-    """基準の割合。予測の窓と同じ長さの窓を、音声全体の全部の位置に置いたとき、弱い山以上がある割合。
+def peak_share(doc: dict, widths: list[float], floor: float = LAUGH_FLOOR) -> float | None:
+    """基準の割合。予測の窓と同じ長さの窓を、音声全体の全部の位置に置いたとき、floor 以上の山がある割合。
 
-    長さごとの割合を平均する。予測の窓と同じ長さの構成で、同じ定義で数えるため。
+    長さごとの割合を、予測の窓の数で重みを付けて平均する。同じ長さは 1 度だけ数える。
     """
     seconds = covered_seconds(doc)
     scores = doc.get("scores")
     if not seconds or not scores or not scores.get("laugh") or not widths:
         return None
-    rates = []
-    for width in widths:
-        count = int((seconds - width) // scores["stride"]) + 1
+    stride = scores["stride"]
+    total = weight = 0.0
+    for width, n in Counter(round(w, 3) for w in widths).items():
+        count = int((seconds - width) // stride) + 1
         if count <= 0:
             continue
-        found = sum(
-            window_peak(doc, i * scores["stride"], i * scores["stride"] + width) >= LAUGH_FLOOR
-            for i in range(count)
-        )
-        rates.append(found / count)
-    return round(sum(rates) / len(rates), 3) if rates else None
+        found = sum(window_peak(doc, i * stride, i * stride + width) >= floor for i in range(count))
+        total += n * found / count
+        weight += n
+    return round(total / weight, 3) if weight else None
 
 
 def build(scores: dict, transcript: dict) -> dict:

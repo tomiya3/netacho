@@ -65,16 +65,18 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
         window, clipped = candidates.window_of(it, end)
         windows.append(window)
         found = candidates.overlapping(laughs, window[0], window[1])
-        if not clipped:
-            peak = window_peak(reactions, window[0], window[1])
-            peaks.append(max(peak, LAUGH_FLOOR) if found else peak)  # 笑いと重なる窓は山ありとして数える
+        peak = window_peak(reactions, window[0], window[1])
+        if not clipped:  # 予測も基準もスコアだけで数える（的中の判定を混ぜると予測に有利になる）
+            peaks.append(peak)
             whole.append(window[1] - window[0])
         if found:
             hits.append({"item_id": it["id"], "reaction_ids": [r["id"] for r in found]})
             used |= {r["id"] for r in found}
-        elif window_peak(reactions, window[0], window[1]) >= LAUGH_FLOOR:
-            weak.append({"item_id": it["id"], "peak": window_peak(reactions, window[0], window[1])})
-        elif not clipped:
+        elif clipped:
+            continue  # 録音の末尾で切れた窓は判定しない
+        elif peak >= LAUGH_FLOOR:
+            weak.append({"item_id": it["id"], "peak": peak})
+        else:
             misses.append({"item_id": it["id"]})
     scene_of = {s["seg_id"]: s["scene_id"] for s in (timeline or {"segments": []})["segments"]}
 

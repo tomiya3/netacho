@@ -179,12 +179,28 @@ def test_baseline_counts_every_position_with_the_same_rule():
     assert reactions.peak_share({"scores": {"seconds": 10.0}}, [5.0]) is None
 
 
-def test_hit_at_the_edge_of_a_window_counts_as_a_peak():
-    """笑いの区間が窓の端で重なるだけでも、的中なら山ありと数える。"""
+def test_peak_rate_uses_scores_only():
+    """予測も基準もスコアだけで数える。的中の判定を混ぜない。"""
     d = doc(react(1, 11.0, 12.0, 1), seconds=100.0)
     d["scores"].update(window=5.0, stride=2.0, laugh=[0.0] * 48)
     r = compare([item(1, 10.0)], d)
-    assert len(r["hits"]) == 1 and r["peak_rate"] == 1.0
+    assert len(r["hits"]) == 1 and r["peak_rate"] == 0.0
+
+
+def test_clipped_window_is_not_weak_either():
+    r = compare([item(1, 98.0)], scored(100.0, {96.5: 0.1}))
+    assert r["weak"] == [] and r["misses"] == [] and r["peak_n"] == 0
+
+
+def test_long_audio_is_fast():
+    """2 時間分のスコアでも、基準はすぐ出る。"""
+    import time
+
+    n = 3600
+    d = {"scores": {"window": 5.0, "stride": 2.0, "seconds": 7200.0, "laugh": [0.0] * n}}
+    t0 = time.time()
+    assert reactions.peak_share(d, [12.0, 12.0, 15.0, 20.0] * 30) == 0.0
+    assert time.time() - t0 < 2.0
 
 
 def test_window_edges_are_half_open():
