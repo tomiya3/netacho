@@ -69,9 +69,21 @@ def test_song_fix_stays_with_a_mark():
     assert stats["heavy"] == 1 and stats["kept_raw"] == 0
 
 
-def test_short_line_is_judged_by_absolute_length():
-    doc, stats = one("はい", "はあ")
-    assert doc["lines"][0]["text"] == "はあ" and stats["kept_raw"] == 0
+def test_short_line_keeps_a_near_fix():
+    doc, stats = one("へえー", "へえ")
+    assert doc["lines"][0]["text"] == "へえ" and stats["kept_raw"] == 0
+
+
+def test_short_line_is_not_rewritten():
+    """相づちの言い換えは、短いので長さでは止まらない。似ていなければ原文に戻す。"""
+    doc, stats = one("はい", "承知いたしました")
+    assert doc["lines"][0]["text"] == "はい" and stats["kept_raw"] == 1
+
+
+def test_missing_lines_are_shown_at_the_top():
+    doc, stats = seisho.build(draft_lines(), transcript(), None)
+    assert stats["missing"] == 2
+    assert "返さなかった区間が 2" in seisho.markdown({"neta": "架空の噺", "id": "k"}, doc, stats)
 
 
 def test_empty_answer_is_counted_apart():
