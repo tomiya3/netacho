@@ -230,6 +230,30 @@ def _rewrite_markdown(neta: store.Neta) -> None:
     pipeline.write_markdown(neta, store.read(neta.hanashi, "book"), store.read(neta.kata, "book"))
 
 
+def cmd_run(args: argparse.Namespace) -> None:
+    """prep、build、note を順に回す。"""
+    import anthropic
+
+    from . import runner
+
+    if not args.reuse:  # --reuse はキャッシュだけで済むことがあるので、鍵を要求しない
+        try:
+            runner.check_auth(runner.make_client())  # 長い文字起こしの後で落ちないように、先に確かめる
+        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
+            raise SystemExit("API の鍵が通らない。ANTHROPIC_API_KEY を確かめる") from e
+        except TypeError as e:
+            if "authentication" not in str(e).lower():  # 別のバグを認証の問題と言わない
+                raise
+            raise SystemExit("API の認証が無い。ANTHROPIC_API_KEY を用意する") from e
+    where = f"--performer {args.performer} --neta {args.neta} --koza {args.koza}"
+    print("1/3 prep")
+    cmd_prep(args)
+    print(f"2/3 build（落ちたら netacho build {where}）")
+    cmd_build(args)
+    print(f"3/3 note（落ちたら netacho note {where}）")
+    cmd_note(args)
+
+
 def cmd_decide(args: argparse.Namespace) -> None:
     from . import performer
 
@@ -327,6 +351,20 @@ def build_parser() -> argparse.ArgumentParser:
     note.add_argument("--koza", required=True)
     note.add_argument("--reuse", action="store_true", help="同じ入力の役の出力を使い回す")
     note.set_defaults(func=cmd_note)
+
+    run = sub.add_parser("run", help="prep + build + note")
+    run.add_argument("--audio", required=True)
+    run.add_argument("--performer", required=True)
+    run.add_argument("--neta", required=True)
+    run.add_argument("--koza", required=True)
+    run.add_argument("--from", dest="start", type=float)
+    run.add_argument("--to", dest="end", type=float)
+    run.add_argument("--terms", help="演目の語（カンマ区切り）")
+    run.add_argument("--force", action="store_true", help="手で付けた反応があっても作り直す")
+    run.add_argument(
+        "--reuse", action="store_true", help="同じ入力の役の出力を使い回す。外れると prep の後で鍵が要る"
+    )
+    run.set_defaults(func=cmd_run)
 
     decide = sub.add_parser("decide", help="演者の決定を型に入れる（LLM 0 回）")
     _who(decide)
