@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import candidates, evidence, merge, render, review, store
+from . import candidates, evidence, guide, merge, render, review, store
 from .budget import Budget
 from .runner import RoleCache, Usage, call_role
 from .schema import check_refs
@@ -265,6 +265,7 @@ def deshi_pass(ctx: Context, doc: dict, questions: dict, round_no: int) -> tuple
 
 
 def save_review(ctx: Context, doc: dict, questions: dict) -> None:
+    doc.pop("suppressed_answered", None)  # 数は run.json に出す。review.json には入れない
     check_refs(
         ctx.hanashi, ctx.kata, koza=ctx.koza, koza_ids=koza_ids(ctx.neta), review=doc, questions=questions
     )
@@ -317,6 +318,41 @@ def build(
     finally:  # 落ちても、それまでの数字を残す
         result = _finish(ctx)
     return result
+
+
+def reread(
+    performer: str,
+    neta_name: str,
+    koza_id: str,
+    *,
+    client,
+    budget: Budget | None = None,
+    reuse: bool = False,
+    root: Path | None = None,
+) -> list[dict]:
+    """演者の判断が入った型を、弟子役にもう一度読ませる。足した指摘を返す。"""
+    ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
+    run_path = ctx.neta.koza_dir(koza_id) / "run.json"
+    write_markdown(ctx.neta, ctx.hanashi, ctx.kata)
+    doc, questions = read_review(ctx.neta)
+    ctx.asked_scenes |= {q["scene_id"] for q in questions["questions"] if "answer" in q}
+    try:
+        current, _ = deshi_pass(ctx, doc, questions, max((i["round"] for i in doc["issues"]), default=0) + 1)
+        suppressed = doc.pop("suppressed_answered", 0)
+        save_review(ctx, doc, questions)
+        stats = ctx.usage.extra.get("deshi", {"round1": 0, "round2": None, "dropped_no_anchor": 0})
+        dropped = stats["dropped_no_anchor"] + ctx.deshi_dropped
+        ctx.usage.extra["deshi"] = {
+            **stats,
+            "dropped_no_anchor": dropped,
+            "reread": len(current),
+            "suppressed_answered": suppressed,
+        }
+        ctx.usage.extra["questions"] = len(questions["questions"])
+    finally:  # 落ちても、呼んだ分の費用を残す
+        store.write(run_path, ctx.usage.to_json(), "run")
+    guide.refresh(ctx.neta)  # 指摘が増えて札から外れる項目があれば反映する（LLM 0 回）
+    return current
 
 
 # ノート役の文の検査。断定、客の気持ち、直し方の提案、数字の羅列を通さない。

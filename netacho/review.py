@@ -49,6 +49,7 @@ def receive(doc: dict, review: dict, hanashi: dict, kata: dict, round_no: int) -
     scene_ids = {s["id"] for s in hanashi["scenes"]}
     visible = {k for k, i in items.items() if not i.get("held")}
     open_issues = {_key(i): i for i in review["issues"] if not i["resolved"]}
+    answered = {_key(i) for i in review["issues"] if i["resolved"] and i["kind"] == ASK}
     n = _next_number(review["issues"])
     current, dropped = [], 0
     for raw in doc["issues"]:
@@ -69,6 +70,9 @@ def receive(doc: dict, review: dict, hanashi: dict, kata: dict, round_no: int) -
             "round": round_no,
             "resolved": False,
         }
+        if _key(issue) in answered:  # 演者が答えた所を聞き直さない。足さなかった数は数える
+            review["suppressed_answered"] = review.get("suppressed_answered", 0) + 1
+            continue
         existing = open_issues.get(_key(issue))
         if existing is not None:
             if existing not in current:

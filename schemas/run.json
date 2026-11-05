@@ -155,6 +155,16 @@
         "dropped_no_anchor": {
           "type": "integer",
           "minimum": 0
+        },
+        "reread": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "直近の読み直しの指摘数"
+        },
+        "suppressed_answered": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "答え済みの所への指摘を足さなかった数"
         }
       }
     },

@@ -25,3 +25,6 @@
 - 決めたこと：演者の項目を指す指摘は `ask_performer` に回す。構成作家役には直せないので、札が永久に止まらないように本人に聞く
 - plan からの変更：候補の窓の始点を回収の区間の始まりにした（Whisper の区間は長く、笑いが区間の中で終わると窓にかからないため）
 - 分かったこと：実データの `pause_after` は 0.5 秒以上が約 18%、1.0 秒以上が約 9%。`no_speech_prob` は録音で差が大きい（0.6 以上が 79 区間と 0 区間）
+- やったこと：T7（#12）。`decide`、`answer`、`guide`、`reread`。LLM 0 回のテストは `anthropic` を読めない状態の別プロセスで確かめる
+- plan からの変更：`decide` と `answer` に `--performer` と `--neta` が要る（どの帳面かを決めるため）。環境変数 `NETACHO_PERFORMER`、`NETACHO_NETA` でも渡せる。`reread` を足した。plan §6 を直した
+- 決めたこと：演者の答えは、札に出さない staging として型に入る（`approved: false`、`card_text: null`）。`source.approved` は「演者本人の言葉」の印で true のまま
