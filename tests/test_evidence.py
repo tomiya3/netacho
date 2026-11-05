@@ -105,6 +105,36 @@ def test_ma_pause_must_follow_the_last_segment(transcript):
     assert dropped == {"ma_no_pause": 1}
 
 
+def test_long_blank_is_not_a_ma(transcript):
+    """5 秒を超える空白は間と呼ばない。文字起こしの抜けや客の反応のことが多い。"""
+    t = copy.deepcopy(transcript)
+    t["segments"][2]["pause_after"] = 27.8
+    _, dropped = run(t, item(kind="間", book="kata", source={"segs": ["seg-0003", "seg-0003"]}))
+    assert dropped == {"ma_too_long": 1}
+
+
+@pytest.mark.parametrize(
+    ("pause", "text", "want"),
+    [
+        (0.5, "短い間", {}),
+        (0.49, "短い間", {"ma_no_pause": 1}),
+        (5.0, "長い間", {}),
+        (5.04, "長い間", {}),  # 表示が 5.0 秒なら間として扱う
+        (5.1, "長い間", {"ma_too_long": 1}),
+        (1.6, "「同じ」の後に 1.6 秒の間", {}),
+        (1.6, "「同じ」の後に 1.8 秒の間", {}),  # 許容差の中
+        (1.6, "「同じ」の後に 10 秒の間", {"ma_wrong_seconds": 1}),
+        (1.6, "「同じ」の後に１０秒の間", {"ma_wrong_seconds": 1}),
+    ],
+)
+def test_ma_boundaries(transcript, pause, text, want):
+    t = copy.deepcopy(transcript)
+    t["segments"][2]["pause_after"] = pause
+    _, dropped = run(t, item(kind="間", book="kata", text=text, source={"segs": ["seg-0003", "seg-0003"]}))
+    assert dict(dropped) == want
+    assert evidence.is_blank(pause) == (want == {"ma_too_long": 1})
+
+
 def test_ma_needs_a_real_pause(transcript):
     kept, dropped = run(transcript, item(kind="間", book="kata", source={"segs": ["seg-0003", "seg-0003"]}))
     assert kept and not dropped  # seg-0003 の後に 1.6 秒

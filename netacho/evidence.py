@@ -5,11 +5,15 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections import Counter
 
 from .schema import HANASHI_KINDS, KATA_KINDS, PAYOFF_KINDS
 
 MAX_SPAN_SEC = 180.0  # 1 項目の根拠の長さの上限。暫定
+MAX_MA_SEC = 5.0  # これより長い空白は間と呼ばない。文字起こしの抜けか客の反応のことが多い。暫定
+MA_SECONDS_TOLERANCE = 0.3  # 間の文に書いた秒数と pause_after の許容差
 MIN_PAUSE_SEC = 0.5  # 間の根拠に使える pause_after の下限。構成作家役にもこの長さから見せる。暫定
 
 
@@ -35,6 +39,24 @@ class Segments:
         if not quote:
             return None
         return {"segs": list(span), "t0": segs[0]["start"], "t1": max(s["end"] for s in segs), "quote": quote}
+
+
+def is_blank(pause: float) -> bool:
+    """間と呼ばない長い空白か。構成作家役への表示と検証で同じ判定を使う（表示は 0.1 秒単位）。"""
+    return round(pause, 1) > MAX_MA_SEC
+
+
+def _ma_problem(item: dict, pause: float) -> str | None:
+    if pause < MIN_PAUSE_SEC:
+        return "ma_no_pause"
+    if is_blank(pause):
+        return "ma_too_long"
+    # 文に秒数を書くなら、実際の pause_after と合うこと（照合役には確かめられない）
+    text = unicodedata.normalize("NFKC", item["text"])  # 全角の数字も見る
+    written = re.findall(r"([0-9]+(?:\.[0-9]+)?)\s*秒", text)
+    if written and not any(abs(float(x) - pause) <= MA_SECONDS_TOLERANCE for x in written):
+        return "ma_wrong_seconds"
+    return None
 
 
 def _book(item: dict) -> str:
@@ -63,8 +85,10 @@ def _problem(item: dict, segs: Segments, tool_ids: set[str], performer_ids: set[
         return "span_too_long"
     if _book(item) == "kata" and item["basis"] != "heard":
         return "kata_not_heard"
-    if item["kind"] == "間" and (segs.between(span)[-1]["pause_after"] or 0) < MIN_PAUSE_SEC:
-        return "ma_no_pause"  # 根拠の最後の区間の後に間があること（長い範囲のどこかでは足りない）
+    if item["kind"] == "間":  # 根拠の最後の区間の後に間があること（長い範囲のどこかでは足りない）
+        problem = _ma_problem(item, segs.between(span)[-1]["pause_after"] or 0)
+        if problem:
+            return problem
     if item["kind"] in PAYOFF_KINDS:
         if item["payoff"] is None:
             return "no_payoff"

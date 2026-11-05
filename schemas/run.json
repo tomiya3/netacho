@@ -130,6 +130,11 @@
         "no_verdict": {
           "type": "integer",
           "minimum": 0
+        },
+        "ma_by_script": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "照合役に回さず、スクリプトの検証で通した間の数"
         }
       }
     },
