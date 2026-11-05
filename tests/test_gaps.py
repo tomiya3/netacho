@@ -222,7 +222,7 @@ def test_peak_rate_uses_the_same_rule_and_leaves_clipped_windows_out():
     assert r["peak_n"] == 2 and r["peak_rate"] == 0.5  # 末尾で切れた item-0003 は分母に入らない
 
 
-ADDED_LATER = ("weak", "peak_rate", "baseline_rate", "peak_n")
+ADDED_LATER = ("weak", "peak_rate", "baseline_rate", "peak_n", "humps_total", "humps_hit")
 
 
 def to_previous_version(kdir):
@@ -298,6 +298,40 @@ def test_new_output_always_has_the_optional_fields():
 def test_fields_of_the_previous_version_stay_required():
     run = json.loads((Path(__file__).parents[1] / "schemas" / "run.json").read_text())
     assert {"laughs_total", "laughs_hit", "window_share"} <= set(run["properties"]["gaps"]["required"])
+
+
+def test_humps_are_runs_of_scores_above_the_floor():
+    d = scored(100.0, {12.5: 0.1, 14.5: 0.2, 40.5: 0.08, 60.5: 0.07})
+    assert reactions.laugh_humps(d) == [[12.5, 14.5], [40.5, 40.5]]
+
+
+def test_humps_are_none_without_scores():
+    assert reactions.laugh_humps(doc()) is None
+
+
+def test_two_items_on_one_hump_count_once():
+    d = scored(100.0, {12.5: 0.1, 14.5: 0.2, 60.5: 0.1})
+    r = compare([item(1, 10.0), item(2, 12.0)], d)
+    assert len(r["weak"]) == 2  # 項目ごとでは 2 件
+    assert (r["humps_hit"], r["humps_total"]) == (1, 2)  # 山は 1 つ
+
+
+def test_hump_edge_outside_every_window_is_not_hit():
+    r = compare([item(1, 10.0)], scored(100.0, {16.5: 0.1}))  # 窓は [9, 16)
+    assert r["humps_hit"] == 0 and r["humps_total"] == 1
+
+
+def test_no_automatic_laugh_writes_no_hump_count():
+    r = compare([item(1, 10.0)], doc())
+    assert r["judged"] is False and r["humps_total"] is None and r["humps_hit"] is None
+
+
+def test_markdown_leads_with_laughs_and_humps():
+    r = compare([item(1, 10.0), item(2, 12.0)], scored(100.0, {12.5: 0.1, 60.5: 0.1}))
+    text = "\n".join(render.gaps_markdown(r, {}))
+    assert "笑いの山（弱い山を含む）2 個のうち、予測の窓に入ったのは 1 個（50%）" in text
+    assert text.index("笑いの山") < text.index("項目ごとの内訳")
+    assert "1 つの笑いに項目が重なる" in text
 
 
 def test_no_prediction_rate_is_none():

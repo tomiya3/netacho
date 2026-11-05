@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from . import candidates
-from .reactions import LAUGH_FLOOR, clock, covered_seconds, peak_share, window_peak
+from .reactions import LAUGH_FLOOR, clock, covered_seconds, laugh_humps, peak_share, window_peak
 
 SURPRISE_MAX = 5  # 演者に問う数の上限。強い順
 BUNDLE_SEC = 15.0  # これより近い笑いは 1 つの山として、問いは強い 1 件だけにする
@@ -51,6 +51,11 @@ def _window_share(windows: list[list[float]], seconds: float | None) -> float:
     return round(covered / seconds, 3)
 
 
+def _humps_hit(humps: list[list[float]], windows: list[list[float]]) -> int:
+    """どれかの窓に入った山の数。同じ山に窓が 2 つ重なっても 1 つと数える。"""
+    return sum(any(h0 < w1 and h1 >= w0 for w0, w1 in windows) for h0, h1 in humps)
+
+
 def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict | None) -> dict:
     """3 区分を作る。surprises は演者に問う分だけで、全数は surprise_total に持つ。"""
     koza_id = reactions["koza_id"]
@@ -85,6 +90,7 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
         seg = max(started, key=lambda s: s["start"], default=None)
         return scene_of.get(seg["id"]) if seg else None
 
+    humps = laugh_humps(reactions) if judged else None  # 判定しない高座を 0 と書かない
     rest = [r for r in laughs if r["id"] not in used]
     rest.sort(key=lambda r: (r["strength_rank"] is None, r["strength_rank"] or 0))
     askable = [r for r in rest if scene_at(r["t0"]) is not None]  # 場面が決まらない笑いは問えない
@@ -111,6 +117,8 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
         "laughs_total": len(laughs),
         "laughs_hit": len(used),
         "window_share": _window_share(windows, end),
+        "humps_total": None if humps is None else len(humps),
+        "humps_hit": None if humps is None else _humps_hit(humps, windows),
         # 予測と基準は同じ定義で数える。録音の末尾で切れた窓は両方から外す
         "peak_rate": _rate(sum(p >= LAUGH_FLOOR for p in peaks), sum(p < LAUGH_FLOOR for p in peaks)),
         "peak_n": len(peaks),
@@ -136,6 +144,8 @@ def counts(doc: dict) -> dict:
         "laughs_total": doc["laughs_total"],
         "laughs_hit": doc["laughs_hit"],
         "window_share": doc["window_share"],
+        "humps_total": doc["humps_total"],
+        "humps_hit": doc["humps_hit"],
     }
 
 

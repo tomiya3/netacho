@@ -172,6 +172,22 @@
       "type": "integer",
       "minimum": 0,
       "description": "割合の分母。録音の末尾で切れた窓は入れない"
+    },
+    "humps_total": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "音声全体の笑いの山の数。0.08 以上のスコアのひと続きを 1 つとする。判定しない高座は null"
+    },
+    "humps_hit": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "どれかの予測の窓に入った山の数。同じ山に窓が重なっても 1 つ"
     }
   }
 }
