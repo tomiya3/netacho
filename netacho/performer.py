@@ -109,6 +109,28 @@ def decide(
     return item
 
 
+def dismiss(neta: store.Neta, *, question: str, speaker: str, reason: str, now: str | None = None) -> None:
+    """的外れの問いを捨てる。型には入れない。指摘を解決にするので、ノートをやり直しても戻らない。"""
+    _required(speaker=speaker, reason=reason)
+    if not neta.questions.exists() or not neta.review.exists():
+        raise PerformerError("質問がまだ無い")
+    questions = store.read(neta.questions, "questions")
+    review = store.read(neta.review, "review")
+    q = next((x for x in questions["questions"] if x["id"] == question), None)
+    if q is None:
+        raise PerformerError(f"質問が無い: {question}")
+    if "answer" in q:
+        raise PerformerError(f"{question} は答え済み（演者の言葉は上書きしない）")
+    if "dismissed" in q:
+        raise PerformerError(f"{question} は捨て済み")
+    q["dismissed"] = {"speaker": speaker, "recorded_at": now or _now(), "reason": reason}
+    issue = next((i for i in review["issues"] if i["id"] == q["issue_id"]), None)
+    if issue is not None:
+        issue["resolved"] = True
+    store.write(neta.questions, questions, "questions")
+    store.write(neta.review, review, "review")
+
+
 def answer(neta: store.Neta, *, question: str, speaker: str, words: str, now: str | None = None) -> dict:
     """質問への答えを記録し、指摘を解決にして、型に一行入れる。札には出さない。"""
     _required(speaker=speaker, words=words)
@@ -120,6 +142,8 @@ def answer(neta: store.Neta, *, question: str, speaker: str, words: str, now: st
     q = next((x for x in questions["questions"] if x["id"] == question), None)
     if q is None:
         raise PerformerError(f"質問が無い: {question}")
+    if "dismissed" in q:
+        raise PerformerError(f"{question} は捨てた問い")
     if "answer" in q and q["answer"]["words"] != words:
         raise PerformerError(f"{question} は答え済み（演者の言葉は上書きしない）")
     issue = next((i for i in review["issues"] if i["id"] == q["issue_id"]), None)

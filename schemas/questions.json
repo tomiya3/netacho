@@ -72,6 +72,30 @@
                 "minLength": 1
               }
             }
+          },
+          "dismissed": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "speaker",
+              "recorded_at",
+              "reason"
+            ],
+            "properties": {
+              "speaker": {
+                "type": "string",
+                "minLength": 1
+              },
+              "recorded_at": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "description": "演者が捨てた問い。型には入れない"
           }
         }
       }
