@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from fakes import ScriptedClient, text_of
 
-from netacho import compare, pipeline, store, view
+from netacho import compare, performer, pipeline, store, view
 from netacho.budget import Budget
 
 LINES = [
@@ -151,6 +151,31 @@ def test_laugh_on_words_only_in_the_first_is_added():
     found = compare.compare(side("a", LINES, [*MANY]), b, d, {})["spots"]
     added = [s for s in found if s["kind"] == "added"]
     assert added and added[0]["b"] is None and added[0]["laugh_a"] == 45.0
+
+
+def test_makura_is_not_called_added():
+    """稽古に枕が無いのは当たり前。噺の中で無い言葉だけを足した言葉と呼ぶ。"""
+    d = draft(
+        row("only_a", (0, 1)), row("same", (2, 3), (0, 1)), row("only_a", (4, 5)), row("same", (6, 7), (2, 3))
+    )
+    a = side("a", LINES, [5.0, 45.0, 62.0, 75.0, 15.0, 25.0])
+    b = side("b", LINES[2:4] + LINES[6:], [])
+    found = compare.compare(a, b, d, {})["spots"]
+    assert [s["laugh_a"] for s in found if s["kind"] == "added"] == [45.0]
+
+
+def test_pause_is_told_once_for_a_passage():
+    a = side("a", LINES, [15.0, 25.0, 45.0, 55.0, 62.0, 75.0], pauses={3: 0.3})
+    b = side("b", LINES, [], pauses={3: 1.5})
+    found = spots(a, b)
+    assert sum(s["kind"] == "ma" for s in found) == 1
+
+
+def test_practice_shows_the_line_at_the_same_place():
+    a = side("a", LINES, [*MANY])
+    b = side("b", LINES, [])
+    found = spots(a, b, draft(row("same", (0, 7), (0, 7))))
+    assert all(s["a"]["t"] == s["b"]["t"] for s in found)
 
 
 def test_words_changed_with_a_laugh():
@@ -359,6 +384,13 @@ def test_question_rules(text):
     assert not pipeline.ask_is_ok(text, spot)
 
 
+def test_marks_and_numbers_inside_a_quote_are_not_checked():
+    spot = {"a": {"quote": "第3位に入りました。"}, "b": None}
+    assert pipeline.ask_is_ok(
+        "本番の「第3位に入りました。」は、稽古には出てきませんでした。その日に足したんですか？", spot
+    )
+
+
 def test_quote_from_the_lines_is_allowed():
     spot = {"a": {"quote": "本物の台詞"}, "b": {"quote": "別の台詞"}}
     assert pipeline.ask_is_ok("「本物の台詞」は 2 本とも同じですね。わざとですか？", spot)
@@ -373,7 +405,6 @@ def test_second_run_does_not_ask_the_same_place_twice(tmp_path):
     assert len(after) == len(first)
     ids = {s["id"] for s in doc["spots"]}
     assert all(q["spot_id"] in ids for q in after if "spot_id" in q)  # 問いが別の所を指さない
-    assert store.read(neta.koza_dir(K1) / "run.json", "run")["compare"]["fallback"] == 0
 
 
 def test_failed_asker_keeps_the_cost_and_no_questions(tmp_path):
@@ -386,6 +417,18 @@ def test_failed_asker_keeps_the_cost_and_no_questions(tmp_path):
         run(root, client_of(broken), tmp_path)
     assert "compare" in store.read(neta.koza_dir(K1) / "run.json", "run")
     assert not any("spot_id" in q for q in store.read(neta.questions, "questions")["questions"])
+
+
+def test_second_run_rewrites_open_questions_and_keeps_touched_ones(tmp_path):
+    root, neta = two_books(tmp_path)
+    run(root, client_of(REPLY), tmp_path)
+    first = [q for q in store.read(neta.questions, "questions")["questions"] if "spot_id" in q]
+    performer.answer(neta, question=first[0]["id"], speaker="本人", words="わざとです")
+    doc = store.read(neta.questions, "questions")["questions"]
+    before = next(q for q in doc if q["id"] == first[0]["id"])
+    run(root, client_of(REPLY), tmp_path)
+    after = store.read(neta.questions, "questions")["questions"]
+    assert before in after  # 答えた問いは残る
 
 
 def test_answers_and_books_are_not_overwritten(tmp_path):

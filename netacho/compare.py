@@ -161,6 +161,11 @@ def _spot(
     }
 
 
+def _same_place(i: int, i0: int, i1: int, j0: int, j1: int) -> int:
+    """くだりの中の同じ割合の行。稽古の側の、本番の笑いに当たる台詞を見せる。"""
+    return j0 + round((i - i0) / max(i1 - i0, 1) * (j1 - j0))
+
+
 def _paired_spots(p: dict, a: Side, b: Side, practice: bool) -> list[dict]:
     """同じくだりの所。笑いがあればタイミングを見る。"""
     i0, i1 = p["a"]
@@ -172,12 +177,14 @@ def _paired_spots(p: dict, a: Side, b: Side, practice: bool) -> list[dict]:
         return [_spot("changed", a, i0, b, j0, None, None)] if p["relation"] == "changed" else []
     spots: list[dict] = []
     used: set[float] = set()
-    for t in laughs_a:
+    ma = _ma(a, b, i0, j0)
+    for n, t in enumerate(laughs_a):
         i = a.line_at(t)
         if practice:  # 稽古に笑いが無いのは当たり前。本番の笑いを軸に、言葉と間を見る
-            ma = _ma(a, b, i0, j0)
-            kind = "ma" if ma else same_words
-            spots.append(_spot(kind, a, i, b, j0, t, None, ma))
+            kind = "ma" if ma and n == 0 else same_words  # 間はくだりの頭の話なので、1 くだり 1 件
+            spots.append(
+                _spot(kind, a, i, b, _same_place(i, i0, i1, j0, j1), t, None, ma if n == 0 else None)
+            )
             continue
         near = min(laughs_b, key=lambda h: abs((h - head_b) - (t - head_a)), default=None)
         if near is None:
@@ -187,9 +194,8 @@ def _paired_spots(p: dict, a: Side, b: Side, practice: bool) -> list[dict]:
         if abs((near - head_b) - (t - head_a)) > SAME_SEC:
             spots.append(_spot("moved", a, i, b, b.line_at(near), t, near))
             continue
-        ma = _ma(a, b, i0, j0)
-        kind = "ma" if ma else same_words
-        spots.append(_spot(kind, a, i, b, b.line_at(near), t, near, ma))
+        kind = "ma" if ma and n == 0 else same_words
+        spots.append(_spot(kind, a, i, b, b.line_at(near), t, near, ma if n == 0 else None))
     if not practice:
         for t in laughs_b:
             if t not in used:
@@ -245,14 +251,17 @@ def compare(a: Side, b: Side, draft: dict, titles: dict) -> dict:
     if not head["comparable"]:
         return {**head, "scenes": [], "spots": [], "counts": {}}
     found: list[dict] = []
-    for p in passages:
+    # 最初と最後の対応の外は枕や結び。もう 1 本に無いのは当たり前なので、足した言葉と呼ばない
+    rows = [n for n, p in enumerate(passages) if p["a"] and p["b"]]
+    inside = range(rows[0], rows[-1] + 1) if rows else range(0)
+    for n, p in enumerate(passages):
         if not head["laughs_compared"] and p["relation"] == "changed":
             found.append(_spot("changed", a, p["a"][0], b, p["b"][0], None, None))
         elif not head["laughs_compared"]:
             continue
         elif p["a"] and p["b"]:
             found += _paired_spots(p, a, b, practice)
-        elif p["a"]:
+        elif p["a"] and n in inside:
             first, last = p["a"]
             for t in a.laughs_in(first, last)[:1]:
                 found.append(_spot("added", a, a.line_at(t), b, None, t, None))

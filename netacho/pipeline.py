@@ -609,6 +609,14 @@ def ask_rows(spots: list[dict], other: str) -> list[dict]:
     ]
 
 
+def drop_open_asks(review_doc: dict, questions: dict) -> None:
+    """比較の問いのうち、答えも捨ても無い物を外す。作り直すので。演者が触った問いは残す。"""
+    touched = {q["issue_id"] for q in questions["questions"] if "answer" in q or "dismissed" in q}
+    gone = {i["id"] for i in review_doc["issues"] if i["role"] == "asker" and i["id"] not in touched}
+    review_doc["issues"] = [i for i in review_doc["issues"] if i["id"] not in gone]
+    questions["questions"] = [q for q in questions["questions"] if q["issue_id"] not in gone]
+
+
 def align_content(a: compare.Side, b: compare.Side, title: str) -> list[dict]:
     """対応づけ役に見せる物：演目の題と、2 本の清書だけ。笑いの位置は見せない。"""
     rows = {
@@ -621,7 +629,8 @@ def align_content(a: compare.Side, b: compare.Side, title: str) -> list[dict]:
 
 def ask_is_ok(text: str, spot: dict) -> bool:
     """検査に通る問いか。引いた語が、見せた台詞にそのままあること。"""
-    if not note_is_ok(text, ("客いじり",)):
+    # 引用は演者の台詞。中の句点や数字や語を、問いの文の検査に掛けない
+    if not note_is_ok(re.sub(r"[「『].*?[」』]", "「」", text), ("客いじり",)):
         return False
     return view.readable_question(text, spot["a"]["quote"] + (spot["b"] or {}).get("quote", "")) == text
 
@@ -678,6 +687,7 @@ def compare_koza(
             for row in (reply or {"questions": []})["questions"]:
                 written.setdefault(row["spot_id"], []).append(row["text"].strip())
             review_doc, questions = read_review(ctx.neta)
+            drop_open_asks(review_doc, questions)
             issue_of = {i["attempt"]: i["id"] for i in review_doc["issues"]}
             n_issue = max((int(i["id"].split("-")[1]) for i in review_doc["issues"]), default=0) + 1
             n_q = max((int(q["id"].split("-")[1]) for q in questions["questions"]), default=0) + 1
