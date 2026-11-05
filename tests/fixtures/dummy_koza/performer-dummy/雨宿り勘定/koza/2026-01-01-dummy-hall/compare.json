@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "koza_a": "2026-01-01-dummy-hall",
+  "koza_b": "2026-02-01-dummy-hall",
+  "other_neta": "雨宿り勘定",
+  "share": 0.82,
+  "comparable": true,
+  "humps_a": 2,
+  "humps_b": 2,
+  "scenes": [
+    {
+      "scene_id": "scene-01",
+      "title": "ダミーの場面",
+      "seconds": 40.0,
+      "share": 0.9,
+      "compared": true
+    }
+  ],
+  "spots": [
+    {
+      "id": "spot-0001",
+      "kind": "kept",
+      "scene_id": "scene-01",
+      "a": {
+        "t": 10.0,
+        "end": 14.0,
+        "quote": "ダミーの台詞"
+      },
+      "b": {
+        "t": 12.0,
+        "end": 16.0,
+        "quote": "ダミーの台詞"
+      },
+      "laugh_a": 13.0,
+      "laugh_b": 15.0
+    }
+  ],
+  "counts": {
+    "kept": 1,
+    "moved": 0,
+    "ma": 0,
+    "one_side": 0,
+    "words": 0
+  }
+}

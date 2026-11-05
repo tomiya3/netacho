@@ -45,7 +45,8 @@
           "role": {
             "enum": [
               "deshi",
-              "noter"
+              "noter",
+              "asker"
             ]
           },
           "kind": {

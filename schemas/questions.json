@@ -96,6 +96,10 @@
               }
             },
             "description": "演者が捨てた問い。型には入れない"
+          },
+          "spot_id": {
+            "type": "string",
+            "description": "2 本の比較から来た問いの、比較の所の id"
           }
         }
       }

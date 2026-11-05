@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import candidates, evidence, gaps, guide, merge, render, review, seisho, store
+from . import candidates, compare, evidence, gaps, guide, merge, render, review, seisho, store, view
 from .budget import Budget
 from .runner import RoleCache, Usage, call_role
 from .schema import check_refs
@@ -566,6 +566,125 @@ def note(
     result = ctx.usage.to_json()
     store.write(run_path, result, "run")
     return result
+
+
+COMPARE_QUESTIONS = 5  # 2 本の比較で演者に問う数。多いと答えてもらえない
+FIXED_ASK = {
+    "kept": "ここ、2 本とも同じ言葉で、同じ所に来てますね。ここは変えない所ですか？",
+    "moved": "ここ、来る所が 2 本でずれてますね。わざとですか？",
+    "ma": "ここ、一言の前の間が 2 本で違いますね。わざとですか？",
+    "one_side": "ここ、片方の録音でだけ拾えています。何か変えましたか？",
+    "words": "ここ、言い方を変えてますね。わざとですか？",
+}
+
+
+def compare_side(neta: store.Neta, koza_id: str) -> compare.Side:
+    """比べる 1 本を読む。言葉の比較は清書どうしで行うので、清書が無ければ止める。"""
+    kdir = neta.koza_dir(koza_id)
+    if not (kdir / "seisho.json").exists():
+        raise store.StoreError(f"{neta.neta} の {koza_id} に清書が無い。先に netacho seisho を実行する")
+    transcript = store.read(kdir / "transcript.json", "transcript")
+    lines = view.clean_lines(transcript, store.read(kdir / "seisho.json", "seisho"))
+    reactions = store.read(kdir / "reactions.json", "reactions")
+    timeline = store.read(kdir / "timeline.json", "timeline")
+    return compare.side_of(koza_id, transcript, lines, reactions, timeline)
+
+
+def ask_rows(spots: list[dict]) -> list[dict]:
+    """聞き役に見せる物：所の種類と、2 本の台詞だけ。"""
+    return [
+        {"spot_id": s["id"], "kind": s["kind"], "quote_a": s["a"]["quote"], "quote_b": s["b"]["quote"]}
+        for s in spots
+    ]
+
+
+def ask_is_ok(text: str, spot: dict) -> bool:
+    """検査に通る問いか。引いた語が、見せた台詞にそのままあること。"""
+    if not note_is_ok(text, ("客いじり",)):
+        return False
+    return view.readable_question(text, spot["a"]["quote"] + spot["b"]["quote"]) == text
+
+
+def compare_koza(
+    performer: str,
+    neta_name: str,
+    koza_id: str,
+    *,
+    other_koza: str,
+    other_neta: str | None = None,
+    client,
+    budget: Budget | None = None,
+    reuse: bool = False,
+    root: Path | None = None,
+) -> dict:
+    """同じ演目の 2 本を比べ、選んだ所を演者に問う。問いは 1 本目の演目の帳面に入る。"""
+    ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
+    other = store.Neta(performer, other_neta or neta_name, root)
+    a = compare_side(ctx.neta, koza_id)
+    b = compare_side(other, other_koza)
+    titles = {s["id"]: s["title"] for s in ctx.hanashi["scenes"]}
+    doc = {**compare.compare(a, b, titles), "other_neta": other.neta}
+    kdir = ctx.neta.koza_dir(koza_id)
+    fallback = added = 0
+    if doc["comparable"]:
+        chosen = [s for s in compare.select(doc["spots"], COMPARE_QUESTIONS) if s["scene_id"] in titles]
+        text = json.dumps(ask_rows(chosen), ensure_ascii=False, indent=1)
+        content = [{"type": "text", "text": text}]
+        reply = (
+            call_role(ctx.client, "asker", content, "asker", ctx.usage, ctx.budget, ctx.cache)
+            if chosen
+            else None
+        )
+        store.write(ctx.neta.drafts / "asker.json", reply or {"schema_version": 1, "questions": []}, "asker")
+        written: dict[str, list[str]] = {}
+        for row in (reply or {"questions": []})["questions"]:
+            written.setdefault(row["spot_id"], []).append(row["text"].strip())
+        review_doc, questions = read_review(ctx.neta)
+        asked = {i["attempt"] for i in review_doc["issues"]}
+        n_issue = max((int(i["id"].split("-")[1]) for i in review_doc["issues"]), default=0) + 1
+        n_q = max((int(q["id"].split("-")[1]) for q in questions["questions"]), default=0) + 1
+        for spot in chosen:
+            attempt = f"{render.clock(spot['a']['t'])} の比較（{koza_id} と {other_koza}）"
+            texts = written.get(spot["id"], [])
+            ok = len(texts) == 1 and ask_is_ok(texts[0], spot)
+            fallback += 0 if ok else 1
+            if attempt in asked:
+                continue
+            issue_id, q_id = f"issue-{n_issue:04d}", f"q-{n_q:04d}"
+            words = texts[0] if ok else FIXED_ASK[spot["kind"]]
+            review_doc["issues"].append(
+                {
+                    "id": issue_id,
+                    "role": "asker",
+                    "kind": "ask_performer",
+                    "anchor": {"scene_id": spot["scene_id"]},
+                    "attempt": attempt,
+                    "what_is_missing": words,
+                    "round": 1,
+                    "resolved": False,
+                }
+            )
+            questions["questions"].append(
+                {
+                    "id": q_id,
+                    "issue_id": issue_id,
+                    "scene_id": spot["scene_id"],
+                    "text": words,
+                    "spot_id": spot["id"],
+                }
+            )
+            spot["question_id"] = q_id
+            n_issue, n_q, added = n_issue + 1, n_q + 1, added + 1
+        save_review(ctx, review_doc, questions)
+    store.write(kdir / "compare.json", doc, "compare")
+    ctx.usage.extra["compare"] = {
+        "share": doc["share"],
+        "spots": len(doc["spots"]),
+        "questions": added,
+        "fallback": fallback,
+    }
+    store.write(kdir / "run.json", ctx.usage.to_json(), "run")
+    return doc
 
 
 SCRIBE_CHUNK = 120  # 1 回に渡す区間の数。40 分の高座でも切れない長さ。暫定

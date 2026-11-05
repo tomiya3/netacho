@@ -35,6 +35,10 @@ class Neta:
         self.neta = _safe(neta, "演目")
         self.base = (root or data_root()) / self.performer / self.neta
 
+    def sibling(self, neta: str) -> Neta:
+        """同じ演者の別の演目フォルダ。2 本を別のフォルダに置くとき。"""
+        return Neta(self.performer, neta, self.base.parent.parent)
+
     def koza_dir(self, koza_id: str) -> Path:
         return self.base / "koza" / _safe(koza_id, "高座 ID")
 

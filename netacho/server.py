@@ -110,6 +110,14 @@ class Handler(BaseHTTPRequestHandler):
             and self.headers.get_content_type() == "application/json"
         )
 
+    def _audio(self, side: str) -> Path:
+        """1 本目か、比較の 2 本目の録音。"""
+        kdir = self.server.neta.koza_dir(self.server.koza_id)
+        if side != "b":
+            return kdir / "audio.wav"
+        doc = store.read(kdir / "compare.json", "compare")
+        return self.server.neta.sibling(doc["other_neta"]).koza_dir(doc["koza_b"]) / "audio.wav"
+
     def _clip(self, query: str) -> None:
         args = parse_qs(query)
         token = args.get("t", [""])[0]
@@ -120,7 +128,7 @@ class Handler(BaseHTTPRequestHandler):
             at = float(args.get("at", [""])[0])
             if not 0 <= at < float("inf"):
                 raise ValueError
-            data = clip_wav(self.server.neta.koza_dir(self.server.koza_id) / "audio.wav", at)
+            data = clip_wav(self._audio(args.get("side", ["a"])[0]), at)
         except (ValueError, OverflowError, OSError, wave.Error):
             self._json(404, {"error": "無い"})
             return

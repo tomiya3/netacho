@@ -375,6 +375,34 @@
           "description": "清書に渡した演目の題"
         }
       }
+    },
+    "compare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "share",
+        "spots",
+        "questions",
+        "fallback"
+      ],
+      "properties": {
+        "share": {
+          "type": "number"
+        },
+        "spots": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "questions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fallback": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "description": "2 本の比較の実測"
     }
   }
 }
