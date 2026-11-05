@@ -14,11 +14,7 @@
     "surprise_total",
     "laughs_total",
     "laughs_hit",
-    "window_share",
-    "weak",
-    "peak_rate",
-    "baseline_rate",
-    "peak_n"
+    "window_share"
   ],
   "properties": {
     "schema_version": {
