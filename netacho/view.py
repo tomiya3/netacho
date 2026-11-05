@@ -48,6 +48,7 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "reactions": store.read(kdir / "reactions.json", "reactions"),
         "candidates": _optional(kdir / "note_candidates.json", "note_candidates"),
         "gaps": _optional(kdir / "gaps.json", "gaps"),
+        "seisho": _optional(kdir / "seisho.json", "seisho"),
         "note": note.read_text(encoding="utf-8") if note.exists() else None,
         "scenes": sorted(hanashi["scenes"], key=lambda s: s["order"]),
         "characters": hanashi["characters"],

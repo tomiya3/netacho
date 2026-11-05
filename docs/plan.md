@@ -55,6 +55,7 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 | 照合役 | `roles/checker.md` | claude-sonnet-5-5 | medium | 8000 | 項目の主張が引用で言えるかだけ判定する |
 | ノート役 | `roles/noter.md` | claude-sonnet-5-5 | medium | 4000 | スクリプトが選んだ候補を、演者向けの短い文にする |
 | 弟子役 | `roles/deshi.md` | claude-opus-5-5 | high | 8000 | 噺・型だけを読み、演れない所と本人に聞くべき所を挙げる |
+| 速記役 | `roles/scribe.md` | claude-sonnet-5-5 | medium | 32000 | 文字起こしの聞き違いを直し、話者を付けて清書する |
 
 ### 見せる物の境界（この構成の要点）
 
@@ -64,6 +65,7 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 | 照合役 | 項目の文と引用だけ | transcript 全体、演目名 | `drafts/checker.json` |
 | ノート役 | 選ばれた候補、前後の引用、場面の尺 | 反応の全体、型の全文 | `drafts/noter.json` |
 | 弟子役 | 確定した噺・型の `.md` だけ | transcript、音声、反応、差し戻しの履歴 | `review/deshi.json` |
+| 速記役 | transcript、演目名、人物 | 反応、型 | `drafts/scribe.json` |
 
 - 構成作家役に反応を見せないのは、結果から型を逆算させないため
 - 照合役に演目名を見せないのは、演目の知識で補って通してしまうのを防ぐため
@@ -193,7 +195,11 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 
 ### 速記
 
-transcript に、反応の位置で（反応）を入れた `.md`。未校正と明記する。
+transcript に、反応の位置で印を入れた `sokki.md`。未校正と明記する。LLM は使わない。
+
+### 清書
+
+速記役が聞き違いを直し、話者を付けた `seisho.md`。原文を必ず並べて残し、話者と直した語は推定と示す。全区間があることと、言い換えすぎていないことをスクリプトが確かめる。正本と札には入れない。
 
 ## 5. 契約（schemas/）
 
@@ -268,11 +274,12 @@ netacho mark    --koza KOZA --tsv FILE                             # 手で付�
 netacho decide  --performer ID --neta 演目 --speaker S --words W --card T --why Y --scene ID [--candidate C --koza KOZA] [--position before|within|after]
 netacho answer  --performer ID --neta 演目 --question Q --speaker S --words W
 netacho reread  --performer ID --neta 演目 --koza KOZA             # 演者の判断が入った型を弟子役に読み直させる
+netacho seisho  --performer ID --neta 演目 --koza KOZA             # 清書（速記役）
 netacho guide   --performer ID --neta 演目                         # LLM 0 回
 netacho view    --performer ID --neta 演目 --koza KOZA             # out/view/ へ書き出す
 ```
 
-`netacho view` の後、`make viewer` で `http://localhost:8000/`（配信は `out/view` だけ）。画面は 4 枚：反応の波と候補、型、札、弟子役の指摘と質問。「Claude の候補」「演者の決定」「スクリプトの転記」を色とラベルで見分けられるようにする。
+`netacho view` の後、`make viewer` で `http://localhost:8000/`（配信は `out/view` だけ）。画面は 5 枚：反応の波と候補、型、札、弟子役の指摘と質問、速記。「Claude の候補」「演者の決定」「スクリプトの転記」を色とラベルで見分けられるようにする。
 
 ### 費用の管理（`budget.py`）
 

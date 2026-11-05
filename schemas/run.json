@@ -253,6 +253,34 @@
           ]
         }
       }
+    },
+    "seisho": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lines",
+        "changed",
+        "kept_raw",
+        "missing"
+      ],
+      "properties": {
+        "lines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kept_raw": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     }
   }
 }

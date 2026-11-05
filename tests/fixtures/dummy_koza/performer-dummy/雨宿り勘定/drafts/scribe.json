@@ -1,0 +1,65 @@
+{
+ "schema_version": 1,
+ "lines": [
+  {
+   "seg_id": "seg-0001",
+   "speaker": null,
+   "text": "えー、一席お付き合いを願います。"
+  },
+  {
+   "seg_id": "seg-0002",
+   "speaker": null,
+   "text": "昔の番傘というのは、今と違って高いものでございまして。"
+  },
+  {
+   "seg_id": "seg-0003",
+   "speaker": null,
+   "text": "傘を貸すというのは、お金を貸すのと同じでございます。"
+  },
+  {
+   "seg_id": "seg-0004",
+   "speaker": null,
+   "text": "ご隠居さん、こんちは。"
+  },
+  {
+   "seg_id": "seg-0005",
+   "speaker": null,
+   "text": "おう太助か、ひどい降りだな。"
+  },
+  {
+   "seg_id": "seg-0006",
+   "speaker": "太助",
+   "text": "傘を貸しておくんなさい。"
+  },
+  {
+   "seg_id": "seg-0007",
+   "speaker": null,
+   "text": "貸すのはいいが、利息を付けて返すんだぞ。"
+  },
+  {
+   "seg_id": "seg-0008",
+   "speaker": null,
+   "text": "この雨は殿様の行列みたいなもんで、なかなか通り過ぎませんや。"
+  },
+  {
+   "seg_id": "seg-0009",
+   "speaker": null,
+   "text": "行列なら頭を下げて待つしかねえな。"
+  },
+  {
+   "seg_id": "seg-0010",
+   "speaker": null,
+   "text": "ご隠居さん、傘を返しに来ました。"
+  },
+  {
+   "seg_id": "seg-0011",
+   "speaker": null,
+   "text": "骨が一本折れてるじゃねえか。利息はどうした。"
+  },
+  {
+   "seg_id": "seg-0012",
+   "speaker": null,
+   "text": "へえ、ですから骨折り賃をいただきに来ました。"
+  }
+ ]
+}

@@ -21,15 +21,17 @@ FILES = {
     BASE / "drafts" / "checker.json": "checker",
     BASE / "drafts" / "noter.json": "noter",
     BASE / "drafts" / "deshi.json": "deshi",
+    BASE / "drafts" / "scribe.json": "scribe",
     KOZA / "koza.json": "koza",
     KOZA / "transcript.json": "transcript",
     KOZA / "timeline.json": "timeline",
     KOZA / "reactions.json": "reactions",
     KOZA / "note_candidates.json": "note_candidates",
     KOZA / "gaps.json": "gaps",
+    KOZA / "seisho.json": "seisho",
     KOZA / "run.json": "run",
 }
-ROLE_SCHEMAS = ["writer", "checker", "noter", "deshi"]
+ROLE_SCHEMAS = ["writer", "checker", "noter", "deshi", "scribe"]
 
 
 def _load(path: Path) -> dict:

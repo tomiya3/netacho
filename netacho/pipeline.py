@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import candidates, evidence, gaps, guide, merge, render, review, store
+from . import candidates, evidence, gaps, guide, merge, render, review, seisho, store
 from .budget import Budget
 from .runner import RoleCache, Usage, call_role
 from .schema import check_refs
@@ -536,6 +536,46 @@ def note(
     ctx.usage.extra["notes"] = {"candidates": len(cands["candidates"]), "fallback": len(fixed)}
     ctx.usage.extra["gaps"] = gaps.counts(found)
     ctx.usage.extra["questions"] = len(questions["questions"])
+    result = ctx.usage.to_json()
+    store.write(run_path, result, "run")
+    return result
+
+
+def scribe_content(ctx: Context) -> list[dict]:
+    """速記役に見せる物：文字起こし、演目名、人物。反応は見せない。"""
+    names = [{"name": c["name"], "note": c["note"]} for c in ctx.hanashi["characters"]]
+    head = {"演目": ctx.koza["neta"], "人物": names}
+    lines = [{"seg_id": s["id"], "text": s["text"]} for s in ctx.transcript["segments"] if s["text"].strip()]
+    return [
+        {"type": "text", "text": json.dumps(head, ensure_ascii=False, indent=1)},
+        {"type": "text", "text": json.dumps(lines, ensure_ascii=False)},
+    ]
+
+
+def clean_copy(
+    performer: str,
+    neta_name: str,
+    koza_id: str,
+    *,
+    client,
+    budget: Budget | None = None,
+    reuse: bool = False,
+    root: Path | None = None,
+) -> dict:
+    """清書を作る。返すのは run.json の中身。正本には触らない。"""
+    ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
+    kdir = ctx.neta.koza_dir(koza_id)
+    run_path = kdir / "run.json"
+    for stale in (kdir / "seisho.json", kdir / "seisho.md"):
+        stale.unlink(missing_ok=True)
+    draft = call_role(ctx.client, "scribe", scribe_content(ctx), "scribe", ctx.usage, ctx.budget, ctx.cache)
+    store.write(ctx.neta.drafts / "scribe.json", draft, "scribe")
+    reactions_path = kdir / "reactions.json"
+    reactions = store.read(reactions_path, "reactions") if reactions_path.exists() else None
+    doc, stats = seisho.build(draft, ctx.transcript, reactions)
+    store.write(kdir / "seisho.json", doc, "seisho")
+    (kdir / "seisho.md").write_text(seisho.markdown(ctx.koza, doc), encoding="utf-8")
+    ctx.usage.extra["seisho"] = stats
     result = ctx.usage.to_json()
     store.write(run_path, result, "run")
     return result

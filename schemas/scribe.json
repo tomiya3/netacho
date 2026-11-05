@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "scribe",
+  "description": "速記役の出力。区間ごとに話者と直した文",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "lines"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "seg_id",
+          "speaker",
+          "text"
+        ],
+        "properties": {
+          "seg_id": {
+            "type": "string"
+          },
+          "speaker": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "話す人物。地の語りや分からないときは null"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

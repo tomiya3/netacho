@@ -56,6 +56,8 @@ h2 { font-size: 16px; margin: 24px 0 8px; }
 table { border-collapse: collapse; font-size: 13px; }
 th, td { border-bottom: 1px solid var(--line); padding: 4px 12px 4px 0; text-align: left; }
 .held { opacity: .6; }
+.script-line { margin: 10px 0 0; }
+#seisho .quote { margin: 0; }
 details { margin-top: 12px; color: var(--text-2); font-size: 13px; }
 </style>
 </head>
@@ -75,11 +77,12 @@ details { margin-top: 12px; color: var(--text-2); font-size: 13px; }
   <section id="kata" hidden></section>
   <section id="cards" hidden></section>
   <section id="deshi" hidden></section>
+  <section id="seisho" hidden></section>
   <div id="error"></div>
 </main>
 <script>
 "use strict";
-const TABS = [["wave", "反応の波と候補"], ["kata", "型"], ["cards", "札"], ["deshi", "弟子役の指摘と質問"]];
+const TABS = [["wave", "反応の波と候補"], ["kata", "型"], ["cards", "札"], ["deshi", "弟子役の指摘と質問"], ["seisho", "速記"]];
 const SVG = "http://www.w3.org/2000/svg";
 const POSITION = { before: "場面の前", within: "場面の中", after: "場面の後" };
 const WHY = { no_candidate: "回収の後に反応候補が見つからない", low_rank: "回収の後の反応候補が小さい方" };
@@ -270,6 +273,17 @@ function renderDeshi(d) {
   }
 }
 
+function renderSeisho(d) {
+  const root = document.getElementById("seisho");
+  if (!d.seisho) { root.append(el("p", {}, "清書はまだありません。netacho seisho で作ります。")); return; }
+  root.append(el("div", { class: "notice" }, "Claude が文脈から聞き違いを直し、話者を付けた読み物です。話者と直した語は推定で、下に原文を添えています。"));
+  for (const l of d.seisho.lines) {
+    const who = l.speaker ? `${l.speaker}（推定）：` : "";
+    root.append(el("p", { class: "script-line" }, who + l.text + (l.marks || []).join("")));
+    if (l.changed) root.append(el("p", { class: "quote" }, `　原文：${l.raw}`));
+  }
+}
+
 function select(id) {
   for (const [key] of TABS) {
     document.getElementById(key).hidden = key !== id;
@@ -291,7 +305,7 @@ async function main() {
     const d = await res.json();
     document.getElementById("title").textContent = `根多帳：${d.koza.neta}`;
     document.getElementById("sub").textContent = `${d.koza.id}  ${d.koza.performer_id}`;
-    renderWave(d); renderKata(d); renderCards(d); renderDeshi(d);
+    renderWave(d); renderKata(d); renderCards(d); renderDeshi(d); renderSeisho(d);
     select(TABS.some(([k]) => "#" + k === location.hash) ? location.hash.slice(1) : "wave");
   } catch (e) {
     document.getElementById("error").append(el("div", { class: "notice" },
