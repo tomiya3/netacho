@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "questions": [
+    {
+      "spot_id": "spot-0001",
+      "a_seg": "seg-0003",
+      "b_seg": "seg-0003",
+      "relation": "same",
+      "text": "ここは 2 本とも同じ言葉ですね。変えない所ですか？"
+    }
+  ]
+}

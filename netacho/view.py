@@ -172,6 +172,15 @@ def clean_review(review: dict | None, questions: dict | None, shown: dict | None
     return {**review, "issues": rows}
 
 
+def compare_view(neta: store.Neta, kdir: Path) -> dict | None:
+    """2 本の比較と、2 本目の波。2 本目が消えていても比較は見せる。"""
+    doc = _optional(kdir / "compare.json", "compare")
+    if doc is None:
+        return None
+    other = neta.sibling(doc["other_neta"]).koza_dir(doc["koza_b"]) / "reactions.json"
+    return {**doc, "other_reactions": _optional(other, "reactions")}
+
+
 def payload(neta: store.Neta, koza_id: str) -> dict:
     """1 つの高座を見るのに要る物を 1 つの JSON にまとめる。"""
     kdir = neta.koza_dir(koza_id)
@@ -204,6 +213,7 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "review": clean_review(_optional(neta.review, "review"), questions, shown),
         "questions": shown,
         "places": places,
+        "compare": compare_view(neta, kdir),
         "run": _optional(kdir / "run.json", "run"),
     }
 

@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "asker",
+  "description": "聞き役の出力。聞く価値の高い順",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "questions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "spot_id",
+          "a_seg",
+          "b_seg",
+          "relation",
+          "text"
+        ],
+        "properties": {
+          "spot_id": {
+            "type": "string"
+          },
+          "a_seg": {
+            "type": "string"
+          },
+          "b_seg": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "relation": {
+            "enum": [
+              "same",
+              "changed",
+              "none"
+            ]
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

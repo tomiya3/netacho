@@ -26,6 +26,7 @@ from . import performer, pipeline, store, view
 MAX_BODY = 64 * 1024
 POSITIONS = ("before", "within", "after")
 CLIP_BEFORE, CLIP_AFTER = 12.0, 6.0  # 笑いの前後に聞かせる長さ。秒
+CLIP_MAX = 90.0  # 切り抜きの上限。録音を丸ごと渡さないため。秒
 FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/index.html": ("index.html", "text/html; charset=utf-8"),
@@ -50,15 +51,15 @@ class AnswerServer(ThreadingHTTPServer):
         return f"http://localhost:{self.port}/?t={self.token}"
 
 
-def clip_wav(path: Path, at: float) -> bytes:
-    """録音の at の前後の短い切り抜き。"""
+def clip_wav(path: Path, t0: float, t1: float) -> bytes:
+    """録音の t0 から t1 までの切り抜き。長さは CLIP_MAX まで。"""
     with wave.open(str(path), "rb") as src:
         rate = src.getframerate()
-        start = max(0, int((at - CLIP_BEFORE) * rate))
+        start = max(0, int(t0 * rate))
         if start >= src.getnframes():
             raise ValueError("録音の外")
         src.setpos(start)
-        frames = src.readframes(int((CLIP_BEFORE + CLIP_AFTER) * rate))
+        frames = src.readframes(int(min(t1 - t0, CLIP_MAX) * rate))
         out = BytesIO()
         with wave.open(out, "wb") as dst:
             dst.setnchannels(src.getnchannels())
@@ -66,6 +67,20 @@ def clip_wav(path: Path, at: float) -> bytes:
             dst.setframerate(rate)
             dst.writeframes(frames)
     return out.getvalue()
+
+
+def _clip_range(args: dict) -> tuple[float, float]:
+    """`from` と `to` か、笑いの時刻 `at` から、切り抜く範囲を決める。"""
+    if "at" in args:
+        at = float(args["at"][0])
+        t0, t1 = at - CLIP_BEFORE, at + CLIP_AFTER
+        limit = at
+    else:
+        t0, t1 = float(args["from"][0]), float(args["to"][0])
+        limit = t0
+    if not 0 <= limit < float("inf") or not t0 < t1:
+        raise ValueError
+    return t0, t1
 
 
 def _text(body: dict, key: str) -> str:
@@ -110,6 +125,14 @@ class Handler(BaseHTTPRequestHandler):
             and self.headers.get_content_type() == "application/json"
         )
 
+    def _audio(self, side: str) -> Path:
+        """1 本目か、比較の 2 本目の録音。"""
+        kdir = self.server.neta.koza_dir(self.server.koza_id)
+        if side != "b":
+            return kdir / "audio.wav"
+        doc = store.read(kdir / "compare.json", "compare")
+        return self.server.neta.sibling(doc["other_neta"]).koza_dir(doc["koza_b"]) / "audio.wav"
+
     def _clip(self, query: str) -> None:
         args = parse_qs(query)
         token = args.get("t", [""])[0]
@@ -117,11 +140,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(403, {"error": "受け付けない"})
             return
         try:
-            at = float(args.get("at", [""])[0])
-            if not 0 <= at < float("inf"):
-                raise ValueError
-            data = clip_wav(self.server.neta.koza_dir(self.server.koza_id) / "audio.wav", at)
-        except (ValueError, OverflowError, OSError, wave.Error):
+            t0, t1 = _clip_range(args)
+            data = clip_wav(self._audio(args.get("side", ["a"])[0]), t0, t1)
+        except (KeyError, ValueError, OverflowError, OSError, wave.Error):
             self._json(404, {"error": "無い"})
             return
         self._send_range(data, "audio/wav")

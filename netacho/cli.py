@@ -223,6 +223,34 @@ def cmd_build(args: argparse.Namespace) -> None:
         print(f"文に内部の番号が残って保留の項目 {left}。`.md`、札、ノートの候補には出ません")
 
 
+def cmd_compare(args: argparse.Namespace) -> None:
+    from . import pipeline, runner
+
+    doc = pipeline.compare_koza(
+        args.performer,
+        args.neta,
+        args.koza,
+        other_koza=args.with_koza,
+        other_neta=args.with_neta,
+        title=_title(args.title),
+        client=runner.make_client(),
+        reuse=args.reuse,
+    )
+    print(f"対応の付いた割合 {doc['share']:.0%}、くだり {doc['passages']}、落とした数 {doc['dropped']}")
+    if not doc["comparable"]:
+        print("2 本の対応が付かないので、比べていません")
+        return
+    print(f"笑いの山 1 本目 {doc['humps_a']}、2 本目 {doc['humps_b']}")
+    if doc["practice"]:
+        print("2 本目に笑いがほぼ無いので、稽古と見て本番の笑いを軸に比べました")
+    elif not doc["laughs_compared"]:
+        print("笑いの山かスコアが無いので、笑いは比べていません")
+    print(f"所 {len(doc['spots'])}、種類ごと {doc['counts']}")
+    skipped = [s["title"] or s["scene_id"] for s in doc["scenes"] if not s["compared"]]
+    if skipped:
+        print(f"揃わず比べなかった場面：{'、'.join(skipped)}")
+
+
 def _hump_line(g: dict) -> str:
     line = f"笑いの山 {g['humps_total']} のうち窓に入った {g['humps_hit']}"
     return line if g["humps_expected"] is None else f"{line}、見込み {g['humps_expected']}"
@@ -465,6 +493,16 @@ def build_parser() -> argparse.ArgumentParser:
     answer.add_argument("--speaker", required=True)
     answer.add_argument("--words", required=True, help="演者の言葉のまま")
     answer.set_defaults(func=cmd_answer)
+
+    two = sub.add_parser("compare", help="同じ演目の 2 本を比べて、演者に問う")
+    two.add_argument("--performer", required=True)
+    two.add_argument("--neta", required=True)
+    two.add_argument("--koza", required=True)
+    two.add_argument("--with-koza", required=True, help="2 本目の高座")
+    two.add_argument("--with-neta", help="2 本目の演目フォルダ。無ければ同じフォルダ")
+    two.add_argument("--title", help="演目の題（漢字）")
+    two.add_argument("--reuse", action="store_true")
+    two.set_defaults(func=cmd_compare)
 
     dismiss = sub.add_parser("dismiss", help="的外れの問いを捨てる（LLM 0 回）")
     _who(dismiss)

@@ -481,3 +481,44 @@ def test_answer_alone_does_not_make_a_first_card(running):
     running.neta.guide.unlink()
     assert call(running, "/api/answer", {"question": q, "speaker": "本人", "words": "言葉"})[0] == 200
     assert not running.neta.guide.exists()
+
+
+def test_clip_of_the_second_recording(running):
+    other = running.neta.koza_dir("2026-02-01-dummy-hall")
+    other.mkdir(parents=True)
+    with wave.open(str(other / "audio.wav"), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(b"\x00\x00" * 16000 * 30)
+    status, data = call(running, f"/clip?at=15&side=b&t={running.token}", headers={})
+    assert status == 200 and clip_seconds(data) == 18
+
+
+def test_second_recording_missing_is_not_found(running):
+    assert call(running, f"/clip?at=5&side=b&t={running.token}", headers={})[0] == 404
+
+
+def test_side_cannot_leave_the_comparison(running):
+    put_wav(running)
+    assert (
+        call(running, f"/clip?at=30&side=../../x&t={running.token}", headers={})[0] == 200
+    )  # 1 本目を返すだけ
+
+
+def test_clip_length_follows_the_line(running):
+    put_wav(running)
+    status, data = call(running, f"/clip?from=10&to=50&t={running.token}", headers={})
+    assert status == 200 and clip_seconds(data) == 40
+
+
+def test_clip_is_capped_so_the_whole_recording_is_not_handed_out(running):
+    put_wav(running, seconds=200)
+    data = call(running, f"/clip?from=0&to=200&t={running.token}", headers={})[1]
+    assert clip_seconds(data) == server.CLIP_MAX
+
+
+@pytest.mark.parametrize("query", ["from=10", "to=10", "from=20&to=10", "from=-1&to=5", "from=x&to=5"])
+def test_bad_clip_ranges_are_not_found(running, query):
+    put_wav(running)
+    assert call(running, f"/clip?{query}&t={running.token}", headers={})[0] == 404

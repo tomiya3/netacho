@@ -26,6 +26,8 @@ ROLE_MARKS = {
     "ノート役": "noter",
     "弟子役": "deshi",
     "速記役": "scribe",
+    "聞き役": "asker",
+    "対応づけ役": "aligner",
 }
 
 

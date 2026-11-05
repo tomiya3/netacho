@@ -1,0 +1,251 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "compare",
+  "description": "同じ演目の 2 本の比較。スクリプトが作る。量ではなくタイミングを比べる",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "koza_a",
+    "koza_b",
+    "other_neta",
+    "share",
+    "comparable",
+    "laughs_compared",
+    "practice",
+    "humps_a",
+    "humps_b",
+    "passages",
+    "dropped",
+    "scenes",
+    "spots",
+    "counts"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "koza_a": {
+      "type": "string",
+      "minLength": 1
+    },
+    "koza_b": {
+      "type": "string",
+      "minLength": 1
+    },
+    "other_neta": {
+      "type": "string",
+      "minLength": 1,
+      "description": "2 本目の演目フォルダ"
+    },
+    "share": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "短いほうの文字のうち、対応の付いた割合"
+    },
+    "comparable": {
+      "type": "boolean",
+      "description": "揃わなければ false で、所を出さない"
+    },
+    "humps_a": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "humps_b": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scene_id",
+          "title",
+          "seconds",
+          "share",
+          "compared"
+        ],
+        "properties": {
+          "scene_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "seconds": {
+            "type": "number"
+          },
+          "share": {
+            "type": "number"
+          },
+          "compared": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "spots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "scene_id",
+          "a",
+          "b",
+          "laugh_a",
+          "laugh_b",
+          "span_a",
+          "span_b"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^spot-\\d{4,}$"
+          },
+          "kind": {
+            "enum": [
+              "added",
+              "moved",
+              "ma",
+              "words",
+              "kept",
+              "one_side",
+              "changed"
+            ]
+          },
+          "scene_id": {
+            "type": "string"
+          },
+          "a": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "t",
+              "end",
+              "quote"
+            ],
+            "properties": {
+              "t": {
+                "type": "number",
+                "minimum": 0
+              },
+              "end": {
+                "type": "number",
+                "minimum": 0
+              },
+              "quote": {
+                "type": "string"
+              }
+            }
+          },
+          "b": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "t",
+                  "end",
+                  "quote"
+                ],
+                "properties": {
+                  "t": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "end": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "quote": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "laugh_a": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "laugh_b": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ma_a": {
+            "type": "number"
+          },
+          "ma_b": {
+            "type": "number"
+          },
+          "span_a": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "span_b": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "laughs_compared": {
+      "type": "boolean",
+      "description": "片方に山が無ければ false で、笑いの比較はしない"
+    },
+    "practice": {
+      "type": "boolean",
+      "description": "2 本目に笑いがほぼ無く、稽古と見て本番の笑いを軸に比べた"
+    },
+    "passages": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "description": "対応づけ役のくだりの数"
+    },
+    "dropped": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "確かめて落としたくだりの数"
+    }
+  }
+}
