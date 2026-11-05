@@ -10,7 +10,11 @@
     "judged",
     "hits",
     "misses",
-    "surprises"
+    "surprises",
+    "surprise_total",
+    "laughs_total",
+    "laughs_hit",
+    "window_share"
   ],
   "properties": {
     "schema_version": {
@@ -110,6 +114,25 @@
           }
         }
       }
+    },
+    "surprise_total": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "予測の外の笑いの全数。surprises は演者に問う分だけ"
+    },
+    "laughs_total": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "自動で拾った笑いの数"
+    },
+    "laughs_hit": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "どれかの予測の窓に入った笑いの数"
+    },
+    "window_share": {
+      "type": "number",
+      "description": "予測の窓が音声を覆う割合。大きいほど的中しやすい"
     }
   }
 }

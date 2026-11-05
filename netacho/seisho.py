@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from difflib import SequenceMatcher
 
-from .render import REACTION_LABEL, marks_after
+from .render import marks_after
 
 MIN_SIMILARITY = 0.5  # 原文とこれより違う文は、聞き違いの修正ではなく言い換えとみなす。暫定
 
@@ -29,7 +29,7 @@ def build(draft: dict, transcript: dict, reactions: dict | None) -> tuple[dict, 
         raw = seg["text"].strip()
         rows = written.get(seg["id"], [])
         row = rows[0] if len(rows) == 1 else None
-        if row is None:
+        if row is None and raw:  # 空の区間は役に渡していない
             missing += 1
         text = row["text"].strip() if row else raw
         speaker = (row["speaker"] or None) if row else None
@@ -68,6 +68,3 @@ def markdown(koza: dict, doc: dict) -> str:
         if line["changed"]:
             out.append(f"　（原文：{line['raw']}）")
     return "\n".join(out).rstrip() + "\n"
-
-
-__all__ = ["REACTION_LABEL", "build", "markdown"]

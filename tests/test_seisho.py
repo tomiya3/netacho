@@ -63,7 +63,7 @@ def test_missing_and_extra_lines():
     doc, stats = seisho.build(d, transcript(), None)
     assert [x["seg_id"] for x in doc["lines"]] == ["seg-0001", "seg-0002"]
     assert doc["lines"][0]["text"] == "ゆあにーせかるたぎがーの"  # 抜けた区間は原文
-    assert stats["missing"] == 2  # seg-0001 と空の seg-0003
+    assert stats["missing"] == 1  # seg-0001（空の seg-0003 は数えない）
 
 
 def test_duplicate_lines_use_raw():
