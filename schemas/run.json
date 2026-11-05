@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "run",
+  "description": "実測の数字。推定は書かない",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "koza_id",
+    "roles",
+    "total_cost_usd",
+    "total_seconds"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "koza_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "model",
+          "calls",
+          "input_tokens",
+          "output_tokens",
+          "cache_read_input_tokens",
+          "cache_creation_input_tokens",
+          "cost_usd",
+          "seconds"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "calls": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "input_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cache_read_input_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cache_creation_input_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number"
+          },
+          "seconds": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "total_cost_usd": {
+      "type": "number"
+    },
+    "total_seconds": {
+      "type": "number"
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kept",
+        "dropped"
+      ],
+      "properties": {
+        "kept": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dropped": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "description": "根拠の検証で残した数と、理由ごとに落とした数"
+    },
+    "checker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "supported",
+        "weak",
+        "unsupported",
+        "unchecked_knowledge"
+      ],
+      "properties": {
+        "supported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "weak": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unsupported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unchecked_knowledge": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "deshi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "round1",
+        "round2",
+        "dropped_no_anchor"
+      ],
+      "properties": {
+        "round1": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "round2": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "dropped_no_anchor": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "questions": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "guide_performer_cards": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "notes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidates",
+        "fallback"
+      ],
+      "properties": {
+        "candidates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fallback": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

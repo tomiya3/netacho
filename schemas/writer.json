@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "writer",
+  "description": "構成作家役の出力。時刻と引用は書かない（スクリプトが区間から作る）",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scenes",
+    "characters",
+    "items"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "order",
+          "segs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^scene-\\d{2,}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer"
+          },
+          "segs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^seg-\\d{4,}$"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "[最初の区間 ID, 最後の区間 ID]"
+          }
+        }
+      }
+    },
+    "characters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "note"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^char-\\d{2,}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "book",
+          "priority",
+          "text",
+          "basis",
+          "source",
+          "payoff"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "新しい項目は null。既存の項目を直すときはその id"
+          },
+          "kind": {
+            "enum": [
+              "場面",
+              "人物",
+              "見立て",
+              "地口",
+              "知らない物",
+              "間",
+              "枕",
+              "サゲ"
+            ]
+          },
+          "book": {
+            "enum": [
+              "hanashi",
+              "kata"
+            ]
+          },
+          "priority": {
+            "enum": [
+              1,
+              2,
+              3
+            ],
+            "description": "1（要）から 3"
+          },
+          "text": {
+            "type": "string"
+          },
+          "basis": {
+            "enum": [
+              "heard",
+              "knowledge"
+            ]
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "segs"
+            ],
+            "properties": {
+              "segs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^seg-\\d{4,}$"
+                },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "[最初の区間 ID, 最後の区間 ID]"
+              }
+            }
+          },
+          "payoff": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "segs"
+                ],
+                "properties": {
+                  "segs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^seg-\\d{4,}$"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "description": "[最初の区間 ID, 最後の区間 ID]"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "見立て、地口、サゲの回収の区間。それ以外は null"
+          }
+        }
+      }
+    }
+  }
+}

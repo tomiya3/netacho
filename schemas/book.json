@@ -1,0 +1,469 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "book",
+  "description": "hanashi.json と kata.json の形。書くのはスクリプトだけ。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "book",
+    "performer_id",
+    "neta",
+    "scenes",
+    "characters",
+    "items"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "book": {
+      "enum": [
+        "hanashi",
+        "kata"
+      ]
+    },
+    "performer_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "neta": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/scene"
+      }
+    },
+    "characters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/character"
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/item"
+      }
+    }
+  },
+  "definitions": {
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "order",
+        "koza_id",
+        "segs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^scene-\\d{2,}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "koza_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "segs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^seg-\\d{4,}$"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[最初の区間 ID, 最後の区間 ID]"
+        }
+      }
+    },
+    "character": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "note"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^char-\\d{2,}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "recorded_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "koza_id",
+        "segs",
+        "t0",
+        "t1",
+        "quote"
+      ],
+      "properties": {
+        "koza_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "segs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^seg-\\d{4,}$"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[最初の区間 ID, 最後の区間 ID]"
+        },
+        "t0": {
+          "type": "number",
+          "minimum": 0
+        },
+        "t1": {
+          "type": "number",
+          "minimum": 0
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "録音由来。t0・t1・quote はスクリプトが区間から作る"
+    },
+    "performer_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "speaker",
+        "recorded_at",
+        "words",
+        "approved"
+      ],
+      "properties": {
+        "speaker": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "words": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^cand-\\d{4,}$"
+        }
+      },
+      "description": "演者の追記。words は演者の言葉のまま"
+    },
+    "payoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "segs",
+        "t0",
+        "t1",
+        "quote"
+      ],
+      "properties": {
+        "segs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^seg-\\d{4,}$"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[最初の区間 ID, 最後の区間 ID]"
+        },
+        "t0": {
+          "type": "number",
+          "minimum": 0
+        },
+        "t1": {
+          "type": "number",
+          "minimum": 0
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "description": "仕込みの回収の区間"
+    },
+    "history": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "before",
+        "after",
+        "by"
+      ],
+      "properties": {
+        "at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "before": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "by": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "priority",
+        "text",
+        "basis",
+        "source",
+        "edited_by",
+        "history"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^item-\\d{4,}$"
+        },
+        "kind": {
+          "enum": [
+            "場面",
+            "人物",
+            "見立て",
+            "地口",
+            "知らない物",
+            "上下",
+            "間",
+            "枕",
+            "サゲ",
+            "staging"
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "basis": {
+          "enum": [
+            "heard",
+            "knowledge"
+          ]
+        },
+        "source": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/recorded_source"
+            },
+            {
+              "$ref": "#/definitions/performer_source"
+            }
+          ]
+        },
+        "payoff": {
+          "$ref": "#/definitions/payoff"
+        },
+        "held": {
+          "type": "boolean"
+        },
+        "edited_by": {
+          "enum": [
+            "tool",
+            "performer"
+          ]
+        },
+        "drafted_by": {
+          "enum": [
+            "writer"
+          ]
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/history"
+          }
+        },
+        "anchor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "scene_id",
+            "position"
+          ],
+          "properties": {
+            "scene_id": {
+              "type": "string",
+              "pattern": "^scene-\\d{2,}$"
+            },
+            "position": {
+              "enum": [
+                "before",
+                "after",
+                "within"
+              ]
+            }
+          }
+        },
+        "card_text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approved": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "description": "staging は演者の追記だけ。位置は時刻でなく場面で持つ",
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "staging"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "anchor",
+              "card_text",
+              "reason",
+              "approved"
+            ],
+            "properties": {
+              "source": {
+                "$ref": "#/definitions/performer_source"
+              },
+              "edited_by": {
+                "const": "performer"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "anchor"
+                  ]
+                },
+                {
+                  "required": [
+                    "card_text"
+                  ]
+                },
+                {
+                  "required": [
+                    "reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "approved"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "上下は録音から分からないので、演者の追記だけで入る",
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "上下"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "source": {
+                "$ref": "#/definitions/performer_source"
+              }
+            }
+          }
+        },
+        {
+          "description": "承認した staging は札に写すので card_text が要る",
+          "if": {
+            "properties": {
+              "approved": {
+                "const": true
+              }
+            },
+            "required": [
+              "approved"
+            ]
+          },
+          "then": {
+            "properties": {
+              "card_text": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

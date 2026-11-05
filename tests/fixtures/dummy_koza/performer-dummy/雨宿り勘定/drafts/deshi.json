@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "issues": [
+  {
+   "kind": "ask_performer",
+   "scene_id": "scene-02",
+   "item_id": null,
+   "attempt": "行列の見立てを演ろうとした",
+   "what_is_missing": "なぜ間を詰めるのかが書いていない"
+  }
+ ]
+}

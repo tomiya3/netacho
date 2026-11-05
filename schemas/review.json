@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "review",
+  "description": "弟子役の指摘。id、round、resolved はスクリプトが付ける",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "performer_id",
+    "neta",
+    "issues"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "performer_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "neta": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "role",
+          "kind",
+          "anchor",
+          "attempt",
+          "what_is_missing",
+          "round",
+          "resolved"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^issue-\\d{4,}$"
+          },
+          "role": {
+            "const": "deshi"
+          },
+          "kind": {
+            "enum": [
+              "missing_step",
+              "unclear_scene",
+              "no_makura",
+              "no_sage",
+              "ask_performer"
+            ]
+          },
+          "anchor": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "scene_id"
+                ],
+                "properties": {
+                  "scene_id": {
+                    "type": "string",
+                    "pattern": "^scene-\\d{2,}$"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "item_id"
+                ],
+                "properties": {
+                  "item_id": {
+                    "type": "string",
+                    "pattern": "^item-\\d{4,}$"
+                  }
+                }
+              }
+            ]
+          },
+          "attempt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "what_is_missing": {
+            "type": "string",
+            "minLength": 1
+          },
+          "round": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "resolved": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

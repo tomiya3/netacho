@@ -1,0 +1,203 @@
+{
+ "schema_version": 1,
+ "book": "kata",
+ "performer_id": "performer-dummy",
+ "neta": "雨宿り勘定",
+ "scenes": [
+  {
+   "id": "scene-01",
+   "title": "枕",
+   "order": 1,
+   "koza_id": "2026-01-01-dummy-hall",
+   "segs": [
+    "seg-0001",
+    "seg-0003"
+   ]
+  },
+  {
+   "id": "scene-02",
+   "title": "傘を借りる",
+   "order": 2,
+   "koza_id": "2026-01-01-dummy-hall",
+   "segs": [
+    "seg-0004",
+    "seg-0009"
+   ]
+  },
+  {
+   "id": "scene-03",
+   "title": "傘を返す",
+   "order": 3,
+   "koza_id": "2026-01-01-dummy-hall",
+   "segs": [
+    "seg-0010",
+    "seg-0012"
+   ]
+  }
+ ],
+ "characters": [
+  {
+   "id": "char-01",
+   "name": "太助",
+   "note": "傘を借りる男"
+  },
+  {
+   "id": "char-02",
+   "name": "ご隠居",
+   "note": "傘を貸す"
+  }
+ ],
+ "items": [
+  {
+   "id": "item-0005",
+   "kind": "枕",
+   "priority": 1,
+   "text": "番傘が高かったことを枕で説明する",
+   "basis": "heard",
+   "source": {
+    "koza_id": "2026-01-01-dummy-hall",
+    "segs": [
+     "seg-0002",
+     "seg-0003"
+    ],
+    "t0": 4.8,
+    "t1": 17.0,
+    "quote": "昔の番傘というのは、今と違って高いものでございまして。傘を貸すというのは、お金を貸すのと同じでございます。"
+   },
+   "edited_by": "tool",
+   "drafted_by": "writer",
+   "history": []
+  },
+  {
+   "id": "item-0006",
+   "kind": "間",
+   "priority": 2,
+   "text": "「同じでございます」の後に 1.6 秒置いて本題へ入る",
+   "basis": "heard",
+   "source": {
+    "koza_id": "2026-01-01-dummy-hall",
+    "segs": [
+     "seg-0003",
+     "seg-0003"
+    ],
+    "t0": 11.5,
+    "t1": 17.0,
+    "quote": "傘を貸すというのは、お金を貸すのと同じでございます。"
+   },
+   "edited_by": "tool",
+   "drafted_by": "writer",
+   "history": []
+  },
+  {
+   "id": "item-0007",
+   "kind": "見立て",
+   "priority": 2,
+   "text": "雨の長さを殿様の行列に見立てる",
+   "basis": "heard",
+   "source": {
+    "koza_id": "2026-01-01-dummy-hall",
+    "segs": [
+     "seg-0008",
+     "seg-0008"
+    ],
+    "t0": 36.5,
+    "t1": 41.0,
+    "quote": "この雨は殿様の行列みたいなもんで、なかなか通り過ぎませんや。"
+   },
+   "edited_by": "tool",
+   "drafted_by": "writer",
+   "history": [],
+   "payoff": {
+    "segs": [
+     "seg-0009",
+     "seg-0009"
+    ],
+    "t0": 41.4,
+    "t1": 45.0,
+    "quote": "行列なら頭を下げて待つしかねえな。"
+   }
+  },
+  {
+   "id": "item-0008",
+   "kind": "地口",
+   "priority": 2,
+   "text": "傘を歌に掛ける（引用で言えないので保留）",
+   "basis": "heard",
+   "source": {
+    "koza_id": "2026-01-01-dummy-hall",
+    "segs": [
+     "seg-0005",
+     "seg-0005"
+    ],
+    "t0": 22.4,
+    "t1": 26.0,
+    "quote": "おう太助か、ひどい降りだな。"
+   },
+   "edited_by": "tool",
+   "drafted_by": "writer",
+   "history": [],
+   "payoff": {
+    "segs": [
+     "seg-0006",
+     "seg-0006"
+    ],
+    "t0": 26.5,
+    "t1": 31.0,
+    "quote": "傘を貸しておくんなさい。"
+   },
+   "held": true
+  },
+  {
+   "id": "item-0009",
+   "kind": "staging",
+   "priority": 1,
+   "text": "枕で番傘の値段を説明する",
+   "basis": "heard",
+   "source": {
+    "speaker": "performer-dummy",
+    "recorded_at": "2026-01-02T10:00:00+09:00",
+    "words": "ここは枕で番傘の値段を言っておきたい",
+    "approved": true,
+    "candidate_id": "cand-0001"
+   },
+   "edited_by": "performer",
+   "history": [
+    {
+     "at": "2026-01-02T10:00:00+09:00",
+     "before": null,
+     "after": "ここは枕で番傘の値段を言っておきたい",
+     "by": "performer-dummy"
+    }
+   ],
+   "anchor": {
+    "scene_id": "scene-01",
+    "position": "before"
+   },
+   "card_text": "番傘は、昔はたいへん高価な品でした。",
+   "reason": "値段が分からないと利息の話が通じないから",
+   "approved": true
+  },
+  {
+   "id": "item-0010",
+   "kind": "staging",
+   "priority": 2,
+   "text": "行列のくだりは間を詰める",
+   "basis": "heard",
+   "source": {
+    "speaker": "performer-dummy",
+    "recorded_at": "2026-01-02T10:05:00+09:00",
+    "words": "行列のところは間を詰めて次へ行く",
+    "approved": true
+   },
+   "edited_by": "performer",
+   "history": [],
+   "anchor": {
+    "scene_id": "scene-02",
+    "position": "within"
+   },
+   "card_text": null,
+   "reason": "行列のところは間を詰めて次へ行く",
+   "approved": false
+  }
+ ]
+}
