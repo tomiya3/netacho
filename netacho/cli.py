@@ -165,6 +165,7 @@ def cmd_prep(args: argparse.Namespace) -> None:
     store.write(kdir / "koza.json", koza, "koza")  # 最後に書く。これがあれば prep は完了している
     print(f"区間 {len(transcript['segments'])}、VAD {len(transcript['vad'])}、手がかり {len(doc['hints'])}")
     print(f"音声 {measured['audio_seconds']:.0f} 秒、文字起こし {measured['transcribe_seconds']:.0f} 秒")
+    print(f"文字起こしのモデル {transcript['model']}")
     _print_top(doc)
 
 
