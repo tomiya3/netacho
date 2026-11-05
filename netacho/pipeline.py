@@ -569,6 +569,7 @@ def note(
 
 
 COMPARE_QUESTIONS = 5  # 2 本の比較で演者に問う数。多いと答えてもらえない
+CLEAN_MIN = 0.9  # 文字起こしの行のうち、清書で読める割合の下限
 FIXED_ASK = {
     "kept": "ここ、2 本とも同じ言葉で、同じ所に来てますね。ここは変えない所ですか？",
     "moved": "ここ、来る所が 2 本でずれてますね。わざとですか？",
@@ -585,6 +586,9 @@ def compare_side(neta: store.Neta, koza_id: str) -> compare.Side:
         raise store.StoreError(f"{neta.neta} の {koza_id} に清書が無い。先に netacho seisho を実行する")
     transcript = store.read(kdir / "transcript.json", "transcript")
     lines = view.clean_lines(transcript, store.read(kdir / "seisho.json", "seisho"))
+    spoken = [s for s in transcript["segments"] if s["text"].strip()]
+    if len(lines) < CLEAN_MIN * len(spoken):  # 古い清書のまま比べると、Whisper の誤りが差に見える
+        raise store.StoreError(f"{neta.neta} の {koza_id} の清書が古い。netacho seisho を実行し直す")
     reactions = store.read(kdir / "reactions.json", "reactions")
     timeline = store.read(kdir / "timeline.json", "timeline")
     return compare.side_of(koza_id, transcript, lines, reactions, timeline)
@@ -628,7 +632,8 @@ def compare_koza(
     fallback = added = 0
     try:
         if doc["comparable"]:
-            chosen = [s for s in compare.select(doc["spots"], COMPARE_QUESTIONS) if s["scene_id"] in titles]
+            known = [s for s in doc["spots"] if s["scene_id"] in titles]
+            chosen = compare.select(known, COMPARE_QUESTIONS)
             content = [{"type": "text", "text": json.dumps(ask_rows(chosen), ensure_ascii=False, indent=1)}]
             reply = (
                 call_role(ctx.client, "asker", content, "asker", ctx.usage, ctx.budget, ctx.cache)
@@ -646,7 +651,10 @@ def compare_koza(
             n_issue = max((int(i["id"].split("-")[1]) for i in review_doc["issues"]), default=0) + 1
             n_q = max((int(q["id"].split("-")[1]) for q in questions["questions"]), default=0) + 1
             for spot in chosen:
-                attempt = f"{render.clock(spot['a']['t'])} の比較（{koza_id} と {other_koza}）"
+                # 種類も入れる。やり直しで種類が変わった所に、古い問いの文を残さない
+                attempt = (
+                    f"{render.clock(spot['a']['t'])} の比較（{koza_id} と {other_koza}、{spot['kind']}）"
+                )
                 if attempt in issue_of:  # 既に問うた所。問いと比較の所のつながりだけ保つ
                     q = next((x for x in questions["questions"] if x["issue_id"] == issue_of[attempt]), None)
                     if q is not None:

@@ -13,6 +13,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
+from .evidence import MAX_MA_SEC
 from .reactions import laugh_humps
 
 MIN_BLOCK = 12  # これより短い一致は、決まり文句の偶然として使わない。字数
@@ -131,9 +132,9 @@ def _expected(a: Side, b: Side, i: int, j: int, t: float) -> float:
 
 
 def _pause_before(side: Side, n: int) -> float:
-    """行の始まりの近くの、一番長い無音。"""
+    """行の始まりの直前で終わる、一番長い無音。間と呼べない長い空白は入れない。"""
     t = side.lines[n]["start"]
-    near = [t1 - t0 for t0, t1 in side.silences if t0 < t + MA_NEAR and t1 > t - MA_NEAR]
+    near = [t1 - t0 for t0, t1 in side.silences if abs(t1 - t) <= MA_NEAR and t1 - t0 <= MAX_MA_SEC]
     return round(max(near, default=0.0), 2)
 
 

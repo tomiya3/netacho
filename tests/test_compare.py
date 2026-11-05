@@ -146,6 +146,18 @@ def test_repeated_phrases_keep_the_order_of_the_lines():
     assert list(pairs.items()) == sorted(pairs.items(), key=lambda kv: kv[1])
 
 
+def test_silence_after_the_line_begins_is_not_a_pause():
+    b = side("b", LINES, [15.0])
+    b.silences = [[10.5, 12.0]]  # 行が始まった後の無音
+    assert compare._pause_before(b, 1) == 0.0
+
+
+def test_a_long_blank_is_not_a_pause():
+    b = side("b", LINES, [15.0])
+    b.silences = [[3.0, 10.0]]
+    assert compare._pause_before(b, 1) == 0.0
+
+
 def test_score_size_is_never_used():
     """山の高さの違いは Side に入らない。来ているかどうかだけ。"""
     assert not hasattr(side("a", LINES, [15.0]), "scores")
@@ -396,6 +408,17 @@ def test_failure_writing_the_comparison_leaves_no_question(tmp_path, monkeypatch
     with pytest.raises(OSError):
         run(root, ScriptedClient(asker=[REPLY]), tmp_path)
     assert neta.questions.read_bytes() == before
+
+
+def test_old_clean_copy_stops_the_comparison(tmp_path):
+    root, neta = two_books(tmp_path)
+    path = neta.koza_dir(K2) / "seisho.json"
+    doc = store.read(path, "seisho")
+    for row in doc["lines"]:
+        row["raw"] = "作り直す前の文字起こし"
+    store.write(path, doc, "seisho")
+    with pytest.raises(store.StoreError, match="古い"):
+        run(root, ScriptedClient(asker=[REPLY]), tmp_path)
 
 
 def test_compare_is_written_for_the_screen(tmp_path):
