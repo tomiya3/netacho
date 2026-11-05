@@ -609,6 +609,40 @@ def test_failed_comparison_keeps_what_the_answers_point_at(tmp_path):
     }
     doc = run(root, client_of(aligner=apart), tmp_path)
     assert doc["comparable"] is False and [s["id"] for s in doc["spots"]] == [first["spot_id"]]
+    assert sum(doc["counts"].values()) == 1  # 残した所と数が合う
+
+
+def test_an_answered_place_stays_when_a_rerun_no_longer_finds_it(tmp_path):
+    root, neta = two_books(tmp_path)
+    run(root, client_of(answer_all), tmp_path)
+    first = next(q for q in store.read(neta.questions, "questions")["questions"] if "spot_id" in q)
+    performer.answer(neta, question=first["id"], speaker="本人", words="わざとです")
+    other = {
+        "schema_version": 1,
+        "passages": [
+            {
+                "relation": "same",
+                "a_first": "seg-0001",
+                "a_last": "seg-0002",
+                "b_first": "seg-0001",
+                "b_last": "seg-0012",
+            },
+        ],
+    }
+    doc = run(root, client_of(REPLY, aligner=other), tmp_path)
+    assert doc["comparable"] is True and first["spot_id"] in {s["id"] for s in doc["spots"]}
+
+
+def test_answered_places_are_not_shown_to_the_asker_again(tmp_path):
+    root, neta = two_books(tmp_path)
+    run(root, client_of(answer_all), tmp_path)
+    first = next(q for q in store.read(neta.questions, "questions")["questions"] if "spot_id" in q)
+    performer.answer(neta, question=first["id"], speaker="本人", words="わざとです")
+    client = client_of(REPLY)
+    run(root, client, tmp_path)
+    assert all(
+        first["spot_id"] != r["spot_id"] for c in client.calls["asker"] for r in json.loads(text_of(c))
+    )
 
 
 def test_open_questions_of_another_pair_stay(tmp_path):
@@ -637,8 +671,8 @@ def test_a_refused_question_does_not_change_the_place(tmp_path):
                 "questions": [
                     {
                         "spot_id": r["spot_id"],
-                        "a_seg": r["lines_a"][-1]["seg_id"],
-                        "b_seg": r["lines_b"][-1]["seg_id"],
+                        "a_seg": r["lines_a"][0]["seg_id"],
+                        "b_seg": r["lines_b"][0]["seg_id"],
                         "relation": "changed",
                         "text": "ここは受けなかったですね。",
                     }
@@ -648,9 +682,11 @@ def test_a_refused_question_does_not_change_the_place(tmp_path):
             ensure_ascii=False,
         )
 
+    plain_doc = run(root, client_of(REPLY), tmp_path)
     doc = run(root, client_of(bad), tmp_path)
-    assert all(s["kind"] != "words" or s["laugh_a"] is None for s in doc["spots"])
-    assert doc["counts"] == compare.count(doc["spots"])
+    assert store.read(neta.koza_dir(K1) / "run.json", "run")["compare"]["fallback"] >= 1  # 拒否が起きた
+    assert doc["spots"] == plain_doc["spots"] and doc["counts"] == plain_doc["counts"]
+    assert not any("spot_id" in q for q in store.read(neta.questions, "questions")["questions"])
 
 
 def test_failed_aligner_records_no_share(tmp_path):

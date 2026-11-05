@@ -46,7 +46,7 @@
     },
     "comparable": {
       "type": "boolean",
-      "description": "揃わなければ false で、所を出さない"
+      "description": "揃わなければ false で、新しい所は出さない。答えのある所だけ残す"
     },
     "humps_a": {
       "type": "integer",

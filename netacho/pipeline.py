@@ -673,7 +673,11 @@ def compare_koza(
         store.write(ctx.neta.drafts / "aligner.json", draft, "aligner")
         doc = {**compare.compare(a, b, draft, titles), "other_neta": other.neta}
         if doc["comparable"]:
-            known = [s for s in doc["spots"] if s["scene_id"] in titles]
+            review_doc, questions = read_review(ctx.neta)
+            drop_open_asks(review_doc, questions, pair)
+            done = {q.get("spot_id") for q in questions["questions"] if "answer" in q or "dismissed" in q}
+            # 答えた所は聞き役に見せない。また問わないし、費用も使わない
+            known = [s for s in doc["spots"] if s["scene_id"] in titles and s["id"] not in done]
             chosen, cut = compare.candidates(known, COMPARE_CANDIDATES)
             other_name = "稽古" if doc["practice"] else "もう 1 本"
             rows = ask_rows(chosen, a, b, other_name)
@@ -690,22 +694,22 @@ def compare_koza(
             by_id = {s["id"]: s for s in chosen}
             picks = (reply or {"questions": []})["questions"]  # 聞く価値の高い順
             skipped = len(chosen) - len({row["spot_id"] for row in picks})
-            review_doc, questions = read_review(ctx.neta)
-            drop_open_asks(review_doc, questions, pair)
-            done = {q.get("spot_id") for q in questions["questions"] if "answer" in q or "dismissed" in q}
             issue_of = {i["attempt"]: i["id"] for i in review_doc["issues"]}
             n_issue = max((int(i["id"].split("-")[1]) for i in review_doc["issues"]), default=0) + 1
             n_q = max((int(q["id"].split("-")[1]) for q in questions["questions"]), default=0) + 1
             # 演者が答えた所は、前回の所のまま残す。また問わず、種類も戻さない
+            # やり直しで所が無くなっても残す。答えの指す先を消さない
             kept = {s["id"]: s for s in old_spots if s["id"] in done}
+            fresh = {s["id"] for s in doc["spots"]}
             doc["spots"] = [kept.get(s["id"], s) for s in doc["spots"]]
+            doc["spots"] += [s for s in kept.values() if s["id"] not in fresh]
             asked = [s for s in doc["spots"] if s["id"] in done]
             for row in picks:
                 if added == COMPARE_QUESTIONS:
                     break
                 spot = by_id.get(row["spot_id"])
                 words = row["text"].strip()
-                if spot is None or spot["id"] in done:
+                if spot is None:
                     fallback += 1
                     continue
                 settled = compare.settle(spot, row, a, b, shown[spot["id"]])
@@ -758,6 +762,7 @@ def compare_koza(
             drop_open_asks(review_doc, questions, pair)
             done = {q.get("spot_id") for q in questions["questions"] if "answer" in q or "dismissed" in q}
             doc["spots"] = [s for s in old_spots if s["id"] in done]  # 答えの指す先を消さない
+            doc["counts"] = compare.count(doc["spots"])
             store.write(kdir / "compare.json", doc, "compare")
             save_review(ctx, review_doc, questions)
     finally:  # 落ちても、使った費用は実測として残す
