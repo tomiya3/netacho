@@ -124,6 +124,7 @@ def test_long_blank_is_not_a_ma(transcript):
         (1.6, "「同じ」の後に 1.6 秒の間", {}),
         (1.6, "「同じ」の後に 1.8 秒の間", {}),  # 許容差の中
         (1.6, "「同じ」の後に 10 秒の間", {"ma_wrong_seconds": 1}),
+        (1.6, "「同じ」の後に１０秒の間", {"ma_wrong_seconds": 1}),
     ],
 )
 def test_ma_boundaries(transcript, pause, text, want):
