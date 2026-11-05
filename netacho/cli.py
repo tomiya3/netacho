@@ -276,7 +276,9 @@ def cmd_seisho(args: argparse.Namespace) -> None:
     from . import pipeline, runner
 
     client = runner.make_client()
-    doc = pipeline.clean_copy(args.performer, args.neta, args.koza, client=client, reuse=args.reuse)
+    doc = pipeline.clean_copy(
+        args.performer, args.neta, args.koza, client=client, reuse=args.reuse, title=args.title
+    )
     s = doc["seisho"]
     print(f"清書 {s['lines']} 行、直した行 {s['changed']}、大きく直した行 {s['heavy']}")
     print(f"原文に戻した行 {s['kept_raw']}、抜け {s['missing']}、重複 {s['duplicate']}")
@@ -429,6 +431,7 @@ def build_parser() -> argparse.ArgumentParser:
     clean.add_argument("--performer", required=True)
     clean.add_argument("--neta", required=True)
     clean.add_argument("--koza", required=True)
+    clean.add_argument("--title", help="演目の題（漢字）。聞き違いを直す手がかりになる")
     clean.add_argument("--reuse", action="store_true")
     clean.set_defaults(func=cmd_seisho)
 

@@ -221,3 +221,16 @@ def test_scribe_sees_no_reactions(built, data, tmp_path):
 def test_role_promises():
     text = runner.role_prompt("scribe")
     assert "言い換え、要約" in text and "見せないもの" not in text
+
+
+def test_title_reaches_the_scribe_instead_of_the_folder_name(built, data, tmp_path):
+    doc = json.loads((DUMMY.parent.parent / "drafts" / "scribe.json").read_text(encoding="utf-8"))
+    client = ScriptedClient(scribe=[doc])
+    pipeline.clean_copy(
+        P, N, K, client=client, budget=Budget(tmp_path / "ledger.json"), root=data, title="正しい題"
+    )
+    assert "正しい題" in text_of(client.calls["scribe"][0])
+
+
+def test_scribe_is_opus_high():
+    assert runner.ROLES["scribe"][:2] == (runner.OPUS, "high")

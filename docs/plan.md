@@ -55,7 +55,7 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 | 照合役 | `roles/checker.md` | claude-sonnet-5-5 | medium | 8000 | 項目の主張が引用で言えるかだけ判定する |
 | ノート役 | `roles/noter.md` | claude-sonnet-5-5 | medium | 4000 | スクリプトが選んだ候補を、演者向けの短い文にする |
 | 弟子役 | `roles/deshi.md` | claude-opus-5-5 | high | 8000 | 噺・型だけを読み、演れない所と本人に聞くべき所を挙げる |
-| 速記役 | `roles/scribe.md` | claude-sonnet-5-5 | medium | 32000 | 文字起こしの聞き違いを直し、話者を付けて清書する |
+| 速記役 | `roles/scribe.md` | claude-opus-5-5 | high | 32000 | 文字起こしの聞き違いを直し、話者を付けて清書する |
 
 ### 見せる物の境界（この構成の要点）
 
@@ -281,7 +281,7 @@ netacho mark    --koza KOZA --tsv FILE                             # 手で付�
 netacho decide  --performer ID --neta 演目 --speaker S --words W --card T --why Y --scene ID [--candidate C --koza KOZA] [--position before|within|after]
 netacho answer  --performer ID --neta 演目 --question Q --speaker S --words W
 netacho reread  --performer ID --neta 演目 --koza KOZA             # 演者の判断が入った型を弟子役に読み直させる
-netacho seisho  --performer ID --neta 演目 --koza KOZA             # 清書（速記役）
+netacho seisho  --performer ID --neta 演目 --koza KOZA [--title 題]  # 清書（速記役）
 netacho guide   --performer ID --neta 演目                         # LLM 0 回
 netacho view    --performer ID --neta 演目 --koza KOZA             # out/view/ へ書き出す
 netacho serve   --performer ID --neta 演目 --koza KOZA [--port N]  # 画面で問いに答える。LLM 0 回
