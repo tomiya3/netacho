@@ -63,6 +63,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")  # URL にトークンがある
         self.end_headers()
         self.wfile.write(data)
 
@@ -162,7 +163,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(neta: store.Neta, koza_id: str, *, port: int, out: Path = view.OUT) -> None:
     view.write(neta, koza_id, out)
-    server = AnswerServer(neta, koza_id, out=out, port=port)
+    try:
+        server = AnswerServer(neta, koza_id, out=out, port=port)
+    except OSError as e:
+        raise SystemExit(f"ポート {port} を使えません。--port で別の番号を指定してください") from e
     print(f"開く：{server.url()}（止めるときは Ctrl-C）")
     try:
         server.serve_forever()

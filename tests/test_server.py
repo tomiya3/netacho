@@ -303,3 +303,18 @@ def test_dismissal_refreshes_the_cards(running, monkeypatch):
     assert call(running, "/api/dismiss", {"question": q, "speaker": "本人", "reason": "演者の声"})[0] == 200
     assert seen == [running.neta]
 
+
+def test_port_in_use_is_told_in_plain_words(running, tmp_path):
+    with pytest.raises(SystemExit, match="--port"):
+        server.serve(running.neta, K, port=running.port, out=tmp_path / "view2")
+
+
+def test_token_does_not_leak_by_referrer(running):
+    req = urllib.request.Request(f"http://127.0.0.1:{running.port}/")
+    with urllib.request.urlopen(req) as res:
+        assert res.headers["Referrer-Policy"] == "no-referrer"
+
+
+def test_dismiss_has_its_own_reason_and_warns_it_cannot_be_undone():
+    html = (Path(__file__).parents[1] / "viewer" / "index.html").read_text(encoding="utf-8")
+    assert "元に戻せません" in html and "reason: words.value" not in html

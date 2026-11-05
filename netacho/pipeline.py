@@ -301,6 +301,7 @@ def build(
     """噺・型を作り、弟子役に読ませ、差し戻しを 1 回だけ反映する。返すのは run.json の中身。"""
     ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
     doc, questions = read_review(ctx.neta)
+    ctx.asked_scenes |= settled_scenes(questions)
     base_round = max((i["round"] for i in doc["issues"]), default=0)
 
     def record(first: list[dict], second: list[dict] | None) -> None:
