@@ -362,6 +362,16 @@ def test_clipped_window_is_left_out_of_humps_with_its_hump():
     assert (r["humps_hit"], r["humps_total"]) == (1, 2)
 
 
+def test_only_clipped_windows_write_no_hump_count():
+    r = compare([item(1, 97.0)], scored(100.0, {12.5: 0.1}))
+    assert r["judged"] is True and r["humps_total"] is None and r["humps_hit"] is None
+
+
+def test_a_gap_of_one_window_keeps_one_hump():
+    d = scored(100.0, {12.5: 0.1, 16.5: 0.1, 22.5: 0.1})
+    assert reactions.laugh_humps(d) == [[12.5, 16.5], [22.5]]  # 18.5 と 20.5 の 2 窓の切れ目では分ける
+
+
 def test_markdown_keeps_the_share_of_windows():
     r = compare([item(1, 10.0)], scored(100.0, {12.5: 0.1}))
     assert "を覆っている" in "\n".join(render.gaps_markdown(r, {}))

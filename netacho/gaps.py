@@ -141,6 +141,8 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
 
     humps = laugh_humps(reactions) if judged else None  # 判定しない高座を 0 と書かない
     whole_windows = [w for w in windows if w not in clipped_windows]
+    if not whole_windows:  # 判定できる窓が無ければ比べない。0 個と書かない
+        humps = None
     if humps is not None:  # 末尾で切れた窓は判定しない。その窓に触れる山も、母数から外す
         humps = [h for h in humps if not _touches(h, clipped_windows)]
     rest = [r for r in laughs if r["id"] not in used]
