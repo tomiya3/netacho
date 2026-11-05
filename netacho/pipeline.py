@@ -335,6 +335,17 @@ def build(
     return result
 
 
+def settled_scenes(questions: dict) -> set[str]:
+    """演者が答えたか捨てた問いの場面。同じ場面を言い方を変えて問い直さない。"""
+    return {q["scene_id"] for q in questions["questions"] if "answer" in q or "dismissed" in q}
+
+
+def after_answer(neta: store.Neta) -> None:
+    """答えが型に入った後の更新。CLI と画面で同じにする。"""
+    write_markdown(neta, store.read(neta.hanashi, "book"), store.read(neta.kata, "book"))
+    guide.refresh(neta)
+
+
 def reread(
     performer: str,
     neta_name: str,
@@ -350,7 +361,7 @@ def reread(
     run_path = ctx.neta.koza_dir(koza_id) / "run.json"
     write_markdown(ctx.neta, ctx.hanashi, ctx.kata)
     doc, questions = read_review(ctx.neta)
-    ctx.asked_scenes |= {q["scene_id"] for q in questions["questions"] if "answer" in q}
+    ctx.asked_scenes |= settled_scenes(questions)
     try:
         current, _ = deshi_pass(ctx, doc, questions, max((i["round"] for i in doc["issues"]), default=0) + 1)
         suppressed = doc.pop("suppressed_answered", 0)

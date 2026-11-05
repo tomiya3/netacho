@@ -308,14 +308,11 @@ def cmd_decide(args: argparse.Namespace) -> None:
 
 
 def cmd_answer(args: argparse.Namespace) -> None:
-    from . import performer
+    from . import performer, pipeline
 
     neta = store.Neta(args.performer, args.neta)
-    from . import guide
-
     item = performer.answer(neta, question=args.question, speaker=args.speaker, words=args.words)
-    _rewrite_markdown(neta)
-    guide.refresh(neta)
+    pipeline.after_answer(neta)
     print(f"型に入れた：{item['id']}")
 
 

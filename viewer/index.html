@@ -264,7 +264,9 @@ async function send(path, body, note) {
   note.textContent = "";
   try {
     const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Netacho-Token": TOKEN }, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || String(res.status));
+    const doc = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(doc.error || String(res.status));
+    if (doc.warning) { note.textContent = doc.warning; return; }
     history.replaceState(null, "", location.search + "#deshi");
     location.reload();
   } catch (e) { note.textContent = `保存できませんでした：${e.message}`; }

@@ -288,7 +288,7 @@ netacho serve   --performer ID --neta 演目 --koza KOZA [--port N]  # 画面で
 netacho dismiss --performer ID --neta 演目 --question Q --speaker S --reason R  # 的外れの問いを捨てる
 ```
 
-`netacho view` の後、`make viewer` で `http://localhost:8000/`（配信は `out/view` だけ。読むだけ）。答えるときは `netacho serve` が出す URL を開く。127.0.0.1 だけで待ち受け、起動ごとのトークン、Host、Origin を確かめ、書き込みは `performer` を通す。画面は 5 枚：反応の波と候補、型、札、弟子役の指摘と質問、清書。「Claude の候補」「演者の決定」「スクリプトの転記」を色とラベルで見分けられるようにする。
+`netacho view` の後、`make viewer` で `http://localhost:8000/`（配信は `out/view` だけ。読むだけ）。答えるときは `netacho serve` が出す URL を開く。127.0.0.1 だけで待ち受け、書き込みには起動ごとのトークン、Host、Origin を確かめる。読み取りは `make viewer` と同じでトークンを求めない。`serve` は CLI のサブコマンドで、書き込みは `netacho answer` と同じ `performer` を通す（演者本人がコマンドを打たずに答えるため）。画面は 5 枚：反応の波と候補、型、札、弟子役の指摘と質問、清書。「Claude の候補」「演者の決定」「スクリプトの転記」を色とラベルで見分けられるようにする。
 
 ### 費用の管理（`budget.py`）
 

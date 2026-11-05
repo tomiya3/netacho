@@ -2,6 +2,7 @@
 
 127.0.0.1 だけで待ち受ける。別のサイトの画面から書き込まれないように、起動ごとのトークン、
 Host、Origin を確かめる。配信するのは画面と view.json だけ。演者の言葉はログに出さない。
+読み取りにトークンは要らない。`make viewer` と同じで、同じ機械の上の物は読める前提。
 """
 
 from __future__ import annotations
@@ -9,11 +10,13 @@ from __future__ import annotations
 import hmac
 import json
 import secrets
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+from collections.abc import Callable
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from . import guide, performer, pipeline, store, view
+from . import performer, pipeline, store, view
 
 MAX_BODY = 64 * 1024
 FILES = {
@@ -23,12 +26,15 @@ FILES = {
 }
 
 
-class AnswerServer(HTTPServer):
-    """1 件ずつ処理する。帳面の読み書きが重ならないように、スレッドにしない。"""
+class AnswerServer(ThreadingHTTPServer):
+    """受け付けは並列。ブラウザの空の接続で画面が止まらないように。書き込みは鍵で 1 件ずつにする。"""
+
+    daemon_threads = True
 
     def __init__(self, neta: store.Neta, koza_id: str, *, out: Path, port: int = 0) -> None:
         super().__init__(("127.0.0.1", port), Handler)
         self.neta, self.koza_id, self.out = neta, koza_id, out
+        self.lock = threading.Lock()
         self.token = secrets.token_urlsafe(24)
         self.port = self.server_address[1]
         self.hosts = {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
@@ -46,6 +52,7 @@ def _text(body: dict, key: str) -> str:
 
 class Handler(BaseHTTPRequestHandler):
     server: AnswerServer
+    timeout = 10  # 本文の来ない接続を残さない
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         pass  # URL のトークンも本文も、ログに出さない
@@ -81,7 +88,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"error": "無い"})
             return
         name, kind = found
-        self._send(200, (self.server.out / name).read_bytes(), kind)
+        try:
+            data = (self.server.out / name).read_bytes()
+        except OSError:
+            self._json(404, {"error": "無い"})
+            return
+        self._send(200, data, kind)
 
     def do_POST(self) -> None:  # noqa: N802
         action = {"/api/answer": self._answer, "/api/dismiss": self._dismiss}.get(urlsplit(self.path).path)
@@ -96,22 +108,31 @@ class Handler(BaseHTTPRequestHandler):
         if not 0 < length <= MAX_BODY:
             self._json(400, {"error": "長さが合わない"})
             return
+        with self.server.lock:  # 帳面の読み書きが重ならないように
+            self._save(action, length)
+
+    def _save(self, action: Callable[[dict], Callable[[], None]], length: int) -> None:
         try:
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
                 raise ValueError
-            action(body)
+            after = action(body)
         except performer.PerformerError as e:
             self._json(400, {"error": str(e)})
         except ValueError:
             self._json(400, {"error": "形が違う"})
         except Exception:  # 演者の言葉を応答に出さない
             self._json(500, {"error": "保存できなかった"})
-        else:
+            return
+        try:  # ここから先で落ちても、保存は済んでいる。「保存できなかった」と言わない
+            after()
             view.write(self.server.neta, self.server.koza_id, self.server.out)
-            self._json(200, {"ok": True})
+        except Exception:
+            self._json(200, {"ok": True, "warning": "保存しましたが、画面を更新できませんでした"})
+            return
+        self._json(200, {"ok": True})
 
-    def _answer(self, body: dict) -> None:
+    def _answer(self, body: dict) -> Callable[[], None]:
         neta = self.server.neta
         performer.answer(
             neta,
@@ -119,17 +140,16 @@ class Handler(BaseHTTPRequestHandler):
             speaker=_text(body, "speaker"),
             words=_text(body, "words"),
         )
-        hanashi, kata = store.read(neta.hanashi, "book"), store.read(neta.kata, "book")
-        pipeline.write_markdown(neta, hanashi, kata)
-        guide.refresh(neta)
+        return lambda: pipeline.after_answer(neta)
 
-    def _dismiss(self, body: dict) -> None:
+    def _dismiss(self, body: dict) -> Callable[[], None]:
         performer.dismiss(
             self.server.neta,
             question=_text(body, "question"),
             speaker=_text(body, "speaker"),
             reason=_text(body, "reason"),
         )
+        return lambda: None
 
 
 def serve(neta: store.Neta, koza_id: str, *, port: int, out: Path = view.OUT) -> None:

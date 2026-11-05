@@ -127,8 +127,8 @@ def dismiss(neta: store.Neta, *, question: str, speaker: str, reason: str, now: 
     issue = next((i for i in review["issues"] if i["id"] == q["issue_id"]), None)
     if issue is not None:
         issue["resolved"] = True
+    store.write(neta.review, review, "review")  # 先に指摘を解決にする。途中で落ちても、やり直せば揃う
     store.write(neta.questions, questions, "questions")
-    store.write(neta.review, review, "review")
 
 
 def answer(neta: store.Neta, *, question: str, speaker: str, words: str, now: str | None = None) -> dict:

@@ -2,15 +2,17 @@
 
 import json
 import shutil
+import socket
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 import pytest
 
-from netacho import performer, server, store, view
+from netacho import gaps, performer, pipeline, server, store, view
 
 DATA = Path(__file__).parent / "fixtures" / "dummy_koza"
 P, N, K = "performer-dummy", "雨宿り勘定", "2026-01-01-dummy-hall"
@@ -168,3 +170,89 @@ def test_server_works_without_the_llm_library(tmp_path, monkeypatch):
 def test_static_viewer_shows_no_form_without_a_token():
     html = (Path(__file__).parents[1] / "viewer" / "index.html").read_text(encoding="utf-8")
     assert "TOKEN && !q.answer && !q.dismissed" in html
+
+
+def test_saved_answer_is_not_reported_as_failed_when_the_screen_cannot_update(running, monkeypatch):
+    q = add_question(running)
+
+    def broken(*a, **k):
+        raise OSError("書き出せない")
+
+    monkeypatch.setattr(view, "write", broken)
+    status, body = call(running, "/api/answer", {"question": q, "speaker": "本人", "words": "言葉"})
+    doc = json.loads(body)
+    assert status == 200 and doc["ok"] is True and "保存しました" in doc["warning"]
+    saved = next(x for x in store.read(running.neta.questions, "questions")["questions"] if x["id"] == q)
+    assert saved["answer"]["words"] == "言葉"
+
+
+def test_failure_does_not_show_the_words(running, monkeypatch):
+    q = add_question(running)
+
+    def broken(*a, **k):
+        raise RuntimeError("演者の言葉")
+
+    monkeypatch.setattr(performer, "answer", broken)
+    status, body = call(running, "/api/answer", {"question": q, "speaker": "本人", "words": "演者の言葉"})
+    assert status == 500 and "演者の言葉" not in body.decode()
+
+
+def test_idle_connection_does_not_stop_the_server(running):
+    with socket.create_connection(("127.0.0.1", running.port)):
+        started = time.monotonic()
+        assert call(running, "/")[0] == 200
+    assert time.monotonic() - started < 2  # 空の接続の timeout を待たない
+
+
+def test_missing_screen_file_is_not_found(running):
+    (running.out / "view.json").unlink()
+    assert call(running, "/view.json")[0] == 404
+
+
+def test_dismissal_can_be_redone_after_a_crash_between_writes(running, monkeypatch):
+    q = add_question(running)
+    real = store.write
+
+    def stop_at_questions(path, obj, schema):
+        if schema == "questions":
+            raise OSError("途中で落ちた")
+        real(path, obj, schema)
+
+    monkeypatch.setattr(store, "write", stop_at_questions)
+    with pytest.raises(OSError):
+        performer.dismiss(running.neta, question=q, speaker="本人", reason="演者の声")
+    monkeypatch.setattr(store, "write", real)
+    performer.dismiss(running.neta, question=q, speaker="本人", reason="演者の声")
+    saved = next(x for x in store.read(running.neta.questions, "questions")["questions"] if x["id"] == q)
+    assert saved["dismissed"]["reason"] == "演者の声"
+
+
+def test_dismissed_scene_is_not_asked_again():
+    doc = {
+        "questions": [
+            {"scene_id": "scene-01", "dismissed": {}},
+            {"scene_id": "scene-02", "answer": {}},
+            {"scene_id": "scene-03"},
+        ]
+    }
+    assert pipeline.settled_scenes(doc) == {"scene-01", "scene-02"}
+
+
+def test_note_does_not_bring_a_dismissed_question_back(running):
+    q = add_question(running)
+    performer.dismiss(running.neta, question=q, speaker="本人", reason="演者の声")
+    rv = store.read(running.neta.review, "review")
+    qs = store.read(running.neta.questions, "questions")
+    attempt = next(i["attempt"] for i in rv["issues"] if i["id"] == "issue-0901")
+    t0 = 90.0
+    clock_attempt = f"{gaps.clock(t0)} の笑いの所（k）"
+    for row in rv["issues"]:
+        if row["attempt"] == attempt:
+            row["attempt"] = clock_attempt
+    found = {
+        "koza_id": "k",
+        "surprises": [
+            {"t0": t0, "scene_id": "scene-01", "before_quote": "前", "question": "問い"},
+        ],
+    }
+    assert gaps.add_questions(found, rv, qs) == 0
