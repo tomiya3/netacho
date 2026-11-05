@@ -22,9 +22,10 @@ QUOTE_IN_QUESTION = 40  # 問いの文に添える直前の台詞の長さ
 FALLBACK_QUESTION = "文字からは笑いどころと読めなかった所です。ここで何をしているのか、教えてください。"
 
 
-def _before_quote(transcript: dict, t0: float, t1: float) -> str:
+def _before_quote(transcript: dict, t0: float) -> str:
+    """笑いが始まる前の台詞。笑いの後の台詞を混ぜない（問いの引用がずれる）。"""
     rows = [
-        s["text"].strip() for s in transcript["segments"] if s["start"] < t1 and s["end"] > t0 - BEFORE_SEC
+        s["text"].strip() for s in transcript["segments"] if s["start"] < t0 and s["end"] > t0 - BEFORE_SEC
     ]
     return "".join(rows)[-160:]
 
@@ -52,9 +53,9 @@ def _window_share(windows: list[list[float]], seconds: float | None) -> float:
 def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict | None) -> dict:
     """3 区分を作る。surprises は演者に問う分だけで、全数は surprise_total に持つ。"""
     koza_id = reactions["koza_id"]
-    judged = any(r["method"] == "auto" for r in reactions["reactions"])
     end = covered_seconds(reactions)
     laughs = [r for r in reactions["reactions"] if r["kind"] == "laugh" and r["method"] == "auto"]
+    judged = bool(laughs)  # 自動の笑いが 1 件も無ければ比べない（全部の予測を空振りにしない）
     hits, misses, windows = [], [], []
     used: set[str] = set()
     for it in candidates.payoff_items(items, koza_id) if judged else []:
@@ -75,6 +76,7 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
 
     rest = [r for r in laughs if r["id"] not in used]
     rest.sort(key=lambda r: (r["strength_rank"] is None, r["strength_rank"] or 0))
+    askable = [r for r in rest if scene_at(r["t0"]) is not None]  # 場面が決まらない笑いは問えない
     surprises = [
         {
             "id": f"gap-{n:04d}",
@@ -82,9 +84,9 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
             "t0": r["t0"],
             "t1": r["t1"],
             "scene_id": scene_at(r["t0"]),
-            "before_quote": _before_quote(transcript, r["t0"], r["t1"]),
+            "before_quote": _before_quote(transcript, r["t0"]),
         }
-        for n, r in enumerate(_bundled(rest)[:SURPRISE_MAX], start=1)
+        for n, r in enumerate(_bundled(askable)[:SURPRISE_MAX], start=1)
     ]
     return {
         "schema_version": 1,
