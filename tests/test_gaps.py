@@ -287,8 +287,11 @@ def test_fixed_shape_of_the_previous_version_stays_valid():
 def test_new_output_always_has_the_optional_fields():
     """任意にしたのは前の版を読むため。新しい出力からは欠けない。"""
     found = compare([item(1, 10.0)], doc(react(1, 11.0, 12.0, 1)))
-    run_schema = json.loads((Path(__file__).parents[1] / "schemas" / "run.json").read_text())
+    root = Path(__file__).parents[1] / "schemas"
+    run_schema = json.loads((root / "run.json").read_text())
     assert set(gaps.counts(found)) == set(run_schema["properties"]["gaps"]["properties"])
+    gaps_schema = json.loads((root / "gaps.json").read_text())
+    assert set(found) == set(gaps_schema["properties"])
     assert set(ADDED_LATER) <= set(found) and set(ADDED_LATER) <= set(compare([], doc()))
 
 
