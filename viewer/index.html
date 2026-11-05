@@ -57,7 +57,7 @@ table { border-collapse: collapse; font-size: 13px; }
 th, td { border-bottom: 1px solid var(--line); padding: 4px 12px 4px 0; text-align: left; }
 .held { opacity: .6; }
 .answer { display: grid; gap: 8px; margin-top: 12px; max-width: 720px; }
-.answer input, .answer textarea { font: inherit; padding: 10px; width: 100%; box-sizing: border-box; }
+.answer input, .answer textarea, .answer select { font: inherit; padding: 10px; width: 100%; box-sizing: border-box; }
 .answer button { font: inherit; padding: 8px 16px; margin-right: 8px; }
 .script-line { margin: 10px 0 0; }
 #seisho .quote { margin: 0; }
@@ -252,6 +252,7 @@ function renderCards(d) {
   const cards = d.guide?.cards || [];
   if (!d.guide) root.append(el("p", {}, "札はまだありません。netacho guide で作ります。"));
   else if (!cards.length) root.append(el("p", {}, "札に出す項目はまだありません。"));
+  if (TOKEN) root.append(el("h2", {}, "札に出す"), decideForm(d));
   for (const c of cards) {
     root.append(card("script", "スクリプトの転記", `${c.order}. ${c.copied_fields.scene_title}（${POSITION[c.copied_fields.position] || ""}）`,
       el("p", { class: "big" }, c.text),
@@ -261,16 +262,35 @@ function renderCards(d) {
 
 const TOKEN = new URLSearchParams(location.search).get("t");
 
-async function send(path, body, note) {
+async function send(path, body, note, tab = "#deshi") {
   note.textContent = "";
   try {
     const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Netacho-Token": TOKEN }, body: JSON.stringify(body) });
     const doc = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(doc.error || String(res.status));
-    if (doc.warning) { note.textContent = doc.warning; return; }
-    history.replaceState(null, "", location.search + "#deshi");
+    if (doc.warning) { note.textContent = doc.warning; return true; }
+    history.replaceState(null, "", location.search + tab);
     location.reload();
-  } catch (e) { note.textContent = `保存できませんでした：${e.message}`; }
+    return true;
+  } catch (e) { note.textContent = `保存できませんでした：${e.message}`; return false; }
+}
+
+function decideForm(d) {
+  const scene = el("select", { "aria-label": "場面" }, ...d.scenes.map(s => el("option", { value: s.id }, s.title)));
+  const speaker = el("input", { type: "text", "aria-label": "答える人", placeholder: "決める人" });
+  speaker.value = sessionStorage.getItem("netacho-speaker") || "";
+  const words = el("textarea", { rows: "3", "aria-label": "言葉", placeholder: "演者の言葉（このまま型に残ります）" });
+  const text = el("input", { type: "text", "aria-label": "札の文", placeholder: "札の文（このまま札に写します）" });
+  const why = el("input", { type: "text", "aria-label": "理由", placeholder: "理由" });
+  const note = el("p", { class: "quote", role: "status" });
+  const ok = el("button", { type: "button" }, "札に出す");
+  ok.addEventListener("click", async () => {
+    ok.disabled = true;  // 2 度押しで「同じ札がある」と出さない。保存できたら押し直さない
+    sessionStorage.setItem("netacho-speaker", speaker.value);
+    const saved = await send("/api/decide", { scene: scene.value, position: "within", speaker: speaker.value, words: words.value, card: text.value, why: why.value }, note, "#cards");
+    if (!saved) ok.disabled = false;
+  });
+  return el("div", { class: "answer" }, scene, speaker, words, text, why, el("div", {}, ok), note);
 }
 
 function answerForm(q) {

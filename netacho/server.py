@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlsplit
 from . import performer, pipeline, store, view
 
 MAX_BODY = 64 * 1024
+POSITIONS = ("before", "within", "after")
 CLIP_BEFORE, CLIP_AFTER = 12.0, 6.0  # 笑いの前後に聞かせる長さ。秒
 FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
@@ -157,7 +158,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, data, kind)
 
     def do_POST(self) -> None:  # noqa: N802
-        action = {"/api/answer": self._answer, "/api/dismiss": self._dismiss}.get(urlsplit(self.path).path)
+        actions = {"/api/answer": self._answer, "/api/dismiss": self._dismiss, "/api/decide": self._decide}
+        action = actions.get(urlsplit(self.path).path)
         if action is None or not self._write_ok():
             self._json(403, {"error": "受け付けない"})
             return
@@ -196,7 +198,13 @@ class Handler(BaseHTTPRequestHandler):
             after()
             view.write(self.server.neta, self.server.koza_id, self.server.out)
         except Exception:
-            self._json(200, {"ok": True, "warning": "保存しましたが、画面を更新できませんでした"})
+            self._json(
+                200,
+                {
+                    "ok": True,
+                    "warning": "保存しましたが、札や画面を更新できませんでした。netacho guide で作り直せます",
+                },
+            )
             return
         self._json(200, {"ok": True})
 
@@ -209,6 +217,22 @@ class Handler(BaseHTTPRequestHandler):
             words=_text(body, "words"),
         )
         return lambda: pipeline.after_performer(neta)
+
+    def _decide(self, body: dict) -> Callable[[], None]:
+        neta = self.server.neta
+        position = _text(body, "position")
+        if position not in POSITIONS:
+            raise performer.PerformerError("位置が違う")
+        performer.decide(
+            neta,
+            speaker=_text(body, "speaker"),
+            words=_text(body, "words"),
+            card=_text(body, "card"),
+            why=_text(body, "why"),
+            scene=_text(body, "scene"),
+            position=position,
+        )
+        return lambda: pipeline.after_performer(neta, first_card=True)
 
     def _dismiss(self, body: dict) -> Callable[[], None]:
         neta = self.server.neta
