@@ -6,7 +6,7 @@ from pathlib import Path
 from fakes import ScriptedClient, text_of
 from test_build import K, N, P, draft, draft_item, verdicts
 
-from netacho import gaps, performer, pipeline, reactions, render, store, view
+from netacho import gaps, performer, pipeline, reactions, render, schema, store, view
 from netacho.budget import Budget
 
 
@@ -227,12 +227,12 @@ ADDED_LATER = ("weak", "peak_rate", "baseline_rate", "peak_n")
 
 def to_previous_version(kdir):
     """run.json と gaps.json を、足した欄の無い 1 つ前の版の形にする。"""
-    for name, schema, key in (("run.json", "run", "gaps"), ("gaps.json", "gaps", None)):
-        doc_ = store.read(kdir / name, schema)
+    for name, kind, key in (("run.json", "run", "gaps"), ("gaps.json", "gaps", None)):
+        doc_ = store.read(kdir / name, kind)
         target = doc_[key] if key else doc_
         for k in ADDED_LATER:
             target.pop(k)
-        store.write(kdir / name, doc_, schema)
+        store.write(kdir / name, doc_, kind)
 
 
 def test_previous_version_can_run_note_again(data, tmp_path):
@@ -259,7 +259,29 @@ def test_what_was_not_measured_is_not_written_as_zero():
     for k in ADDED_LATER:
         found.pop(k)
     text = "\n".join(render.gaps_markdown(found, {}))
-    assert "弱い山" not in text and "山がある割合" not in text
+    assert "弱い山 " not in text and "山がある割合" not in text
+    assert "前の版の数え方" in text  # 今の版の空振りと同じ数字に読めないように
+
+
+def test_fixed_shape_of_the_previous_version_stays_valid():
+    """e8b99e2 の形をそのまま持つ。次に欄を足すときも、これが通ること。"""
+    old_gaps = {
+        "schema_version": 1,
+        "koza_id": "k",
+        "judged": True,
+        "hits": [],
+        "misses": [{"item_id": "item-0001"}],
+        "surprises": [],
+        "surprise_total": 0,
+        "laughs_total": 0,
+        "laughs_hit": 0,
+        "window_share": 0.1,
+    }
+    old_counts = dict.fromkeys(("hit", "miss", "surprise", "laughs_total", "laughs_hit"), 0)
+    schema.validate(old_gaps, "gaps")
+    old_run = {"schema_version": 1, "koza_id": "k", "roles": [], "total_cost_usd": 0.0, "total_seconds": 0.0}
+    old_run["gaps"] = {**old_counts, "hit_rate": None, "window_share": 0.1}
+    schema.validate(old_run, "run")
 
 
 def test_new_output_always_has_the_optional_fields():
