@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "aligner",
+  "description": "対応づけ役の出力",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "passages"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "passages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relation",
+          "a_first",
+          "a_last",
+          "b_first",
+          "b_last"
+        ],
+        "properties": {
+          "relation": {
+            "enum": [
+              "same",
+              "changed",
+              "only_a",
+              "only_b"
+            ]
+          },
+          "a_first": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "a_last": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "b_first": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "b_last": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

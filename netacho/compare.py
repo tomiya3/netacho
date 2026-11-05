@@ -1,9 +1,11 @@
-"""同じ演目の 2 本を、清書の台詞で揃えて比べる。LLM は使わない。
+"""同じ演目の 2 本を比べる。LLM は使わない。
 
-比べるのは笑いの量ではなくタイミング。録音の条件で量は変わるので、スコアの大きさは使わず、
-各高座の中で山があるかだけを見る。時刻や場面の ID には頼らず、清書の文字で 2 本を揃える。
-検出の窓は 5 秒、刻みは 2 秒なので、比べられるのは「どの台詞の後か」まで。
-未検出を「受けなかった」と扱わない。
+どの台詞とどの台詞が同じくだりかは、対応づけ役が読む。話し言葉は毎回変わるので、文字の一致では揃わない。
+ここでは、その対応が実在して順番どおりかを確かめ、笑い、間、尺を録音の実測から付ける。
+役に笑いの位置は見せない。結果から対応を逆算させないため。
+
+比べるのは笑いの量ではなくタイミング。スコアの大きさは使わず、各高座の中で山があるかだけを見る。
+未検出を「受けなかった」と扱わない。片方に笑いがほぼ無ければ稽古と見て、本番の笑いを軸に比べる。
 """
 
 from __future__ import annotations
@@ -11,28 +13,25 @@ from __future__ import annotations
 import hashlib
 import unicodedata
 from dataclasses import dataclass, field
-from difflib import SequenceMatcher
 
 from .evidence import MAX_MA_SEC
 from .reactions import laugh_humps
 
-MIN_BLOCK = 12  # これより短い一致は、決まり文句の偶然として使わない。字数
-MIN_SHARE = 0.3  # 文字がこれしか揃わなければ、2 本を比べない
-SAME_SEC = 6.0  # 笑いがこの範囲なら同じ所。窓の幅と刻みから
-MOVED_SEC = 20.0  # この範囲なら、来る所がずれたと見る
-KEPT_RATIO = 0.9  # 行の文字がこれだけ揃えば、言葉を変えていない
+MIN_SHARE = 0.3  # 短いほうの文字のうち、対応の付いた割合。これ未満なら比べない
+SAME_SEC = 6.0  # くだりの頭からの秒の差がこの範囲なら、同じ所の笑い。窓の幅と刻みから
+AFTER_SEC = 4.0  # くだりの言い終わりの後、この秒までの笑いは、そのくだりの笑い
 MA_DIFF = 0.8  # 一言の前の間の差。秒
-MA_NEAR = 1.0  # 行の始まりのこの範囲の無音を、一言の前の間と見る。区間の切れ目が揺れる分。秒
-MIN_WORDS = 30  # 言葉を変えた所と見る最小の字数。清書の揺れを拾わない長さ
+MA_NEAR = 1.0  # 行の始まりのこの範囲で終わる無音を、一言の前の間と見る。秒
+PRACTICE_HUMPS = 5  # 笑いの山がこれ未満で、もう 1 本より十分少なければ、客のいない稽古と見る
+PRACTICE_RATIO = 0.2
 SPOT_GAP = 30.0  # 問う所をこれより近づけない。秒
-ROTATION = ("moved", "ma", "kept", "one_side", "words")
-# 言葉の差は清書の揺れの偽物が混ざる。本物の 2 本で測るまで、画面に出すだけで問いにしない
-ASK_KINDS = ("moved", "ma", "kept", "one_side")
 QUOTE_MAX = 60
+ROTATION = ("added", "moved", "ma", "words", "kept", "one_side")
+RELATIONS = ("same", "changed", "only_a", "only_b")
 
 
 def plain(text: str) -> str:
-    """揃えるための文字。句読点と空白を除く。"""
+    """字数を数えるための文字。句読点と空白を除く。"""
     return "".join(c for c in unicodedata.normalize("NFKC", text) if c.isalnum())
 
 
@@ -44,18 +43,24 @@ class Side:
     lines: list[dict]
     humps: list[float]
     silences: list[list[float]] = field(default_factory=list)  # VAD の声の無い所
-    chars: str = ""
-    owner: list[int] = field(default_factory=list)
+    index: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        for n, line in enumerate(self.lines):
-            text = plain(line["text"])
-            self.chars += text
-            self.owner += [n] * len(text)
+        self.index = {line["seg_id"]: n for n, line in enumerate(self.lines)}
 
-    def line_at(self, t: float) -> int | None:
-        """t の時点で語られていた、または直前に語り終えた行。"""
-        found = None
+    def size(self, first: int, last: int) -> int:
+        return sum(len(plain(line["text"])) for line in self.lines[first : last + 1])
+
+    @property
+    def total(self) -> int:
+        return self.size(0, len(self.lines) - 1)
+
+    def laughs_in(self, first: int, last: int) -> list[float]:
+        t0, t1 = self.lines[first]["start"], self.lines[last]["end"] + AFTER_SEC
+        return [h for h in self.humps if t0 <= h < t1]
+
+    def line_at(self, t: float) -> int:
+        found = 0
         for n, line in enumerate(self.lines):
             if line["start"] > t:
                 break
@@ -88,47 +93,35 @@ def side_of(koza_id: str, transcript: dict, lines: dict, reactions: dict, timeli
     return Side(koza_id, rows, humps, silences_of(transcript.get("vad") or []))
 
 
-@dataclass
-class Alignment:
-    share: float
-    pairs: dict[int, int]  # a の行 → いちばん多く揃った b の行
-    matched: dict[int, float]  # a の行のうち、揃った文字の割合
-    gaps: list[tuple[int, int, int, int]]  # 揃わなかった所。a の始まりと終わり、b の始まりと終わり
+def check_passages(draft: dict, a: Side, b: Side) -> tuple[list[dict], int]:
+    """役の対応を確かめる。(残ったくだり, 落とした数)。実在しない区間と、順番の前後した区間は落とす。"""
+    kept: list[dict] = []
+    dropped = 0
+    last_a = last_b = -1
+    for row in draft["passages"]:
+        rel = row["relation"]
+        need_a, need_b = rel != "only_b", rel != "only_a"
+        span_a = _span(a, row["a_first"], row["a_last"]) if need_a else None
+        span_b = _span(b, row["b_first"], row["b_last"]) if need_b else None
+        bad = (need_a and span_a is None) or (need_b and span_b is None)
+        if bad or (span_a and span_a[0] <= last_a) or (span_b and span_b[0] <= last_b):
+            dropped += 1
+            continue
+        last_a = span_a[1] if span_a else last_a
+        last_b = span_b[1] if span_b else last_b
+        kept.append({"relation": rel, "a": span_a, "b": span_b})
+    return kept, dropped
 
 
-def align(a: Side, b: Side) -> Alignment:
-    blocks = [
-        m
-        for m in SequenceMatcher(None, a.chars, b.chars, autojunk=False).get_matching_blocks()
-        if m.size >= MIN_BLOCK
-    ]
-    total = len(a.chars) + len(b.chars)
-    share = 2 * sum(m.size for m in blocks) / total if total else 0.0
-    votes: dict[int, dict[int, int]] = {}
-    for m in blocks:
-        for k in range(m.size):
-            row = votes.setdefault(a.owner[m.a + k], {})
-            j = b.owner[m.b + k]
-            row[j] = row.get(j, 0) + 1
-    sizes = {n: len(plain(line["text"])) for n, line in enumerate(a.lines)}
-    pairs = {i: max(row, key=row.get) for i, row in votes.items()}
-    matched = {i: sum(row.values()) / sizes[i] for i, row in votes.items()}
-    gaps = []
-    for left, right in zip(blocks, blocks[1:], strict=False):
-        gaps.append((left.a + left.size, right.a, left.b + left.size, right.b))
-    return Alignment(round(share, 3), pairs, matched, gaps)
+def _span(side: Side, first: str | None, last: str | None) -> tuple[int, int] | None:
+    if first not in side.index or last not in side.index or side.index[first] > side.index[last]:
+        return None
+    return side.index[first], side.index[last]
 
 
 def _quote(side: Side, n: int) -> dict:
     line = side.lines[n]
     return {"t": line["start"], "end": line["end"], "quote": line["text"][-QUOTE_MAX:]}
-
-
-def _expected(a: Side, b: Side, i: int, j: int, t: float) -> float:
-    """a の時刻 t に当たる、b の時刻。行の中は始まりから、行の後は終わりからの秒で写す。"""
-    if t > a.lines[i]["end"]:  # 笑いは言い終えた後に来ることが多い
-        return b.lines[j]["end"] + t - a.lines[i]["end"]
-    return b.lines[j]["start"] + min(t - a.lines[i]["start"], b.lines[j]["end"] - b.lines[j]["start"])
 
 
 def _pause_before(side: Side, n: int) -> float:
@@ -146,153 +139,167 @@ def _laugh_before(side: Side, n: int) -> bool:
     return any(t0 <= h < t1 for h in side.humps)
 
 
-def _laugh_spot(a: Side, b: Side, al: Alignment, t: float) -> dict | None:
-    i = a.line_at(t)
-    if i is None or i not in al.pairs:
+def _ma(a: Side, b: Side, i: int, j: int) -> dict | None:
+    """くだりの頭の間の差。前に笑いがあれば、笑いの長さが混ざるので言わない。"""
+    if _laugh_before(a, i) or _laugh_before(b, j):
         return None
-    j = al.pairs[i]
-    expected = _expected(a, b, i, j, t)
-    near = min(b.humps, key=lambda h: abs(h - expected), default=None)
-    gap = None if near is None else abs(near - expected)
-    spot = {"scene_id": a.lines[i]["scene_id"], "a": _quote(a, i), "b": _quote(b, j)}
-    if gap is None or gap > MOVED_SEC:
-        return {**spot, "kind": "one_side", "laugh_a": t, "laugh_b": None}
-    if gap > SAME_SEC:
-        return {**spot, "kind": "moved", "laugh_a": t, "laugh_b": near}
     ma_a, ma_b = _pause_before(a, i), _pause_before(b, j)
-    joined = al.pairs.get(i - 1) == j - 1  # 前の行も揃っているときだけ、同じ切れ目の間と言える
-    quiet = not _laugh_before(a, i) and not _laugh_before(b, j)
-    if joined and quiet and abs(ma_a - ma_b) >= MA_DIFF:
-        return {**spot, "kind": "ma", "laugh_a": t, "laugh_b": near, "ma_a": ma_a, "ma_b": ma_b}
-    if al.matched.get(i, 0.0) >= KEPT_RATIO:
-        return {**spot, "kind": "kept", "laugh_a": t, "laugh_b": near}
-    return {**spot, "kind": "words", "laugh_a": t, "laugh_b": near}
+    return {"ma_a": ma_a, "ma_b": ma_b} if abs(ma_a - ma_b) >= MA_DIFF else None
 
 
-def _word_spots(a: Side, b: Side, al: Alignment) -> list[dict]:
-    """笑いに関わらず、言葉を変えた所。笑いの近くの言葉の差は、笑いの比較の方で拾う。"""
-    spots = []
-    for a0, a1, b0, b1 in al.gaps:
-        if a1 - a0 < MIN_WORDS or b1 - b0 < MIN_WORDS:
-            continue
-        i, j = a.owner[a0], b.owner[b0]
-        spots.append(
-            {
-                "kind": "words",
-                "scene_id": a.lines[i]["scene_id"],
-                "a": _quote(a, i),
-                "b": _quote(b, j),
-                "laugh_a": None,
-                "laugh_b": None,
-            }
-        )
-    return spots
+def _spot(
+    kind: str, a: Side, i: int, b: Side, j: int | None, laugh_a, laugh_b, extra: dict | None = None
+) -> dict:
+    return {
+        "kind": kind,
+        "scene_id": a.lines[i]["scene_id"],
+        "a": _quote(a, i),
+        "b": None if j is None else _quote(b, j),
+        "laugh_a": laugh_a,
+        "laugh_b": laugh_b,
+        **(extra or {}),
+    }
 
 
-def _one_side_b(a: Side, b: Side, al: Alignment) -> list[dict]:
-    """2 本目でだけ山がある所。1 本目の側の行を逆に引く。"""
-    back: dict[int, int] = {}
-    for i, j in al.pairs.items():
-        back.setdefault(j, i)
+def _paired_spots(p: dict, a: Side, b: Side, practice: bool) -> list[dict]:
+    """同じくだりの所。笑いがあればタイミングを見る。"""
+    i0, i1 = p["a"]
+    j0, j1 = p["b"]
+    same_words = "kept" if p["relation"] == "same" else "words"
+    head_a, head_b = a.lines[i0]["start"], b.lines[j0]["start"]
+    laughs_a, laughs_b = a.laughs_in(i0, i1), b.laughs_in(j0, j1)
+    if not laughs_a and not laughs_b:
+        return [_spot("changed", a, i0, b, j0, None, None)] if p["relation"] == "changed" else []
     spots: list[dict] = []
-    for t in b.humps:
-        j = b.line_at(t)
-        if j is None or j not in back:
+    used: set[float] = set()
+    for t in laughs_a:
+        i = a.line_at(t)
+        if practice:  # 稽古に笑いが無いのは当たり前。本番の笑いを軸に、言葉と間を見る
+            ma = _ma(a, b, i0, j0)
+            kind = "ma" if ma else same_words
+            spots.append(_spot(kind, a, i, b, j0, t, None, ma))
             continue
-        i = back[j]
-        expected = _expected(b, a, j, i, t)
-        if all(abs(h - expected) > MOVED_SEC for h in a.humps):
-            spots.append(
-                {
-                    "kind": "one_side",
-                    "scene_id": a.lines[i]["scene_id"],
-                    "a": _quote(a, i),
-                    "b": _quote(b, j),
-                    "laugh_a": None,
-                    "laugh_b": t,
-                }
-            )
+        near = min(laughs_b, key=lambda h: abs((h - head_b) - (t - head_a)), default=None)
+        if near is None:
+            spots.append(_spot("one_side", a, i, b, j0, t, None))
+            continue
+        used.add(near)
+        if abs((near - head_b) - (t - head_a)) > SAME_SEC:
+            spots.append(_spot("moved", a, i, b, b.line_at(near), t, near))
+            continue
+        ma = _ma(a, b, i0, j0)
+        kind = "ma" if ma else same_words
+        spots.append(_spot(kind, a, i, b, b.line_at(near), t, near, ma))
+    if not practice:
+        for t in laughs_b:
+            if t not in used:
+                spots.append(_spot("one_side", a, i0, b, b.line_at(t), None, t))
     return spots
-
-
-def scene_rows(a: Side, al: Alignment, titles: dict) -> list[dict]:
-    """場面ごとに、どれだけ揃ったかと、1 本目の尺。"""
-    rows: dict[str, dict] = {}
-    for n, line in enumerate(a.lines):
-        if line["scene_id"] is None:
-            continue
-        row = rows.setdefault(
-            line["scene_id"], {"chars": 0, "matched": 0.0, "t0": line["start"], "t1": line["end"]}
-        )
-        size = len(plain(line["text"]))
-        row["chars"] += size
-        row["matched"] += size * al.matched.get(n, 0.0)
-        row["t1"] = max(row["t1"], line["end"])
-    return [
-        {
-            "scene_id": sid,
-            "title": titles.get(sid, ""),
-            "seconds": round(row["t1"] - row["t0"], 1),
-            "share": round(row["matched"] / row["chars"], 3) if row["chars"] else 0.0,
-            "compared": row["chars"] > 0 and row["matched"] / row["chars"] >= MIN_SHARE,
-        }
-        for sid, row in rows.items()
-    ]
-
-
-def _spot_id(spot: dict) -> str:
-    """中身から決める id。やり直しても、問いが別の所を指さないように。"""
-    key = f"{spot['kind']}|{spot['a']['t']}|{spot['b']['t']}"
-    return f"spot-{int(hashlib.sha256(key.encode()).hexdigest()[:8], 16)}"
 
 
 def _unique(spots: list[dict]) -> list[dict]:
-    """同じ行の組は 1 件にする。片方だけの笑いは、両側から同じ所として見つかる。"""
+    """同じ所は 1 件にする。"""
     seen: set[tuple] = set()
     out = []
     for s in spots:
-        key = (s["kind"], s["a"]["t"], s["b"]["t"])
+        key = (s["kind"], s["a"]["t"], (s["b"] or {}).get("t"))
         if key not in seen:
             seen.add(key)
             out.append(s)
     return out
 
 
-def compare(a: Side, b: Side, titles: dict) -> dict:
-    """2 本を比べる。揃わなければ `comparable` を false にして、所は出さない。"""
-    al = align(a, b)
-    laughs = bool(a.humps and b.humps)  # 片方に山が 1 つも無ければ、検出の問題かもしれないので比べない
+def _spot_id(spot: dict) -> str:
+    """中身から決める id。やり直しても、問いが別の所を指さないように。"""
+    key = f"{spot['kind']}|{spot['a']['t']}|{(spot['b'] or {}).get('t')}"
+    return f"spot-{int(hashlib.sha256(key.encode()).hexdigest()[:8], 16)}"
+
+
+def is_practice(a: Side, b: Side) -> bool:
+    """2 本目に笑いがほぼ無いか。客のいない稽古なら、笑いの有無を比べても意味が無い。"""
+    return len(b.humps) < PRACTICE_HUMPS and len(b.humps) < PRACTICE_RATIO * len(a.humps)
+
+
+def compare(a: Side, b: Side, draft: dict, titles: dict) -> dict:
+    """役の対応に、録音の実測を付ける。揃わなければ `comparable` を false にして、所は出さない。"""
+    passages, dropped = check_passages(draft, a, b)
+    paired = [p for p in passages if p["a"] and p["b"]]
+    covered = sum(b.size(*p["b"]) for p in paired)
+    short = min(a.total, b.total)
+    share = round(min(covered / short, 1.0), 3) if short else 0.0
+    laughs = bool(a.humps)
+    practice = laughs and is_practice(a, b)
     head = {
         "schema_version": 1,
         "koza_a": a.koza_id,
         "koza_b": b.koza_id,
-        "share": al.share,
-        "comparable": al.share >= MIN_SHARE,
-        "laughs_compared": laughs,
+        "share": share,
+        "comparable": share >= MIN_SHARE,
+        "laughs_compared": laughs and (practice or bool(b.humps)),
+        "practice": practice,
         "humps_a": len(a.humps),
         "humps_b": len(b.humps),
+        "passages": {rel: sum(p["relation"] == rel for p in passages) for rel in RELATIONS},
+        "dropped": dropped,
     }
     if not head["comparable"]:
         return {**head, "scenes": [], "spots": [], "counts": {}}
-    scenes = scene_rows(a, al, titles)
-    shut = {s["scene_id"] for s in scenes if not s["compared"]}
-    found = _word_spots(a, b, al)
-    if laughs:
-        found = [s for s in (_laugh_spot(a, b, al, t) for t in a.humps) if s is not None] + found
-        found += _one_side_b(a, b, al)
-    found = [s for s in found if s["scene_id"] is not None and s["scene_id"] not in shut]
+    found: list[dict] = []
+    for p in passages:
+        if not head["laughs_compared"] and p["relation"] == "changed":
+            found.append(_spot("changed", a, p["a"][0], b, p["b"][0], None, None))
+        elif not head["laughs_compared"]:
+            continue
+        elif p["a"] and p["b"]:
+            found += _paired_spots(p, a, b, practice)
+        elif p["a"]:
+            first, last = p["a"]
+            for t in a.laughs_in(first, last)[:1]:
+                found.append(_spot("added", a, a.line_at(t), b, None, t, None))
+    found = [s for s in found if s["scene_id"] is not None]
     found.sort(key=lambda s: s["a"]["t"])
     spots = [{"id": _spot_id(s), **s} for s in _unique(found)]
-    counts = {kind: sum(s["kind"] == kind for s in spots) for kind in ROTATION}
-    return {**head, "scenes": scenes, "spots": spots, "counts": counts}
+    kinds = (*ROTATION, "changed")
+    return {
+        **head,
+        "scenes": scene_rows(a, paired, titles),
+        "spots": spots,
+        "counts": {kind: sum(s["kind"] == kind for s in spots) for kind in kinds},
+    }
+
+
+def scene_rows(a: Side, paired: list[dict], titles: dict) -> list[dict]:
+    """場面ごとに、どれだけ対応が付いたかと、1 本目の尺。"""
+    shared = {n for p in paired for n in range(p["a"][0], p["a"][1] + 1)}
+    rows: dict[str, dict] = {}
+    for n, line in enumerate(a.lines):
+        if line["scene_id"] is None:
+            continue
+        row = rows.setdefault(
+            line["scene_id"], {"chars": 0, "shared": 0, "t0": line["start"], "t1": line["end"]}
+        )
+        size = len(plain(line["text"]))
+        row["chars"] += size
+        row["shared"] += size if n in shared else 0
+        row["t1"] = max(row["t1"], line["end"])
+    return [
+        {
+            "scene_id": sid,
+            "title": titles.get(sid, ""),
+            "seconds": round(row["t1"] - row["t0"], 1),
+            "share": round(row["shared"] / row["chars"], 3) if row["chars"] else 0.0,
+            "compared": row["shared"] > 0,
+        }
+        for sid, row in rows.items()
+    ]
 
 
 def select(spots: list[dict], limit: int) -> list[dict]:
     """問う所を選ぶ。種類を順に回して、1 種類で埋めない。近い所は重ねない。"""
-    queues = {kind: [s for s in spots if s["kind"] == kind] for kind in ASK_KINDS}
+    queues = {kind: [s for s in spots if s["kind"] == kind] for kind in ROTATION}
     chosen: list[dict] = []
     while len(chosen) < limit and any(queues.values()):
-        for kind in ASK_KINDS:
+        for kind in ROTATION:
             while queues[kind]:
                 spot = queues[kind].pop(0)
                 if all(abs(spot["a"]["t"] - c["a"]["t"]) >= SPOT_GAP for c in chosen):

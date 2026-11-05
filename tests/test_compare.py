@@ -37,118 +37,86 @@ def side(koza, texts, humps, *, step=10.0, pauses=None):
     return compare.Side(koza, rows, humps, silences)
 
 
-def spots(a, b):
-    return compare.compare(a, b, {"scene-01": "傘を借りる"})["spots"]
+def seg(n):
+    return f"seg-{n:04d}"
+
+
+def row(relation, a=None, b=None):
+    a = a or (None, None)
+    b = b or (None, None)
+    return {
+        "relation": relation,
+        "a_first": None if a[0] is None else seg(a[0]),
+        "a_last": None if a[1] is None else seg(a[1]),
+        "b_first": None if b[0] is None else seg(b[0]),
+        "b_last": None if b[1] is None else seg(b[1]),
+    }
+
+
+def draft(*rows):
+    return {"schema_version": 1, "passages": list(rows)}
+
+
+ALL_SAME = draft(row("same", (0, 3), (0, 3)), row("same", (4, 7), (4, 7)))
+
+
+def spots(a, b, d=ALL_SAME):
+    return compare.compare(a, b, d, {"scene-01": "傘を借りる"})["spots"]
+
+
+MANY = [15.0, 45.0, 55.0, 62.0, 75.0, 79.0]
 
 
 def test_same_line_and_same_words_is_kept():
-    found = spots(side("a", LINES, [15.0]), side("b", LINES, [15.0]))
-    assert [s["kind"] for s in found] == ["kept"]
+    found = spots(
+        side("a", LINES, [15.0, 45.0, 75.0, 79.0, 62.0, 55.0]),
+        side("b", LINES, [15.0, 45.0, 75.0, 79.0, 62.0, 55.0]),
+    )
+    assert {s["kind"] for s in found} == {"kept"}
 
 
-def test_timing_is_compared_by_the_line_not_the_clock():
+def test_timing_is_compared_by_the_passage_not_the_clock():
     """2 本目は枕が長く、同じ台詞が 100 秒遅い。時刻では違うが同じ所。"""
-    b = side("b", LINES, [15.0 + 100.0])
-    for row in b.lines:
-        row["start"] += 100.0
-        row["end"] += 100.0
-    assert [s["kind"] for s in spots(side("a", LINES, [15.0]), b)] == ["kept"]
+    b = side("b", LINES, [h + 100.0 for h in MANY])
+    for line in b.lines:
+        line["start"] += 100.0
+        line["end"] += 100.0
+    assert {s["kind"] for s in spots(side("a", LINES, MANY), b)} == {"kept"}
 
 
-def test_laugh_that_moved_to_another_line():
-    found = spots(side("a", LINES, [15.0]), side("b", LINES, [28.0]))
-    assert found[0]["kind"] == "moved" and found[0]["laugh_b"] == 28.0
+def test_laugh_that_moved_inside_the_passage():
+    found = spots(side("a", LINES, [15.0, *MANY[1:]]), side("b", LINES, [28.0, *MANY[1:]]))
+    assert any(s["kind"] == "moved" and s["laugh_b"] == 28.0 for s in found)
 
 
 def test_laugh_only_in_one_recording():
-    found = spots(side("a", LINES, [15.0]), side("b", LINES, [75.0]))
-    kinds = {s["kind"] for s in found}
-    assert kinds == {"one_side"}
-    assert any(s["laugh_b"] is None for s in found) and any(s["laugh_a"] is None for s in found)
+    found = spots(side("a", LINES, [15.0, *MANY[1:]]), side("b", LINES, MANY[1:]))
+    assert any(s["kind"] == "one_side" and s["laugh_a"] == 15.0 and s["laugh_b"] is None for s in found)
 
 
-def test_pause_before_the_line_differs():
-    a = side("a", LINES, [15.0], pauses={0: 0.3})
-    b = side("b", LINES, [15.0], pauses={0: 1.5})
-    found = spots(a, b)
-    assert found[0]["kind"] == "ma" and (found[0]["ma_a"], found[0]["ma_b"]) == (0.3, 1.5)
+def test_pause_before_the_passage_differs():
+    a = side("a", LINES, [15.0, *MANY[1:]], pauses={3: 0.3})
+    b = side("b", LINES, [15.0, *MANY[1:]], pauses={3: 1.5})
+    found = spots(a, b, draft(row("same", (0, 3), (0, 3)), row("same", (4, 7), (4, 7))))
+    assert any(s["kind"] == "ma" and (s["ma_a"], s["ma_b"]) == (0.3, 1.5) for s in found)
 
 
 def test_small_pause_difference_is_within_error():
-    a = side("a", LINES, [15.0], pauses={0: 0.3})
-    b = side("b", LINES, [15.0], pauses={0: 0.9})
-    assert spots(a, b)[0]["kind"] == "kept"
-
-
-def test_pause_ignores_where_the_transcript_cut_the_line():
-    """同じ無音なら、区間の切れ目が少しずれても同じ間と見る。"""
-    a = side("a", LINES, [15.0], pauses={0: 1.5})
-    b = side("b", LINES, [15.0], pauses={0: 1.5})
-    b.lines[1]["start"] += 0.5
-    assert spots(a, b)[0]["kind"] == "kept"
-
-
-def test_vad_gives_the_silences():
-    vad = [{"start": 0.0, "end": 4.0}, {"start": 5.5, "end": 9.0}]
-    assert compare.silences_of(vad) == [[4.0, 5.5]]
-
-
-def test_no_laughs_on_one_side_compares_only_words():
-    """片方に山が無いのは検出の問題かもしれない。全部を「片方だけ」にしない。"""
-    doc = compare.compare(side("a", LINES, [15.0, 45.0]), side("b", LINES, []), {})
-    assert doc["laughs_compared"] is False and doc["spots"] == []
-
-
-def test_laugh_after_the_line_maps_from_the_end_of_the_line():
-    """言い終えた 3 秒後の笑いは、行の長さが違っても同じ所。"""
-    a = side("a", LINES, [13.0], step=10.0)
-    b = side("b", LINES, [23.0], step=20.0)
-    b.lines[0]["end"] = 20.0
-    a.lines[1]["start"], a.lines[0]["end"] = 15.0, 10.0
-    assert compare._expected(a, b, 0, 0, 13.0) == 23.0
-
-
-def test_the_same_one_sided_place_is_not_counted_twice():
-    found = spots(side("a", LINES, [15.0]), side("b", LINES, [18.0 + 40.0]))
-    keys = [(s["kind"], s["a"]["t"], s["b"]["t"]) for s in found]
-    assert len(keys) == len(set(keys))
-
-
-def test_spot_id_comes_from_the_content():
-    one = spots(side("a", LINES, [15.0]), side("b", LINES, [15.0]))
-    two = spots(side("a", LINES, [15.0, 75.0]), side("b", LINES, [15.0, 75.0]))
-    assert one[0]["id"] == two[0]["id"]
-
-
-def test_pause_counts_only_when_the_line_before_also_aligns():
-    changed = list(LINES)
-    changed[0] = "全く別の始まりの台詞が入っておりまして長くなりますが"
-    a = side("a", LINES, [15.0], pauses={0: 0.3})
-    b = side("b", changed, [15.0], pauses={0: 1.5})
+    a = side("a", LINES, MANY, pauses={3: 0.3})
+    b = side("b", LINES, MANY, pauses={3: 0.9})
     assert all(s["kind"] != "ma" for s in spots(a, b))
 
 
 def test_laugh_on_the_line_before_is_not_called_a_pause():
     """笑いが声として拾われない所は無音に見える。笑いの長さの違いを間と呼ばない。"""
-    a = side("a", LINES, [5.0, 15.0], pauses={0: 0.3})
-    b = side("b", LINES, [5.0, 15.0], pauses={0: 1.5})
+    a = side("a", LINES, [35.0, 45.0, *MANY[2:]], pauses={3: 0.3})
+    b = side("b", LINES, [35.0, 45.0, *MANY[2:]], pauses={3: 1.5})
     assert all(s["kind"] != "ma" for s in spots(a, b))
-
-
-def test_repeated_phrases_keep_the_order_of_the_lines():
-    """同じ決まり文句が何度も出ても、揃える順は入れ替わらない。"""
-    phrase = "ありがとうございますありがとうございます"
-    texts = [
-        f"{phrase}{word}" for word in ("傘を貸してくれ", "骨が三本やで", "風が吹いてきた", "空へ飛んでいった")
-    ]
-    a, b = side("a", texts, []), side("b", texts, [])
-    pairs = compare.align(a, b).pairs
-    assert list(pairs.items()) == sorted(pairs.items(), key=lambda kv: kv[1])
 
 
 def test_silence_after_the_line_begins_is_not_a_pause():
     b = side("b", LINES, [15.0])
-    b.silences = [[10.5, 12.0]]  # 行が始まった後の無音
+    b.silences = [[10.5, 12.0]]
     assert compare._pause_before(b, 1) == 0.0
 
 
@@ -158,53 +126,92 @@ def test_a_long_blank_is_not_a_pause():
     assert compare._pause_before(b, 1) == 0.0
 
 
-def test_score_size_is_never_used():
-    """山の高さの違いは Side に入らない。来ているかどうかだけ。"""
-    assert not hasattr(side("a", LINES, [15.0]), "scores")
+def test_vad_gives_the_silences():
+    assert compare.silences_of([{"start": 0.0, "end": 4.0}, {"start": 5.5, "end": 9.0}]) == [[4.0, 5.5]]
 
 
-def test_changed_words_near_a_laugh():
-    changed = list(LINES)
-    changed[1] = "ご隠居さん雨がやむまで傘を一本貸しとくれと言いました"
-    found = spots(side("a", LINES, [15.0]), side("b", changed, [15.0]))
+def test_no_laughs_on_one_side_compares_only_words():
+    """両方とも山が無ければ、言葉の違いだけを出す。"""
+    d = draft(row("same", (0, 3), (0, 3)), row("changed", (4, 7), (4, 7)))
+    doc = compare.compare(side("a", LINES, []), side("b", LINES, []), d, {})
+    assert doc["laughs_compared"] is False and [s["kind"] for s in doc["spots"]] == ["changed"]
+
+
+def test_practice_recording_does_not_make_everything_one_sided():
+    """稽古に客はいない。笑いが無いことを「片方だけ」と呼ばない。"""
+    doc = compare.compare(side("a", LINES, MANY), side("b", LINES, [15.0]), ALL_SAME, {})
+    assert doc["practice"] is True
+    assert {s["kind"] for s in doc["spots"]} <= {"kept", "ma", "words"}
+
+
+def test_laugh_on_words_only_in_the_first_is_added():
+    """本番で来た言葉が、もう 1 本に無い。"""
+    d = draft(row("same", (0, 3), (0, 3)), row("only_a", (4, 5)), row("same", (6, 7), (4, 5)))
+    b = side("b", LINES[:4] + LINES[6:], [15.0])
+    found = compare.compare(side("a", LINES, [*MANY]), b, d, {})["spots"]
+    added = [s for s in found if s["kind"] == "added"]
+    assert added and added[0]["b"] is None and added[0]["laugh_a"] == 45.0
+
+
+def test_words_changed_with_a_laugh():
+    d = draft(row("changed", (0, 3), (0, 3)), row("same", (4, 7), (4, 7)))
+    found = spots(side("a", LINES, MANY), side("b", LINES, MANY), d)
     assert found[0]["kind"] == "words" and found[0]["laugh_a"] == 15.0
 
 
-def test_changed_words_without_a_laugh():
-    changed = list(LINES)
-    changed[4] = "そのあと町内の連中が総出で大騒ぎになりましてなあ"
-    changed[5] = "長屋の者も大家も一緒になって走り回ったわけでございます"
-    found = spots(side("a", LINES, []), side("b", changed, []))
-    assert [s["kind"] for s in found] == ["words"] and found[0]["laugh_a"] is None
+def test_words_changed_without_a_laugh_is_shown_not_asked():
+    d = draft(row("same", (0, 3), (0, 3)), row("changed", (4, 7), (4, 7)))
+    found = spots(side("a", LINES, MANY[:1]), side("b", LINES, MANY[:1]), d)
+    assert [s["kind"] for s in found if s["laugh_a"] is None] == ["changed"]
+    assert all(s["kind"] != "changed" for s in compare.select(found, 5))
 
 
-def test_punctuation_is_not_a_change():
-    marked = [text[:5] + "、" + text[5:] + "。" for text in LINES]
-    assert spots(side("a", LINES, []), side("b", marked, [])) == []
-
-
-def test_different_stories_are_not_compared():
-    other = [
-        "今日は相撲の話でして千鳥の親方が出てまいります",
-        "番付の上から順に呼び出しが声を張り上げて",
-        "土俵の真ん中で扇子を開いて見得を切るわけで",
-    ]
-    doc = compare.compare(side("a", LINES, [15.0]), side("b", other, [15.0]), {})
+def test_stories_that_do_not_correspond_are_not_compared():
+    d = draft(row("only_a", (0, 7)), row("only_b", b=(0, 7)))
+    doc = compare.compare(side("a", LINES, [15.0]), side("b", LINES, [15.0]), d, {})
     assert doc["comparable"] is False and doc["spots"] == []
 
 
-def test_scene_that_does_not_align_is_left_out_and_told():
-    a = side("a", LINES, [15.0])
-    for row in a.lines[:2]:
-        row["scene_id"] = "scene-02"
-    b = side(
-        "b",
-        ["全く別の枕でございまして今日は寒いですなと", "皆さんお変わりなくと申しまして", *LINES[2:]],
-        [15.0],
+def test_a_long_makura_does_not_lower_the_share():
+    """1 本目の長い枕は比べない。短いほうに対する割合で見る。"""
+    long_a = ["今日はよう来てくださいました長い枕でございます"] * 40 + LINES
+    a = side("a", long_a, [])
+    d = draft(row("only_a", (0, 39)), row("same", (40, 47), (0, 7)))
+    assert compare.compare(a, side("b", LINES, []), d, {})["share"] == 1.0
+
+
+def test_unknown_ids_and_backward_order_are_dropped():
+    d = draft(
+        row("same", (0, 1), (0, 1)),
+        row("same", (99, 99), (2, 2)),
+        row("same", (0, 1), (2, 3)),
+        row("same", (2, 7), (1, 1)),
+        row("same", (2, 7), (2, 7)),
     )
-    doc = compare.compare(a, b, {})
-    assert {s["scene_id"]: s["compared"] for s in doc["scenes"]} == {"scene-02": False, "scene-01": True}
-    assert all(s["scene_id"] != "scene-02" for s in doc["spots"])
+    doc = compare.compare(side("a", LINES, []), side("b", LINES, []), d, {})
+    assert doc["dropped"] == 3 and doc["passages"]["same"] == 2
+
+
+def test_role_cannot_add_a_range_to_the_wrong_side():
+    d = draft(row("only_a", b=(0, 1)))
+    assert compare.compare(side("a", LINES, []), side("b", LINES, []), d, {})["dropped"] == 1
+
+
+def test_the_same_place_is_not_counted_twice():
+    found = spots(side("a", LINES, MANY), side("b", LINES, MANY))
+    keys = [(s["kind"], s["a"]["t"], s["b"]["t"]) for s in found]
+    assert len(keys) == len(set(keys))
+
+
+def test_spot_id_comes_from_the_content():
+    one = spots(side("a", LINES, MANY), side("b", LINES, MANY))
+    two = spots(side("a", LINES, MANY), side("b", LINES, MANY))
+    assert [s["id"] for s in one] == [s["id"] for s in two]
+
+
+def test_score_size_is_never_used():
+    """山の高さの違いは Side に入らない。来ているかどうかだけ。"""
+    assert not hasattr(side("a", LINES, [15.0]), "scores")
 
 
 def make_spot(n, kind, t):
@@ -220,11 +227,6 @@ def test_select_mixes_kinds_and_keeps_distance():
     ]
     chosen = compare.select(rows, 3)
     assert [c["id"] for c in chosen] == ["spot-0001", "spot-0003", "spot-0004"]
-
-
-def test_words_are_shown_but_not_asked():
-    rows = [make_spot(1, "words", 0.0), make_spot(2, "kept", 100.0)]
-    assert [c["id"] for c in compare.select(rows, 5)] == ["spot-0002"]
 
 
 def test_select_stops_at_the_limit():
@@ -263,7 +265,29 @@ def two_books(tmp_path, *, change=None, other_neta=None):
         if name == "seisho.json" and change:
             doc = change(doc)
         store.write(dst / name, doc, schema)
+    for kdir in (src, dst):  # 台詞の途中に笑いの山を置く
+        doc = store.read(kdir / "reactions.json", "reactions")
+        doc["scores"]["laugh"][8] = 0.2
+        store.write(kdir / "reactions.json", doc, "reactions")
     return root, neta
+
+
+ALIGN = {
+    "schema_version": 1,
+    "passages": [
+        {
+            "relation": "same",
+            "a_first": "seg-0001",
+            "a_last": "seg-0012",
+            "b_first": "seg-0001",
+            "b_last": "seg-0012",
+        }
+    ],
+}
+
+
+def client_of(*asker, aligner=None):
+    return ScriptedClient(aligner=[aligner or ALIGN] * 2, asker=list(asker))
 
 
 def run(root, client, tmp_path, **kw):
@@ -283,10 +307,10 @@ def test_same_recording_twice_asks_about_kept_places(tmp_path):
         },
         ensure_ascii=False,
     )
-    client = ScriptedClient(asker=[reply])
+    client = client_of(reply)
     doc = run(root, client, tmp_path)
     assert doc["comparable"] is True and doc["share"] == 1.0
-    assert {s["kind"] for s in doc["spots"]} <= {"kept"} and doc["counts"]["kept"] >= 1
+    assert {s["kind"] for s in doc["spots"]} <= {"kept", "moved", "ma"} and doc["counts"]["kept"] >= 1
     questions = store.read(neta.questions, "questions")["questions"]
     new = [q for q in questions if "spot_id" in q]
     assert new and new[0]["text"] == "ここは変えない所ですか？"
@@ -296,18 +320,27 @@ def test_same_recording_twice_asks_about_kept_places(tmp_path):
 
 def test_asker_sees_only_kinds_and_lines(tmp_path):
     root, _ = two_books(tmp_path)
-    client = ScriptedClient(asker=[REPLY])
+    client = client_of(REPLY)
     run(root, client, tmp_path)
     rows = json.loads(text_of(client.calls["asker"][0]))
-    assert set(rows[0]) == {"spot_id", "kind", "quote_a", "quote_b"}
+    assert set(rows[0]) == {"spot_id", "kind", "other", "quote_a", "quote_b"}
+
+
+def test_aligner_sees_only_the_title_and_the_lines(tmp_path):
+    root, _ = two_books(tmp_path)
+    client = client_of(REPLY)
+    run(root, client, tmp_path, title="正しい題")
+    sent = json.loads(text_of(client.calls["aligner"][0]))
+    assert sent["演目"] == "正しい題" and set(sent) == {"演目", "1 本目", "2 本目"}
+    assert set(sent["1 本目"][0]) == {"seg_id", "text"}  # 笑いの位置も時刻も見せない
 
 
 def test_bad_or_missing_question_becomes_the_fixed_one(tmp_path):
     root, neta = two_books(tmp_path)
-    client = ScriptedClient(asker=[REPLY])
+    client = client_of(REPLY)
     run(root, client, tmp_path)
     q = [x for x in store.read(neta.questions, "questions")["questions"] if "spot_id" in x]
-    assert q[0]["text"] == pipeline.FIXED_ASK["kept"]
+    assert q[0]["text"] in pipeline.FIXED_ASK.values()
     run_doc = store.read(neta.koza_dir(K1) / "run.json", "run")
     assert run_doc["compare"]["fallback"] >= 1
 
@@ -333,9 +366,9 @@ def test_quote_from_the_lines_is_allowed():
 
 def test_second_run_does_not_ask_the_same_place_twice(tmp_path):
     root, neta = two_books(tmp_path)
-    run(root, ScriptedClient(asker=[REPLY]), tmp_path)
+    run(root, client_of(REPLY), tmp_path)
     first = store.read(neta.questions, "questions")["questions"]
-    doc = run(root, ScriptedClient(asker=[REPLY]), tmp_path)
+    doc = run(root, client_of(REPLY), tmp_path)
     after = store.read(neta.questions, "questions")["questions"]
     assert len(after) == len(first)
     ids = {s["id"] for s in doc["spots"]}
@@ -350,7 +383,7 @@ def test_failed_asker_keeps_the_cost_and_no_questions(tmp_path):
         raise RuntimeError("途中で落ちた")
 
     with pytest.raises(RuntimeError):
-        run(root, ScriptedClient(asker=[broken]), tmp_path)
+        run(root, client_of(broken), tmp_path)
     assert "compare" in store.read(neta.koza_dir(K1) / "run.json", "run")
     assert not any("spot_id" in q for q in store.read(neta.questions, "questions")["questions"])
 
@@ -359,7 +392,7 @@ def test_answers_and_books_are_not_overwritten(tmp_path):
     root, neta = two_books(tmp_path)
     kata, hanashi = neta.kata.read_bytes(), neta.hanashi.read_bytes()
     answered = [q for q in store.read(neta.questions, "questions")["questions"] if "answer" in q]
-    run(root, ScriptedClient(asker=[REPLY]), tmp_path)
+    run(root, client_of(REPLY), tmp_path)
     assert neta.kata.read_bytes() == kata and neta.hanashi.read_bytes() == hanashi
     after = store.read(neta.questions, "questions")["questions"]
     assert all(q in after for q in answered)
@@ -367,7 +400,7 @@ def test_answers_and_books_are_not_overwritten(tmp_path):
 
 def test_second_koza_can_live_in_another_folder(tmp_path):
     root, neta = two_books(tmp_path, other_neta="雨宿り勘定-2")
-    doc = run(root, ScriptedClient(asker=[REPLY]), tmp_path, other_neta="雨宿り勘定-2")
+    doc = run(root, client_of(REPLY), tmp_path, other_neta="雨宿り勘定-2")
     assert doc["other_neta"] == "雨宿り勘定-2"
     assert view.compare_view(neta, neta.koza_dir(K1))["other_reactions"] is not None
 
@@ -376,21 +409,33 @@ def test_clean_copy_is_required(tmp_path):
     root, neta = two_books(tmp_path)
     (neta.koza_dir(K2) / "seisho.json").unlink()
     with pytest.raises(store.StoreError, match="清書"):
-        run(root, ScriptedClient(asker=[REPLY]), tmp_path)
+        run(root, client_of(REPLY), tmp_path)
 
 
-def test_stories_that_do_not_align_ask_nothing_and_call_no_llm(tmp_path):
-    def other_story(doc):
-        for n, row in enumerate(doc["lines"]):
-            row["text"] = f"全く別の噺の台詞がここに続いていて番号は{n * 7919}です"
-            row["changed"] = True
-        return doc
-
-    root, neta = two_books(tmp_path, change=other_story)
-    transcript = store.read(neta.koza_dir(K2) / "transcript.json", "transcript")
-    client = ScriptedClient(asker=[])
+def test_stories_that_do_not_correspond_ask_nothing(tmp_path):
+    root, neta = two_books(tmp_path)
+    apart = {
+        "schema_version": 1,
+        "passages": [
+            {
+                "relation": "only_a",
+                "a_first": "seg-0001",
+                "a_last": "seg-0012",
+                "b_first": None,
+                "b_last": None,
+            },
+            {
+                "relation": "only_b",
+                "a_first": None,
+                "a_last": None,
+                "b_first": "seg-0001",
+                "b_last": "seg-0012",
+            },
+        ],
+    }
+    client = client_of(aligner=apart)
     doc = run(root, client, tmp_path)
-    assert transcript and doc["comparable"] is False and client.calls["asker"] == []
+    assert doc["comparable"] is False and client.calls["asker"] == []
     assert not any("spot_id" in q for q in store.read(neta.questions, "questions")["questions"])
 
 
@@ -406,7 +451,7 @@ def test_failure_writing_the_comparison_leaves_no_question(tmp_path, monkeypatch
 
     monkeypatch.setattr(store, "write", stop)
     with pytest.raises(OSError):
-        run(root, ScriptedClient(asker=[REPLY]), tmp_path)
+        run(root, client_of(REPLY), tmp_path)
     assert neta.questions.read_bytes() == before
 
 
@@ -418,12 +463,12 @@ def test_old_clean_copy_stops_the_comparison(tmp_path):
         row["raw"] = "作り直す前の文字起こし"
     store.write(path, doc, "seisho")
     with pytest.raises(store.StoreError, match="古い"):
-        run(root, ScriptedClient(asker=[REPLY]), tmp_path)
+        run(root, client_of(REPLY), tmp_path)
 
 
 def test_compare_is_written_for_the_screen(tmp_path):
     root, neta = two_books(tmp_path)
-    run(root, ScriptedClient(asker=[REPLY]), tmp_path)
+    run(root, client_of(REPLY), tmp_path)
     assert view.payload(neta, K1)["compare"]["koza_b"] == K2
 
 

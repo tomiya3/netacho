@@ -400,6 +400,10 @@
         "fallback": {
           "type": "integer",
           "minimum": 0
+        },
+        "dropped": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "description": "2 本の比較の実測"

@@ -87,7 +87,7 @@ details { margin-top: 12px; color: var(--text-2); font-size: 13px; }
 <script>
 "use strict";
 const TABS = [["wave", "反応の波と候補"], ["compare", "2 本の比べ"], ["kata", "型"], ["cards", "札"], ["deshi", "弟子役の指摘と質問"], ["seisho", "清書"]];
-const SPOT = { kept: "2 本とも同じ言葉で同じ所", moved: "来る所がずれた", ma: "一言の前の間が違う", one_side: "片方の録音でだけ拾えた", words: "言葉が違う" };
+const SPOT = { kept: "2 本とも同じ言葉", moved: "来る所がずれた", ma: "一言の前の間が違う", one_side: "片方の録音でだけ拾えた", words: "笑いの所で言葉が違う", added: "2 本目に無い言葉で笑いの山", changed: "言葉が違う" };
 const SVG = "http://www.w3.org/2000/svg";
 const POSITION = { before: "場面の前", within: "場面の中", after: "場面の後" };
 const WHY = { no_candidate: "回収の後に反応候補が見つからない", low_rank: "回収の後の反応候補が小さい方" };
@@ -291,7 +291,8 @@ function spotBody(s, c) {
     if (TOKEN) body.push(...spotAudio(laugh ?? row.end, key));
   };
   side(c.koza_a, s.a, s.laugh_a, "a");
-  side(c.koza_b, s.b, s.laugh_b, "b");
+  if (s.b) side(c.koza_b, s.b, s.laugh_b, "b");
+  else body.push(el("p", { class: "quote" }, `${c.koza_b} には無い言葉です。`));
   return body;
 }
 
@@ -299,12 +300,13 @@ function renderCompare(d) {
   const root = document.getElementById("compare");
   const c = d.compare;
   if (!c) { root.append(el("p", {}, "2 本の比較はまだありません。netacho compare で作ります。")); return; }
-  root.append(el("div", { class: "notice" }, "2 本は録音の条件が違うので、笑いの大きさは比べていません。来る所だけを比べています。笑いを拾えていない所も、反応が無かったという意味ではありません。"));
-  root.append(el("p", {}, `${c.koza_a} と ${c.koza_b}。清書の文字が揃った割合 ${Math.round(c.share * 100)}%`));
-  if (!c.comparable) { root.append(el("div", { class: "notice" }, "2 本の文字が揃わないので、比べていません。")); return; }
+  root.append(el("div", { class: "notice" }, "どの台詞が同じくだりかは Claude が読み、笑いと間は録音から測っています。録音の条件が違うので、笑いの大きさは比べていません。笑いを拾えていない所も、反応が無かったという意味ではありません。"));
+  root.append(el("p", {}, `${c.koza_a} と ${c.koza_b}。対応の付いた割合 ${Math.round(c.share * 100)}%`));
+  if (!c.comparable) { root.append(el("div", { class: "notice" }, "2 本の対応が付かないので、比べていません。")); return; }
   const skipped = c.scenes.filter(s => !s.compared).map(s => s.title || s.scene_id);
   if (skipped.length) root.append(el("div", { class: "notice" }, `揃わず比べなかった場面：${skipped.join("、")}`));
-  if (!c.laughs_compared) root.append(el("div", { class: "notice" }, "片方の録音で笑いの山を拾えていないので、笑いは比べていません。言葉の違いだけを出しています。"));
+  if (c.practice) root.append(el("div", { class: "notice" }, "2 本目に笑いがほぼ無いので、稽古と見ています。本番で笑いの山があった所を軸に、言葉と間を比べています。"));
+  else if (!c.laughs_compared) root.append(el("div", { class: "notice" }, "片方の録音で笑いの山を拾えていないので、笑いは比べていません。言葉の違いだけを出しています。"));
   root.append(el("h2", {}, c.koza_a));
   drawWave(root, d);
   root.append(el("h2", {}, c.koza_b));

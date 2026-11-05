@@ -12,8 +12,11 @@
     "share",
     "comparable",
     "laughs_compared",
+    "practice",
     "humps_a",
     "humps_b",
+    "passages",
+    "dropped",
     "scenes",
     "spots",
     "counts"
@@ -39,7 +42,7 @@
       "type": "number",
       "minimum": 0,
       "maximum": 1,
-      "description": "清書の文字が揃った割合"
+      "description": "短いほうの文字のうち、対応の付いた割合"
     },
     "comparable": {
       "type": "boolean",
@@ -105,11 +108,13 @@
           },
           "kind": {
             "enum": [
-              "kept",
+              "added",
               "moved",
               "ma",
+              "words",
+              "kept",
               "one_side",
-              "words"
+              "changed"
             ]
           },
           "scene_id": {
@@ -138,26 +143,33 @@
             }
           },
           "b": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "t",
-              "end",
-              "quote"
-            ],
-            "properties": {
-              "t": {
-                "type": "number",
-                "minimum": 0
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "t",
+                  "end",
+                  "quote"
+                ],
+                "properties": {
+                  "t": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "end": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "quote": {
+                    "type": "string"
+                  }
+                }
               },
-              "end": {
-                "type": "number",
-                "minimum": 0
-              },
-              "quote": {
-                "type": "string"
+              {
+                "type": "null"
               }
-            }
+            ]
           },
           "laugh_a": {
             "type": [
@@ -190,6 +202,23 @@
     "laughs_compared": {
       "type": "boolean",
       "description": "片方に山が無ければ false で、笑いの比較はしない"
+    },
+    "practice": {
+      "type": "boolean",
+      "description": "2 本目に笑いがほぼ無く、稽古と見て本番の笑いを軸に比べた"
+    },
+    "passages": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "description": "対応づけ役のくだりの数"
+    },
+    "dropped": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "確かめて落としたくだりの数"
     }
   }
 }

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "passages": [
+    {
+      "relation": "same",
+      "a_first": "seg-0001",
+      "a_last": "seg-0004",
+      "b_first": "seg-0001",
+      "b_last": "seg-0004"
+    }
+  ]
+}

@@ -571,11 +571,12 @@ def note(
 COMPARE_QUESTIONS = 5  # 2 本の比較で演者に問う数。多いと答えてもらえない
 CLEAN_MIN = 0.9  # 文字起こしの行のうち、清書で読める割合の下限
 FIXED_ASK = {
-    "kept": "ここ、2 本とも同じ言葉で、同じ所に来てますね。ここは変えない所ですか？",
+    "kept": "ここ、2 本とも同じ言葉ですね。ここは変えない所ですか？",
     "moved": "ここ、来る所が 2 本でずれてますね。わざとですか？",
     "ma": "ここ、一言の前の間が 2 本で違いますね。わざとですか？",
     "one_side": "ここ、片方の録音でだけ拾えています。何か変えましたか？",
     "words": "ここ、言い方を変えてますね。わざとですか？",
+    "added": "ここの言葉、もう 1 本にはありませんね。その場で足したんですか？",
 }
 
 
@@ -594,19 +595,35 @@ def compare_side(neta: store.Neta, koza_id: str) -> compare.Side:
     return compare.side_of(koza_id, transcript, lines, reactions, timeline)
 
 
-def ask_rows(spots: list[dict]) -> list[dict]:
+def ask_rows(spots: list[dict], other: str) -> list[dict]:
     """聞き役に見せる物：所の種類と、2 本の台詞だけ。"""
     return [
-        {"spot_id": s["id"], "kind": s["kind"], "quote_a": s["a"]["quote"], "quote_b": s["b"]["quote"]}
+        {
+            "spot_id": s["id"],
+            "kind": s["kind"],
+            "other": other,
+            "quote_a": s["a"]["quote"],
+            "quote_b": s["b"]["quote"] if s["b"] else "",
+        }
         for s in spots
     ]
+
+
+def align_content(a: compare.Side, b: compare.Side, title: str) -> list[dict]:
+    """対応づけ役に見せる物：演目の題と、2 本の清書だけ。笑いの位置は見せない。"""
+    rows = {
+        "演目": title,
+        "1 本目": [{"seg_id": x["seg_id"], "text": x["text"]} for x in a.lines],
+        "2 本目": [{"seg_id": x["seg_id"], "text": x["text"]} for x in b.lines],
+    }
+    return [{"type": "text", "text": json.dumps(rows, ensure_ascii=False)}]
 
 
 def ask_is_ok(text: str, spot: dict) -> bool:
     """検査に通る問いか。引いた語が、見せた台詞にそのままあること。"""
     if not note_is_ok(text, ("客いじり",)):
         return False
-    return view.readable_question(text, spot["a"]["quote"] + spot["b"]["quote"]) == text
+    return view.readable_question(text, spot["a"]["quote"] + (spot["b"] or {}).get("quote", "")) == text
 
 
 def compare_koza(
@@ -616,6 +633,7 @@ def compare_koza(
     *,
     other_koza: str,
     other_neta: str | None = None,
+    title: str | None = None,
     client,
     budget: Budget | None = None,
     reuse: bool = False,
@@ -627,14 +645,27 @@ def compare_koza(
     a = compare_side(ctx.neta, koza_id)
     b = compare_side(other, other_koza)
     titles = {s["id"]: s["title"] for s in ctx.hanashi["scenes"]}
-    doc = {**compare.compare(a, b, titles), "other_neta": other.neta}
     kdir = ctx.neta.koza_dir(koza_id)
     fallback = added = 0
+    doc = {"share": 0.0, "spots": [], "dropped": 0}
     try:
+        content = align_content(a, b, title or ctx.koza["neta"])
+        draft = call_role(ctx.client, "aligner", content, "aligner", ctx.usage, ctx.budget, ctx.cache)
+        store.write(ctx.neta.drafts / "aligner.json", draft, "aligner")
+        doc = {**compare.compare(a, b, draft, titles), "other_neta": other.neta}
         if doc["comparable"]:
             known = [s for s in doc["spots"] if s["scene_id"] in titles]
             chosen = compare.select(known, COMPARE_QUESTIONS)
-            content = [{"type": "text", "text": json.dumps(ask_rows(chosen), ensure_ascii=False, indent=1)}]
+            content = [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        ask_rows(chosen, "稽古" if doc["practice"] else "もう 1 本"),
+                        ensure_ascii=False,
+                        indent=1,
+                    ),
+                }
+            ]
             reply = (
                 call_role(ctx.client, "asker", content, "asker", ctx.usage, ctx.budget, ctx.cache)
                 if chosen
@@ -699,6 +730,7 @@ def compare_koza(
             "spots": len(doc["spots"]),
             "questions": added,
             "fallback": fallback,
+            "dropped": doc["dropped"],
         }
         store.write(kdir / "run.json", ctx.usage.to_json(), "run")
     return doc

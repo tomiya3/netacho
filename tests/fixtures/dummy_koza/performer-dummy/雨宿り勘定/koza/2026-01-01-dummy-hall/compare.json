@@ -42,5 +42,13 @@
     "one_side": 0,
     "words": 0
   },
-  "laughs_compared": true
+  "laughs_compared": true,
+  "practice": false,
+  "passages": {
+    "same": 1,
+    "changed": 0,
+    "only_a": 0,
+    "only_b": 0
+  },
+  "dropped": 0
 }

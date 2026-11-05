@@ -232,13 +232,16 @@ def cmd_compare(args: argparse.Namespace) -> None:
         args.koza,
         other_koza=args.with_koza,
         other_neta=args.with_neta,
+        title=_title(args.title),
         client=runner.make_client(),
         reuse=args.reuse,
     )
-    print(f"文字が揃った割合 {doc['share']:.0%}")
+    print(f"対応の付いた割合 {doc['share']:.0%}、くだり {doc['passages']}、落とした数 {doc['dropped']}")
     if not doc["comparable"]:
-        print("2 本の文字が揃わないので、比べていません")
+        print("2 本の対応が付かないので、比べていません")
         return
+    if doc["practice"]:
+        print("2 本目に笑いがほぼ無いので、稽古と見て本番の笑いを軸に比べました")
     print(f"所 {len(doc['spots'])}、種類ごと {doc['counts']}")
     skipped = [s["title"] or s["scene_id"] for s in doc["scenes"] if not s["compared"]]
     if skipped:
@@ -494,6 +497,7 @@ def build_parser() -> argparse.ArgumentParser:
     two.add_argument("--koza", required=True)
     two.add_argument("--with-koza", required=True, help="2 本目の高座")
     two.add_argument("--with-neta", help="2 本目の演目フォルダ。無ければ同じフォルダ")
+    two.add_argument("--title", help="演目の題（漢字）")
     two.add_argument("--reuse", action="store_true")
     two.set_defaults(func=cmd_compare)
 
