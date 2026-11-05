@@ -361,7 +361,7 @@ def scene_rows(a: Side, paired: list[dict], titles: dict) -> list[dict]:
 
 
 def select(spots: list[dict], limit: int) -> list[dict]:
-    """問う所を選ぶ。種類を順に回して、1 種類で埋めない。近い所は重ねない。"""
+    """問う所を選ぶ。種類を順に回して、1 種類で埋めない。近い所は重ねない。順は選んだ順。"""
     queues = {kind: [s for s in spots if s["kind"] == kind] for kind in ROTATION}
     chosen: list[dict] = []
     while len(chosen) < limit and any(queues.values()):
@@ -373,4 +373,4 @@ def select(spots: list[dict], limit: int) -> list[dict]:
                     break
             if len(chosen) == limit:
                 break
-    return sorted(chosen, key=lambda s: s["a"]["t"])
+    return chosen

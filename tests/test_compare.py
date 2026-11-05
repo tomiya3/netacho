@@ -230,7 +230,12 @@ def test_select_mixes_kinds_and_keeps_distance():
         make_spot(4, "moved", 200.0),
     ]
     chosen = compare.select(rows, 3)
-    assert [c["id"] for c in chosen] == ["spot-0001", "spot-0003", "spot-0004"]
+    assert sorted(c["id"] for c in chosen) == ["spot-0001", "spot-0003", "spot-0004"]
+
+
+def test_rarer_kinds_come_first_so_the_limit_does_not_cut_them():
+    rows = [make_spot(n, "kept", n * 100.0) for n in range(9)] + [make_spot(9, "added", 5000.0)]
+    assert compare.select(rows, 3)[0]["id"] == "spot-0009"
 
 
 def test_select_stops_at_the_limit():
