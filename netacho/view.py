@@ -129,8 +129,7 @@ def readable_question(question: str | None, before: str) -> str:
 
     問いは文字起こしの語を引いて書かれるので、聞き違いの語を画面に出さないように確かめる。
     """
-    quoted = re.findall(r"[「『](.+?)[」』]", question or "")
-    if question and quoted and all(q in before for q in quoted):
+    if question and all(q in before for q in re.findall(r"[「『](.+?)[」』]", question)):
         return question
     return gaps.FALLBACK_QUESTION
 
@@ -156,7 +155,7 @@ def clean_questions(questions: dict | None, cleaned: dict | None) -> dict | None
         head = gaps.attempt_of(s, cleaned["koza_id"])
         q = next((x for x in questions["questions"] if x["text"].startswith(head)), None)
         if q is not None:
-            texts[q["id"]] = s["question"]
+            texts[q["id"]] = f"{gaps.clock(s['t0'])} の笑いの所：{s['question']}"
     rows = [
         {**q, "text": texts[q["id"]], "text_raw": q["text"]} if q["id"] in texts else q
         for q in questions["questions"]

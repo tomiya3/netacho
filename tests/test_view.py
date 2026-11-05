@@ -256,7 +256,7 @@ def test_readable_question_is_kept_and_a_misheard_one_is_replaced():
     good = "「清書の台詞」の後は、文字からは読めませんでした"
     assert view.readable_question(good, "前の清書の台詞") == good
     assert view.readable_question("「聞き違い」の後は", "前の清書の台詞") == gaps.FALLBACK_QUESTION
-    assert view.readable_question("引用の無い文", "前") == gaps.FALLBACK_QUESTION
+    assert view.readable_question("引用の無い文", "前") == "引用の無い文"
     assert view.readable_question(None, "前") == gaps.FALLBACK_QUESTION
 
 
@@ -278,7 +278,8 @@ def test_questions_show_the_clean_text_and_keep_the_answer():
         "questions": [{**QUESTIONS["questions"][0], "answer": {"words": "言葉"}}, QUESTIONS["questions"][1]]
     }
     out = view.clean_questions(doc, cleaned)["questions"]
-    assert out[0]["text"] == "「清書の台詞」の後は" and out[0]["text_raw"].startswith("1:40.0")
+    assert out[0]["text"] == "1:40.0 の笑いの所：「清書の台詞」の後は"
+    assert out[0]["text_raw"].startswith("1:40.0")
     assert out[0]["answer"] == {"words": "言葉"} and out[1]["text"] == "別"
 
 
