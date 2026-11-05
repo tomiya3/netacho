@@ -45,6 +45,9 @@ rm_ok() {
     [ "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" = \
       "$(git -C "$proj" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ] || root=
   fi
+  # macOS の /tmp は /private/tmp へのリンクで、git の root も /private/tmp で始まる。そのときだけ揃える
+  tmp=$(cd -P /tmp 2>/dev/null && pwd)
+  [ "$tmp" = /private/tmp ] || tmp=/tmp
   while IFS= read -r seg; do
     read -ra words <<<"$seg"
     [ "${#words[@]}" -gt 0 ] || continue
