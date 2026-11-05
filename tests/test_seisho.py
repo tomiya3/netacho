@@ -230,6 +230,8 @@ def test_title_reaches_the_scribe_instead_of_the_folder_name(built, data, tmp_pa
         P, N, K, client=client, budget=Budget(tmp_path / "ledger.json"), root=data, title="正しい題"
     )
     assert "正しい題" in text_of(client.calls["scribe"][0])
+    run = store.read(store.Neta(P, N, data).koza_dir(K) / "run.json", "run")
+    assert run["seisho"]["title"] == "正しい題"
 
 
 def test_scribe_is_opus_high():

@@ -27,7 +27,7 @@ make viewer   # http://localhost:8000/（ポートが塞がっていれば make 
 
 ```
 netacho run     --audio 録音 --performer ID --neta 演目 --koza 日付-会場
-netacho seisho  --performer ID --neta 演目 --koza 日付-会場   # 清書
+netacho seisho  --performer ID --neta 演目 --koza 日付-会場 --title 題   # 清書
 netacho decide  --performer ID --neta 演目 --speaker 名 --words 言葉 --card 札の文 --why 理由 --scene 場面
 netacho answer  --performer ID --neta 演目 --question Q --speaker 名 --words 言葉
 netacho dismiss --performer ID --neta 演目 --question Q --speaker 名 --reason 理由
@@ -72,7 +72,7 @@ netacho serve   --performer ID --neta 演目 --koza 日付-会場  # 演者が�
 | AST（反応の検出） | 47 秒 | 70 秒 |
 | Claude の役の費用（清書を除く） | $0.90 | $0.71 |
 | Claude の役の時間（清書を除く） | 338 秒 | 259 秒 |
-| 清書 | $0.21、90 秒 | 実行していない |
+| 清書 | $0.21（Sonnet） | $0.94（Opus、演目の題を渡す） |
 | 帳面の項目 | 62 件 | 58 件 |
 | 根拠の検証を通った項目（延べ） | 71 件 | 63 件 |
 | 根拠の検証で落とした項目 | 0 件 | 0 件 |
@@ -82,6 +82,17 @@ netacho serve   --performer ID --neta 演目 --koza 日付-会場  # 演者が�
 | 弟子役の指摘（1 周目 → 2 周目） | 9 → 3 | 6 → 4 |
 
 延べの数には、差し戻しで書き直した項目も入るので、帳面の項目より多くなります。照合の 3 区分と `間`、知識の項目を足すと延べの数になります。費用と時間には、ノートのやり直しの分も入っています。根拠の検証は、4 分の抜粋では 33 件中 1 件を落としました（旧版の値）。全編の 2 回で落ちた項目はありません。
+
+### 清書の聞き違い
+
+同じ文字起こしで比べました。固有名詞と昔の言葉から手で選んだ 10 語の誤りを数えた値で、聞き違い全部の数ではありません。
+
+| 項目 | 文字起こし | Sonnet、題なし | Opus、題あり |
+| --- | --- | --- | --- |
+| 10 語の誤り | 42 か所 | 30 か所 | 0 か所 |
+| 大きく直した行（316 行のうち） | | 8 行 | 1 行 |
+
+直した語は推定なので、原文を並べて残しています。原音と聞き比べた数ではありません。
 
 ### 文字だけの予測と、実際の笑い
 

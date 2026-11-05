@@ -615,7 +615,7 @@ def clean_copy(
     doc, stats = seisho.build(draft, ctx.transcript, reactions, names)
     store.write(kdir / "seisho.json", doc, "seisho")
     (kdir / "seisho.md").write_text(seisho.markdown(ctx.koza, doc, stats), encoding="utf-8")
-    ctx.usage.extra["seisho"] = stats
+    ctx.usage.extra["seisho"] = {**stats, "title": title} if title else stats
     result = ctx.usage.to_json()
     store.write(run_path, result, "run")
     return result
