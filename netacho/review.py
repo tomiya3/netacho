@@ -36,7 +36,7 @@ def _anchor(raw: dict, scene_ids: set[str], item_ids: set[str]) -> dict | None:
 
 
 def _key(issue: dict) -> tuple:
-    return issue["kind"], tuple(sorted(issue["anchor"].items()))
+    return issue["role"], issue["kind"], tuple(sorted(issue["anchor"].items()))
 
 
 def receive(doc: dict, review: dict, hanashi: dict, kata: dict, round_no: int) -> tuple[list[dict], int]:

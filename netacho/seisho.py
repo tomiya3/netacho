@@ -13,6 +13,7 @@ from .render import marks_after
 MIN_SIMILARITY = 0.5  # これより違う行は、直しすぎかもしれない印を付ける（歌の表記の修正もここに入る）。暫定
 LENGTH_RATIO = (0.6, 1.5)  # 長さがこの範囲の外なら、削りか足しとみなして原文に戻す。暫定
 LENGTH_MARGIN = 4  # 短い区間は比率では見られないので、この字数までの差は許す
+SHORT_LINE = 6  # これ以下の短い区間（相づちなど）は、似ていなければ原文に戻す
 
 
 def _length_ok(raw: str, text: str) -> bool:
@@ -55,7 +56,7 @@ def build(
         if row is not None and raw and not text:
             stats["empty"] += 1
             line["text"] = raw
-        elif not _length_ok(raw, text):
+        elif not _length_ok(raw, text) or (len(raw) <= SHORT_LINE and not _similar(raw, text)):
             stats["kept_raw"] += 1
             line["text"] = raw
             line["proposal"] = text  # 演者が確かめられるように案は残す
@@ -73,10 +74,17 @@ def build(
     return doc, {"lines": len(lines), "extra": extra, **stats}
 
 
-def markdown(koza: dict, doc: dict) -> str:
+def markdown(koza: dict, doc: dict, stats: dict | None = None) -> str:
     out = [
         f"# 清書：{koza['neta']}（{koza['id']}）",
         "",
+    ]
+    if stats and (stats["missing"] or stats["duplicate"]):
+        out += [
+            f"**速記役が返さなかった区間が {stats['missing'] + stats['duplicate']} あります。その行は原文のままです。**",
+            "",
+        ]
+    out += [
         "Claude が文脈から聞き違いを直し、話者を付けた読み物です。話者と直した語は推定で、"
         "演者の言葉そのものではありません。直した行には原文を添えています。"
         "印は自動判定の候補です。",

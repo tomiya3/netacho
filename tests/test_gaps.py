@@ -66,7 +66,7 @@ def test_applause_is_not_a_hit_or_a_surprise():
         doc(react(1, 11.0, 12.0, 1, kind="applause"), react(2, 50.0, 52.0, 2, kind="applause")),
     )
     assert r["hits"] == [] and r["surprises"] == []
-    assert [m["item_id"] for m in r["misses"]] == ["item-0001"]
+    assert r["misses"] == []  # 自動の笑いが無いので比べない
 
 
 def test_no_auto_reaction_is_not_judged():
@@ -122,6 +122,32 @@ def test_same_clock_on_another_koza_is_asked():
     assert gaps.add_questions({"koza_id": "a", "surprises": [s]}, review, questions) == 0
     assert gaps.add_questions({"koza_id": "b", "surprises": [s]}, review, questions) == 1
     assert "台詞" in questions["questions"][0]["text"]
+
+
+def test_applause_only_koza_is_not_judged():
+    r = compare([item(1, 10.0)], doc(react(1, 50.0, 52.0, 1, kind="applause")))
+    assert r["judged"] is False and r["misses"] == []
+
+
+def test_before_quote_stops_at_the_laugh():
+    t = {
+        "segments": [
+            {"id": "seg-0001", "start": 0.0, "end": 9.0, "text": "前の台詞"},
+            {"id": "seg-0002", "start": 10.0, "end": 12.0, "text": "笑いの後の台詞"},
+        ]
+    }
+    scene = "scene-01"
+    tl = {"segments": [{"seg_id": "seg-0001", "scene_id": scene}, {"seg_id": "seg-0002", "scene_id": scene}]}
+    r = gaps.compare([], doc(react(1, 9.5, 11.0, 1)), t, tl)
+    assert r["surprises"][0]["before_quote"] == "前の台詞"
+
+
+def test_laugh_without_scene_does_not_use_a_slot():
+    tl = {"segments": [{"seg_id": "seg-0002", "scene_id": "scene-02"}]}
+    rows = [react(1, 20.0, 21.0, 1), react(2, 50.0, 51.0, 2)]
+    r = gaps.compare([], doc(*rows), TRANSCRIPT, tl)
+    assert [s["reaction_id"] for s in r["surprises"]] == ["react-0002"]
+    assert r["surprise_total"] == 2
 
 
 def test_no_prediction_rate_is_none():

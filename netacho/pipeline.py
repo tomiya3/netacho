@@ -364,13 +364,8 @@ def reread(
 
 # ノート役の文の検査。断定、客の気持ち、直し方の提案、数字の羅列を通さない。
 # 「反応候補」の言い方は約束の 3 つだけ許し、それ以外の「反応…ない」は落とす
-NOTE_ALLOWED = (
-    "反応候補が少な",
-    "反応候補が小さ",
-    "反応候補が見つからな",
-    "笑いどころと読めませんでした",  # 演者への問いの言い方
-    "笑いどころと読めなかった",
-)
+NOTE_ALLOWED = ("反応候補が少な", "反応候補が小さ", "反応候補が見つからな")
+QUESTION_ALLOWED = ("笑いどころと読めませんでした", "笑いどころと読めなかった")  # 演者への問いの言い方
 NOTE_BANNED = re.compile(
     r"(反応|候補|笑い|ウケ|受け|手応え)[^。]{0,8}"
     r"(なし|無し|なかった|無かった|ない|無い|ません|起きな|起こらな|薄|弱|出な)"
@@ -416,11 +411,11 @@ def noter_rows(cands: dict, items: dict, transcript: dict, hanashi: dict, tl: di
     return rows
 
 
-def note_is_ok(text: str) -> bool:
+def note_is_ok(text: str, allowed: tuple[str, ...] = NOTE_ALLOWED) -> bool:
     plain = unicodedata.normalize("NFKC", text).strip()
     if not plain or len(re.findall(r"[。！？!?]", plain)) > NOTE_MAX_SENTENCES:
         return False
-    for phrase in NOTE_ALLOWED:
+    for phrase in allowed:
         plain = plain.replace(phrase, "")
     return NOTE_BANNED.search(plain) is None
 
@@ -440,7 +435,7 @@ def checked_questions(doc: dict | None, found: dict) -> None:
         written.setdefault(n["candidate_id"], []).append(n["text"].strip())
     for s in found["surprises"]:
         texts = written.get(s["id"], [])
-        ok = len(texts) == 1 and note_is_ok(texts[0])
+        ok = len(texts) == 1 and note_is_ok(texts[0], QUESTION_ALLOWED)
         s["question"] = texts[0] if ok else gaps.FALLBACK_QUESTION
         s["question_source"] = "claude" if ok else "fixed"
 
@@ -572,7 +567,7 @@ def clean_copy(
     names = {c["name"] for c in ctx.hanashi["characters"]}
     doc, stats = seisho.build(draft, ctx.transcript, reactions, names)
     store.write(kdir / "seisho.json", doc, "seisho")
-    (kdir / "seisho.md").write_text(seisho.markdown(ctx.koza, doc), encoding="utf-8")
+    (kdir / "seisho.md").write_text(seisho.markdown(ctx.koza, doc, stats), encoding="utf-8")
     ctx.usage.extra["seisho"] = stats
     result = ctx.usage.to_json()
     store.write(run_path, result, "run")
