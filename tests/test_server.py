@@ -407,3 +407,51 @@ def test_serve_flushes_the_url(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "stdout", Out())
     server.serve(store.Neta(P, N, root), K, port=0, out=tmp_path / "view", browser=False)
     assert any("http://localhost:" in text for text in flushed)
+
+
+def decide_body(srv, **kw):
+    scene = store.read(srv.neta.hanashi, "book")["scenes"][0]["id"]
+    body = {
+        "scene": scene,
+        "position": "within",
+        "speaker": "本人",
+        "words": "扇子を置く",
+        "card": "扇子を置く",
+        "why": "間のため",
+    }
+    return {**body, **kw}
+
+
+def test_decide_makes_a_card_on_the_screen(running):
+    assert call(running, "/api/decide", decide_body(running))[0] == 200
+    shown = json.loads(call(running, "/view.json")[1])
+    assert any(c["text"] == "扇子を置く" for c in shown["guide"]["cards"])
+    assert any(
+        i["source"].get("words") == "扇子を置く" for i in store.read(running.neta.kata, "book")["items"]
+    )
+
+
+def test_decide_makes_the_first_card_when_no_guide_exists(running):
+    running.neta.guide.unlink()
+    assert call(running, "/api/decide", decide_body(running))[0] == 200
+    assert running.neta.guide.exists()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"scene": "scene-99"}, {"position": "横"}, {"card": " "}, {"words": ""}, {"why": ""}, {"speaker": ""}],
+)
+def test_bad_decisions_are_refused(running, change):
+    before = store.read(running.neta.kata, "book")["items"]
+    assert call(running, "/api/decide", decide_body(running, **change))[0] == 400
+    assert store.read(running.neta.kata, "book")["items"] == before
+
+
+def test_decide_needs_the_token(running):
+    sent = {"Content-Type": "application/json"}
+    assert call(running, "/api/decide", decide_body(running), headers=sent)[0] == 403
+
+
+def test_static_viewer_has_no_decide_form_without_a_token():
+    html = (Path(__file__).parents[1] / "viewer" / "index.html").read_text(encoding="utf-8")
+    assert 'if (TOKEN) root.append(el("h2", {}, "札に出す")' in html
