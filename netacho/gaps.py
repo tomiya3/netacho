@@ -63,8 +63,22 @@ def _humps_hit(humps: list[list[float]], windows: list[list[float]]) -> int:
     return sum(_touches(hump, windows) for hump in humps)
 
 
+def _merged(windows: list[list[float]]) -> list[list[float]]:
+    """重なる窓を 1 つにまとめる。項目が重なっても、見込みが膨らまないように。"""
+    out: list[list[float]] = []
+    for w0, w1 in sorted(windows):
+        if out and w0 <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], w1)
+        else:
+            out.append([w0, w1])
+    return out
+
+
 def _touch_chance(hump: list[float], width: float, seconds: float) -> float:
-    """長さ width の窓を音声のどこかに一様に置いたとき、山に触れる確率。山の幅の分だけ高くなる。"""
+    """長さ width の窓を音声のどこかに一様に置いたとき、山に触れる確率。山の幅の分だけ高くなる。
+
+    窓が刻み幅より長い前提（山のひと続きの間に、窓の中央が入らない所が無い）。
+    """
     room = seconds - width
     if room <= 0:
         return 1.0
@@ -77,12 +91,12 @@ def _humps_expected(humps: list[list[float]], windows: list[list[float]], second
     窓の割合と比べると、幅のある山に触れやすい分だけ予測に有利になるので、これと比べる。
     窓どうしは独立に置くとして計算する。乱数は使わない。
     """
-    if not humps:
+    if not humps or not windows:
         return None
     missed = []
     for hump in humps:
         chance = 1.0
-        for w0, w1 in windows:
+        for w0, w1 in _merged(windows):
             chance *= 1.0 - _touch_chance(hump, w1 - w0, seconds)
         missed.append(chance)
     return round(1.0 - sum(missed) / len(missed), 3)

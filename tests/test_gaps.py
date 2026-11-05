@@ -341,6 +341,16 @@ def test_expected_share_includes_the_width_of_a_hump():
     assert thin == 0.1 and wide == 0.3  # 10 / 100 と 30 / 100
 
 
+def test_expected_share_does_not_grow_with_overlapping_items():
+    one = gaps._humps_expected([[50.0]], [[0.0, 10.0]], 110.0)
+    assert gaps._humps_expected([[50.0]], [[0.0, 10.0], [0.0, 10.0]], 110.0) == one
+    assert gaps._humps_expected([[50.0]], [[0.0, 5.0], [5.0, 10.0]], 110.0) == one
+
+
+def test_no_window_has_no_expected_share():
+    assert gaps._humps_expected([[50.0]], [], 110.0) is None
+
+
 def test_expected_share_of_many_windows_does_not_exceed_one():
     assert gaps._humps_expected([[50.0]], [[0.0, 200.0]], 110.0) == 1.0
     assert gaps._humps_expected([], [[0.0, 10.0]], 110.0) is None
