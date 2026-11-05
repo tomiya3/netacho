@@ -17,7 +17,8 @@
     "window_share",
     "weak",
     "peak_rate",
-    "baseline_rate"
+    "baseline_rate",
+    "peak_n"
   ],
   "properties": {
     "schema_version": {
@@ -170,6 +171,11 @@
         "null"
       ],
       "description": "音声全体を同じ長さの窓で見たときの同じ割合。予測の値と比べる"
+    },
+    "peak_n": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "割合の分母。録音の末尾で切れた窓は入れない"
     }
   }
 }

@@ -58,10 +58,15 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
     laughs = [r for r in reactions["reactions"] if r["kind"] == "laugh" and r["method"] == "auto"]
     judged = bool(laughs)  # 自動の笑いが 1 件も無ければ比べない（全部の予測を空振りにしない）
     hits, weak, misses, windows = [], [], [], []
+    peaks: list[float] = []
+    whole: list[float] = []
     used: set[str] = set()
     for it in candidates.payoff_items(items, koza_id) if judged else []:
         window, clipped = candidates.window_of(it, end)
         windows.append(window)
+        if not clipped:
+            peaks.append(window_peak(reactions, window[0], window[1]))
+            whole.append(window[1] - window[0])
         found = candidates.overlapping(laughs, window[0], window[1])
         if found:
             hits.append({"item_id": it["id"], "reaction_ids": [r["id"] for r in found]})
@@ -103,11 +108,10 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
         "laughs_total": len(laughs),
         "laughs_hit": len(used),
         "window_share": _window_share(windows, end),
-        "peak_rate": _rate(len(hits) + len(weak), len(misses)),
-        # 窓の長さをそろえて、音声全体で同じ割合を出す（適当に選んだ窓ならこれくらい、という基準）
-        "baseline_rate": peak_share(reactions, sum(t1 - t0 for t0, t1 in windows) / len(windows))
-        if windows
-        else None,
+        # 予測と基準は同じ定義で数える。録音の末尾で切れた窓は両方から外す
+        "peak_rate": _rate(sum(p >= LAUGH_FLOOR for p in peaks), sum(p < LAUGH_FLOOR for p in peaks)),
+        "peak_n": len(peaks),
+        "baseline_rate": peak_share(reactions, whole),
     }
 
 
@@ -124,6 +128,7 @@ def counts(doc: dict) -> dict:
         "surprise": doc["surprise_total"],
         "hit_rate": _rate(hit, weak + miss),
         "peak_rate": doc["peak_rate"],
+        "peak_n": doc["peak_n"],
         "baseline_rate": doc["baseline_rate"],
         "laughs_total": doc["laughs_total"],
         "laughs_hit": doc["laughs_hit"],

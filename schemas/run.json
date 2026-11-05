@@ -236,7 +236,8 @@
         "window_share",
         "weak",
         "peak_rate",
-        "baseline_rate"
+        "baseline_rate",
+        "peak_n"
       ],
       "description": "笑いどころの予測と実際の比較",
       "properties": {
@@ -284,6 +285,10 @@
             "number",
             "null"
           ]
+        },
+        "peak_n": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

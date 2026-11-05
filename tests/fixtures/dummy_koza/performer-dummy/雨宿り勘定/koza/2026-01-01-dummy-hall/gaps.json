@@ -33,5 +33,6 @@
  "window_share": 0.2,
  "weak": [],
  "peak_rate": 0.5,
- "baseline_rate": 0.2
+ "baseline_rate": 0.2,
+ "peak_n": 2
 }

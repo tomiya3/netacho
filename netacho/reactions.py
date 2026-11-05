@@ -108,24 +108,38 @@ def covered_seconds(doc: dict) -> float | None:
 
 
 def window_peak(doc: dict, t0: float, t1: float) -> float:
-    """区間に中央が入る窓の、笑いのスコアの最大。スコアの無い物は 0。"""
+    """半開区間 [t0, t1) に中央が入る窓の、笑いのスコアの最大。スコアの無い物は 0。
+
+    区間は刻み幅より長い前提（短いと中央が 1 つも入らない）。
+    """
     scores = doc.get("scores")
     if not scores or not scores.get("laugh"):
         return 0.0
     half, stride = scores["window"] / 2, scores["stride"]
-    rows = [v for i, v in enumerate(scores["laugh"]) if t0 <= i * stride + half <= t1]
+    rows = [v for i, v in enumerate(scores["laugh"]) if t0 <= i * stride + half < t1]
     return max(rows, default=0.0)
 
 
-def peak_share(doc: dict, width: float) -> float | None:
-    """音声全体を同じ長さの窓に区切ったとき、弱い山以上がある窓の割合。予測の値と比べる基準。"""
+def peak_share(doc: dict, widths: list[float]) -> float | None:
+    """基準の割合。予測の窓と同じ長さの窓を、音声全体の全部の位置に置いたとき、弱い山以上がある割合。
+
+    長さごとの割合を平均する。予測の窓と同じ長さの構成で、同じ定義で数えるため。
+    """
     seconds = covered_seconds(doc)
-    if not seconds or width <= 0:
+    scores = doc.get("scores")
+    if not seconds or not scores or not scores.get("laugh") or not widths:
         return None
-    starts = [i * width for i in range(int(seconds // width))]
-    if not starts:
-        return None
-    return round(sum(window_peak(doc, t, t + width) >= LAUGH_FLOOR for t in starts) / len(starts), 3)
+    rates = []
+    for width in widths:
+        count = int((seconds - width) // scores["stride"]) + 1
+        if count <= 0:
+            continue
+        found = sum(
+            window_peak(doc, i * scores["stride"], i * scores["stride"] + width) >= LAUGH_FLOOR
+            for i in range(count)
+        )
+        rates.append(found / count)
+    return round(sum(rates) / len(rates), 3) if rates else None
 
 
 def build(scores: dict, transcript: dict) -> dict:

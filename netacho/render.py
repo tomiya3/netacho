@@ -72,8 +72,8 @@ def _rate_line(gaps: dict) -> list[str]:
     if gaps["peak_rate"] is None or gaps["baseline_rate"] is None:
         return []
     return [
-        f"- 予測の窓に笑いの山（弱い山を含む）がある割合 {gaps['peak_rate']:.0%}。"
-        f"音声全体を同じ長さの窓で見ると {gaps['baseline_rate']:.0%}"
+        f"- 予測の窓 {gaps['peak_n']} 件のうち、笑いの山（弱い山を含む）がある割合 {gaps['peak_rate']:.0%}。"
+        f"同じ長さの窓を音声全体に置くと {gaps['baseline_rate']:.0%}"
     ]
 
 
