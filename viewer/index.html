@@ -277,8 +277,8 @@ async function send(path, body, note, tab = "#deshi") {
   } catch (e) { note.textContent = `保存できませんでした：${e.message}`; return false; }
 }
 
-function spotAudio(at, side) {
-  const player = el("audio", { controls: "", preload: "none", src: `/clip?at=${at}&side=${side}&t=${encodeURIComponent(TOKEN)}` });
+function spotAudio(from, to, side) {
+  const player = el("audio", { controls: "", preload: "none", src: `/clip?from=${from}&to=${to}&side=${side}&t=${encodeURIComponent(TOKEN)}` });
   const why = el("p", { class: "quote", role: "status" });
   player.addEventListener("error", () => { why.textContent = "録音が見つかりません。"; });
   return [player, why];
@@ -288,7 +288,7 @@ function spotBody(s, c) {
   const body = [];
   const side = (label, row, laugh, key) => {
     body.push(el("p", { class: "quote" }, `${label}（${clock(row.t)}）「${row.quote}」`));
-    if (TOKEN) body.push(...spotAudio(laugh ?? row.end, key));
+    if (TOKEN) body.push(...spotAudio(Math.max(row.t - 8, 0), Math.max(row.end, laugh ?? 0) + 6, key));
   };
   side(c.koza_a, s.a, s.laugh_a, "a");
   if (s.b) side(c.koza_b, s.b, s.laugh_b, "b");

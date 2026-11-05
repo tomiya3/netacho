@@ -504,3 +504,21 @@ def test_side_cannot_leave_the_comparison(running):
     assert (
         call(running, f"/clip?at=30&side=../../x&t={running.token}", headers={})[0] == 200
     )  # 1 本目を返すだけ
+
+
+def test_clip_length_follows_the_line(running):
+    put_wav(running)
+    status, data = call(running, f"/clip?from=10&to=50&t={running.token}", headers={})
+    assert status == 200 and clip_seconds(data) == 40
+
+
+def test_clip_is_capped_so_the_whole_recording_is_not_handed_out(running):
+    put_wav(running, seconds=200)
+    data = call(running, f"/clip?from=0&to=200&t={running.token}", headers={})[1]
+    assert clip_seconds(data) == server.CLIP_MAX
+
+
+@pytest.mark.parametrize("query", ["from=10", "to=10", "from=20&to=10", "from=-1&to=5", "from=x&to=5"])
+def test_bad_clip_ranges_are_not_found(running, query):
+    put_wav(running)
+    assert call(running, f"/clip?{query}&t={running.token}", headers={})[0] == 404
