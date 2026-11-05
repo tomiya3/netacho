@@ -87,8 +87,8 @@ def test_sokki_survives_a_noter_failure(data, tmp_path):
     )
     client = ScriptedClient(writer=[draft(mitate)], checker=[verdicts(("item-0001", "supported"))])
     pipeline.build(P, N, K, client=client, budget=budget, root=data)
-    with pytest.raises(KeyError):  # ノート役の返事が無い = 途中で落ちた
-        pipeline.note(P, N, K, client=ScriptedClient(), budget=budget, root=data)
+    with pytest.raises(IndexError):  # ノート役の返事が無い = 途中で落ちた
+        pipeline.note(P, N, K, client=ScriptedClient(noter=[]), budget=budget, root=data)
     assert (store.Neta(P, N, data).koza_dir(K) / "sokki.md").exists()
 
 

@@ -26,6 +26,7 @@ FILES = {
     KOZA / "timeline.json": "timeline",
     KOZA / "reactions.json": "reactions",
     KOZA / "note_candidates.json": "note_candidates",
+    KOZA / "gaps.json": "gaps",
     KOZA / "run.json": "run",
 }
 ROLE_SCHEMAS = ["writer", "checker", "noter", "deshi"]

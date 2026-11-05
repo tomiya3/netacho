@@ -1,0 +1,30 @@
+{
+ "schema_version": 1,
+ "koza_id": "2026-01-01-dummy-hall",
+ "judged": true,
+ "hits": [
+  {
+   "item_id": "item-0003",
+   "reaction_ids": [
+    "react-0001"
+   ]
+  }
+ ],
+ "misses": [
+  {
+   "item_id": "item-0007"
+  }
+ ],
+ "surprises": [
+  {
+   "id": "gap-0001",
+   "reaction_id": "react-0002",
+   "t0": 63.2,
+   "t1": 64.0,
+   "scene_id": "scene-03",
+   "before_quote": "へえ、ですから骨折り賃をいただきに来ました。",
+   "question": "「骨折り賃」の後は、文字からは笑いどころと読めませんでした。ここでは何をしていますか。",
+   "question_source": "claude"
+  }
+ ]
+}

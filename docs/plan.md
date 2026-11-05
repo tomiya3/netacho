@@ -104,7 +104,7 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 - 見立て・地口・知らない物は、どちらかを判定する
 - 全項目に `segs`（区間 ID の始まりと終わり）を付ける。`basis` は `heard`（録音で言っている）か `knowledge`（演目の知識）
 - **型は `heard` だけ**。演目の知識で型を書かない。噺の `knowledge` は暫定として扱う
-- 仕込みのある kind（見立て、地口、サゲ）は `payoff` に回収の区間を付ける
+- 仕込みのある kind（見立て、地口、くすぐり、サゲ）は `payoff` に回収の区間を付ける。笑いどころの予測は `くすぐり` として書く
 - `上下` は録音から分からないので書かない（演者の追記だけで入る）
 - `間` は入力の `pause_after` の秒数を根拠にする。0.5〜5 秒で、根拠の最後の区間の直後にあること。文に書いた秒数は実際と合うこと。5 秒を超える空白は間と呼ばない
 - 差し戻しが付いたときは、指摘の箇所だけ足すか直す。演者の項目は入力に含まれるが、変えない
@@ -121,6 +121,7 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 - 与えられた候補だけを文にする。足さない、順位を変えない
 - 断定しない。「反応候補が少ない」と書く。「受けなかった」「反応なし」と書かない
 - 演者への短い文。数字の羅列にしない。直し方は提案しない
+- 「予測なしで反応あり」の笑いは、文字からは読めなかったことを言い、演者への問いを 1 つ書く
 
 **弟子役**
 
@@ -170,6 +171,12 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 - 見せ場に使う候補は原音で確かめる
 - 未検出を「反応なし」と扱わない
 
+### 笑いどころの予測と実際
+
+- 構成作家役は反応を見ずに回収を書く。スクリプトが AST の笑いと重ねて、的中、空振り、予測なしで反応ありに分ける
+- 予測なしで反応ありの笑いは、強い順に 5 件まで、ノート役が演者への問いにする。`questions.json` に入り、`netacho answer` で型に残る
+- 拍手は比較に使わない。自動の反応が無い高座と、録音の末尾で切れた窓は判定しない
+
 ### マージ
 
 - ツールの出力は `drafts/` に出し、スクリプトが正本に入れる
@@ -195,7 +202,7 @@ transcript に、反応の位置で（反応）を入れた `.md`。未校正と
 ```
 item: id, kind, priority(1-3), text, basis(heard|knowledge), source, payoff?, held?,
       edited_by(tool|performer), drafted_by?, history[{at, before, after, by}]
-kind: 場面 | 人物 | 見立て | 地口 | 知らない物 | 上下 | 間 | 枕 | サゲ | staging
+kind: 場面 | 人物 | 見立て | 地口 | くすぐり | 知らない物 | 上下 | 間 | 枕 | サゲ | staging
 
 source（どちらか一方）:
   録音由来 {koza_id, segs:[first,last]}   t0・t1・quote はスクリプトが区間から作る
@@ -211,6 +218,7 @@ transcript: segments[{id,start,end,text,words,no_speech_prob,pause_after}], vad[
 timeline: segments[{seg_id,scene_id,speaker(null可),confidence}]
 reactions: reactions[{id,t0,t1,kind(laugh|applause|reaction),strength_rank(null可),method(auto|manual)}], music[], hints[], scores
 note_candidates: candidates[{id,item_id,payoff_t,window,reaction_ids,why(no_candidate|low_rank)}]
+gaps: judged, hits[], misses[], surprises[{id,reaction_id,t0,t1,scene_id,before_quote,question?}]
 review: issues[{id,role,kind,anchor{scene_id|item_id},attempt,what_is_missing,round,resolved}]
 questions: questions[{id,issue_id,scene_id,text,answer?}]
 guide: cards[{order,scene_id,item_id,text,copied_fields,llm_fields}]
@@ -219,7 +227,7 @@ drafts/checker: verdicts[{item_id,verdict,reason}]
 drafts/noter: notes[{candidate_id,text}]
 ```
 
-kind の振り分けの既定：枕・間・上下・staging は型、場面・人物・サゲは噺。見立て・地口・知らない物は構成作家役が決める。
+kind の振り分けの既定：枕・間・上下・staging は型、場面・人物・サゲは噺。見立て・地口・くすぐり・知らない物は構成作家役が決める。
 
 ## 6. repo の形と CLI
 

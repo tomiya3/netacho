@@ -101,8 +101,8 @@ def kusuguri(**kw):
         kind="くすぐり",
         book="hanashi",
         text="利息の話が骨折り賃で返るので笑いどころと読む",
-        source={"segs": ["seg-0012", "seg-0012"]},
-        payoff={"segs": ["seg-0012", "seg-0012"]},
+        source={"segs": ["seg-0005", "seg-0005"]},
+        payoff={"segs": ["seg-0005", "seg-0005"]},
     )
     return draft_item(**{**base, **kw})
 
@@ -135,9 +135,9 @@ def test_note_makes_a_question_from_a_surprise(data, tmp_path):
     kdir = neta.koza_dir(K)
     found = store.read(kdir / "gaps.json", "gaps")
     assert found["surprises"][0]["question"] == q and found["surprises"][0]["question_source"] == "claude"
-    assert run["gaps"]["surprise"] == 1
+    assert run["gaps"]["surprise"] == 2  # ダミーの笑いは 2 か所とも予測の外
     questions = store.read(neta.questions, "questions")["questions"]
-    assert q in questions[-1]["text"]
+    assert q in questions[0]["text"]
     assert "文字からは読めなかった所" in (kdir / "note.md").read_text(encoding="utf-8")
     rows = json.loads(text_of(client.calls["noter"][0]))
     surprise = next(r for r in rows if r["kind"] == "予測なしで反応あり")
@@ -156,7 +156,7 @@ def test_note_twice_does_not_ask_twice(data, tmp_path):
     built(data, tmp_path)
     run_note(data, tmp_path, note_reply(("gap-0001", "何をしていますか。")))
     run_note(data, tmp_path, note_reply(("gap-0001", "何をしていますか。")))
-    assert len(store.read(store.Neta(P, N, data).questions, "questions")["questions"]) == 1
+    assert len(store.read(store.Neta(P, N, data).questions, "questions")["questions"]) == 2
 
 
 def test_answer_to_a_surprise_enters_the_kata(data, tmp_path):
@@ -168,4 +168,5 @@ def test_answer_to_a_surprise_enters_the_kata(data, tmp_path):
     item_ = performer.answer(neta, question=q["id"], speaker="演者", words="ここは目線だけで間を取る")
     assert item_["source"]["words"] == "ここは目線だけで間を取る"
     assert item_["edited_by"] == "performer"
-    assert store.read(neta.review, "review")["issues"][-1]["resolved"] is True
+    issues = {i["id"]: i for i in store.read(neta.review, "review")["issues"]}
+    assert issues[q["issue_id"]]["resolved"] is True

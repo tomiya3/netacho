@@ -75,7 +75,7 @@ def test_noter_sees_only_candidate_quotes_and_scene_length(data, tmp_path):
     }
     assert rows[0]["scene"] == "傘を借りる"
     assert "ご隠居さん、傘を返しに来ました。" in rows[0]["after_quote"]  # 窓の中の台詞
-    assert "骨折り賃" not in text  # 窓の外は見せない
+    assert "骨折り賃" not in rows[0]["after_quote"]  # 窓の外は見せない
 
 
 @pytest.mark.parametrize(
@@ -104,6 +104,7 @@ def test_bad_note_is_replaced_and_counted(data, tmp_path, bad):
         "回収の後に、反応候補が少ない所です。",
         "見立ての回収の後は、反応候補が見つからない所です。原音で確かめてください。",
         "サゲの後の反応候補が、この高座の中では小さい方です。",
+        "「利息」の後は、文字からは笑いどころと読めませんでした。ここでは何をしていますか。",
     ],
 )
 def test_allowed_note_wording(text):

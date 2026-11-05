@@ -9,7 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import candidates, evidence, guide, merge, render, review, store
+from . import candidates, evidence, gaps, guide, merge, render, review, store
 from .budget import Budget
 from .runner import RoleCache, Usage, call_role
 from .schema import check_refs
@@ -364,7 +364,13 @@ def reread(
 
 # ノート役の文の検査。断定、客の気持ち、直し方の提案、数字の羅列を通さない。
 # 「反応候補」の言い方は約束の 3 つだけ許し、それ以外の「反応…ない」は落とす
-NOTE_ALLOWED = ("反応候補が少な", "反応候補が小さ", "反応候補が見つからな")
+NOTE_ALLOWED = (
+    "反応候補が少な",
+    "反応候補が小さ",
+    "反応候補が見つからな",
+    "笑いどころと読めませんでした",  # 演者への問いの言い方
+    "笑いどころと読めなかった",
+)
 NOTE_BANNED = re.compile(
     r"(反応|候補|笑い|ウケ|受け|手応え)[^。]{0,8}"
     r"(なし|無し|なかった|無かった|ない|無い|ません|起きな|起こらな|薄|弱|出な)"
@@ -419,6 +425,26 @@ def note_is_ok(text: str) -> bool:
     return NOTE_BANNED.search(plain) is None
 
 
+def surprise_rows(found: dict) -> list[dict]:
+    """予測なしで反応ありの笑い。ノート役に見せるのは直前の台詞だけ。"""
+    return [
+        {"candidate_id": s["id"], "kind": "予測なしで反応あり", "before_quote": s["before_quote"]}
+        for s in found["surprises"]
+    ]
+
+
+def checked_questions(doc: dict | None, found: dict) -> None:
+    """問いの文を入れる。無い、重なる、検査に落ちるものは決まった文にする。"""
+    written: dict[str, list[str]] = {}
+    for n in (doc or {"notes": []})["notes"]:
+        written.setdefault(n["candidate_id"], []).append(n["text"].strip())
+    for s in found["surprises"]:
+        texts = written.get(s["id"], [])
+        ok = len(texts) == 1 and note_is_ok(texts[0])
+        s["question"] = texts[0] if ok else gaps.FALLBACK_QUESTION
+        s["question_source"] = "claude" if ok else "fixed"
+
+
 def checked_notes(doc: dict | None, cands: dict) -> tuple[dict[str, str], set[str]]:
     """候補ごとに 1 件の文を返す。無い、重なる、検査に落ちるものは決まった文にする。
 
@@ -455,7 +481,7 @@ def note(
     run_path = kdir / "run.json"
     if run_path.exists():
         ctx.usage.restore(store.read(run_path, "run"))  # build の分に積み足す
-    stale_files = ("note.md", "sokki.md", "note_candidates.json")
+    stale_files = ("note.md", "sokki.md", "note_candidates.json", "gaps.json")
     for stale in (*(kdir / n for n in stale_files), ctx.neta.drafts / "noter.json"):  # 古い文を残さない
         stale.unlink(missing_ok=True)
     reactions = store.read(kdir / "reactions.json", "reactions")
@@ -476,9 +502,10 @@ def note(
         note_candidates=cands,
     )
     items = {i["id"]: i for i in all_items}
+    found = gaps.compare(all_items, reactions, ctx.transcript, tl)
     doc = None
-    if cands["candidates"]:
-        rows = noter_rows(cands, items, ctx.transcript, ctx.hanashi, tl)
+    rows = noter_rows(cands, items, ctx.transcript, ctx.hanashi, tl) + surprise_rows(found)
+    if rows:
         text = json.dumps(rows, ensure_ascii=False, indent=1)
         content = [{"type": "text", "text": text}]
         try:
@@ -488,6 +515,11 @@ def note(
             raise
         store.write(ctx.neta.drafts / "noter.json", doc, "noter")
     notes, fixed = checked_notes(doc, cands)
+    checked_questions(doc, found)
+    store.write(kdir / "gaps.json", found, "gaps")
+    review_doc, questions = read_review(ctx.neta)
+    gaps.add_questions(found, review_doc, questions)
+    save_review(ctx, review_doc, questions)
     for c in cands["candidates"]:
         c["note"] = notes[c["id"]]
         c["note_source"] = "fixed" if c["id"] in fixed else "claude"
@@ -499,9 +531,11 @@ def note(
         for c in cands["candidates"]
     }
     (kdir / "note.md").write_text(
-        render.note_markdown(ctx.koza, cands, notes, items, item_scene), encoding="utf-8"
+        render.note_markdown(ctx.koza, cands, notes, items, item_scene, found), encoding="utf-8"
     )
     ctx.usage.extra["notes"] = {"candidates": len(cands["candidates"]), "fallback": len(fixed)}
+    ctx.usage.extra["gaps"] = gaps.counts(found)
+    ctx.usage.extra["questions"] = len(questions["questions"])
     result = ctx.usage.to_json()
     store.write(run_path, result, "run")
     return result
