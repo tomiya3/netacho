@@ -182,6 +182,23 @@ def test_cost_stays_when_scribe_is_cut(built, data, tmp_path):
     assert run["evidence"]["kept"] == 1  # build の数字も残る
 
 
+def test_mark_before_first_line_is_kept():
+    t = {"koza_id": "k", "segments": [{"id": "seg-0001", "start": 5.0, "end": 6.0, "text": "一"}]}
+    reactions = {"reactions": [{"t0": 1.0, "kind": "applause", "method": "auto"}]}
+    doc, _ = seisho.build(draft_lines(line("seg-0001", "一")), t, reactions)
+    assert doc["lines"][0]["marks"] == ["（拍手）"] and doc["lines"][1]["text"] == "一"
+
+
+def test_empty_segment_gets_no_invented_text():
+    t = {
+        "koza_id": "k",
+        "segments": [{"id": "seg-0001", "start": 0.0, "end": 2.0, "text": ""}],
+    }
+    reactions = {"reactions": [{"t0": 1.0, "kind": "laugh", "method": "auto"}]}
+    doc, stats = seisho.build(draft_lines(line("seg-0001", "作文")), t, reactions)
+    assert doc["lines"][0]["text"] == "" and stats["changed"] == 0
+
+
 def test_newlines_in_text_are_flattened():
     doc, _ = one("傘を貸して", "傘を\n貸して")
     assert "\n" not in doc["lines"][0]["text"]

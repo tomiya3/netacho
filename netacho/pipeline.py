@@ -568,7 +568,10 @@ def clean_copy(
     try:
         # 1 回の出力が max_tokens で切れないように、区間を分けて呼ぶ
         for i in range(0, len(segs), SCRIBE_CHUNK):
-            content = scribe_content(ctx, segs[i : i + SCRIBE_CHUNK])
+            chunk = segs[i : i + SCRIBE_CHUNK]
+            if not any(s["text"].strip() for s in chunk):
+                continue
+            content = scribe_content(ctx, chunk)
             part = call_role(ctx.client, "scribe", content, "scribe", ctx.usage, ctx.budget, ctx.cache)
             lines += part["lines"]
     except Exception:

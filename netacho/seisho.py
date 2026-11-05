@@ -39,6 +39,9 @@ def build(
         ("changed", "kept_raw", "missing", "duplicate", "empty", "heavy", "unknown_speaker"), 0
     )
     lines = []
+    if marks.get(-1):  # 最初の台詞より前の反応は、印だけの行にする（速記と同じ）
+        lines.append({"seg_id": segs[0]["id"], "speaker": None, "text": "", "raw": "", "changed": False})
+        lines[0]["marks"] = marks[-1]
     for i, seg in enumerate(segs):
         raw = seg["text"].strip()
         rows = written.get(seg["id"], [])
@@ -47,7 +50,7 @@ def build(
             stats["duplicate"] += 1
         elif row is None and raw:  # 空の区間は役に渡していない
             stats["missing"] += 1
-        text = " ".join(row["text"].split()) if row else raw  # 改行で読み物が崩れないように
+        text = " ".join(row["text"].split()) if row and raw else raw  # 空の区間に文を作らせない
         speaker = (row["speaker"] or None) if row else None
         if speaker is not None and names is not None and speaker not in names:
             speaker = None
