@@ -93,7 +93,7 @@ def test_build_writes_books_and_counts(data, tmp_path):
         "unchecked_knowledge": 1,
         "no_verdict": 0,
     }
-    assert {r["name"]: r["calls"] for r in doc["roles"]} == {"writer": 1, "checker": 1}
+    assert {r["name"]: r["calls"] for r in doc["roles"]} == {"writer": 1, "checker": 1, "deshi": 1}
     hanashi, kata = books(data)
     assert [i["id"] for i in hanashi["items"]] == ["item-0001", "item-0004"]
     assert [i["id"] for i in kata["items"]] == ["item-0002", "item-0003"]
