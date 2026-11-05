@@ -59,8 +59,12 @@ def transcript_text(transcript: dict) -> str:
     """区間 ID と間の秒数つきの文字起こし。"""
     lines = []
     for s in transcript["segments"]:
-        pause = s["pause_after"]
-        tail = f"（間 {pause:.1f} 秒）" if pause is not None and pause >= evidence.MIN_PAUSE_SEC else ""
+        pause = s["pause_after"] or 0
+        tail = ""
+        if pause > evidence.MAX_MA_SEC:  # 間と書かせない
+            tail = f"（空白 {pause:.1f} 秒。文字起こしの抜けか、間ではない）"
+        elif pause >= evidence.MIN_PAUSE_SEC:
+            tail = f"（間 {pause:.1f} 秒）"
         lines.append(f"{s['id']} {s['text']}{tail}")
     return "\n".join(lines)
 
@@ -109,8 +113,11 @@ def checker_rows(items: list[dict]) -> list[dict]:
 
 def _check_items(ctx: Context, items: list[dict], draft_name: str) -> set[str]:
     """照合して、保留にする id を返す。判定の返らなかった項目も保留にする（確かめられていないので）。"""
-    heard = [i for i in items if i["basis"] == "heard"]
-    ctx.checker["unchecked_knowledge"] += len(items) - len(heard)
+    # 間の根拠は秒数で、引用には書いていない。照合役には確かめられないので、スクリプトの検証だけで通す
+    ma = [i for i in items if i["kind"] == "間"]
+    heard = [i for i in items if i["basis"] == "heard" and i["kind"] != "間"]
+    ctx.checker["ma_by_script"] += len(ma)
+    ctx.checker["unchecked_knowledge"] += len(items) - len(heard) - len(ma)
     if not heard:
         return set()
     text = json.dumps(checker_rows(heard), ensure_ascii=False, indent=1)
@@ -218,7 +225,7 @@ def _finish(ctx: Context) -> dict:
         "evidence": {"kept": ctx.kept, "dropped": dict(ctx.dropped)},
         "checker": {
             k: ctx.checker[k]
-            for k in ("supported", "weak", "unsupported", "unchecked_knowledge", "no_verdict")
+            for k in ("supported", "weak", "unsupported", "unchecked_knowledge", "no_verdict", "ma_by_script")
         },
     }
     doc = ctx.usage.to_json()
@@ -360,7 +367,7 @@ def reread(
 NOTE_ALLOWED = ("反応候補が少な", "反応候補が小さ", "反応候補が見つからな")
 NOTE_BANNED = re.compile(
     r"(反応|候補|笑い|ウケ|受け|手応え)[^。]{0,8}"
-    r"(なし|無し|なかった|無かった|ない|無い|ありません|ませんでした|起きな|起こらな|薄|弱|出な)"
+    r"(なし|無し|なかった|無かった|ない|無い|ません|起きな|起こらな|薄|弱|出な)"
     r"|無反応|沈黙|静か|シーン|滑っ|滑り|スベ|盛り上がらな|失敗|ダメ|だめ|客"
     r"|した方が|すべき|おすすめ|お勧め|てはどう|てみては|直すと|変えると"
     r"|[0-9〇一二三四五六七八九十百]+\s*(秒|分|回|件|位)"

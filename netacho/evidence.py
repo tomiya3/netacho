@@ -10,6 +10,7 @@ from collections import Counter
 from .schema import HANASHI_KINDS, KATA_KINDS, PAYOFF_KINDS
 
 MAX_SPAN_SEC = 180.0  # 1 項目の根拠の長さの上限。暫定
+MAX_MA_SEC = 5.0  # これより長い空白は間と呼ばない。文字起こしの抜けか客の反応のことが多い。暫定
 MIN_PAUSE_SEC = 0.5  # 間の根拠に使える pause_after の下限。構成作家役にもこの長さから見せる。暫定
 
 
@@ -63,8 +64,12 @@ def _problem(item: dict, segs: Segments, tool_ids: set[str], performer_ids: set[
         return "span_too_long"
     if _book(item) == "kata" and item["basis"] != "heard":
         return "kata_not_heard"
-    if item["kind"] == "間" and (segs.between(span)[-1]["pause_after"] or 0) < MIN_PAUSE_SEC:
-        return "ma_no_pause"  # 根拠の最後の区間の後に間があること（長い範囲のどこかでは足りない）
+    if item["kind"] == "間":  # 根拠の最後の区間の後に間があること（長い範囲のどこかでは足りない）
+        pause = segs.between(span)[-1]["pause_after"] or 0
+        if pause < MIN_PAUSE_SEC:
+            return "ma_no_pause"
+        if pause > MAX_MA_SEC:
+            return "ma_too_long"
     if item["kind"] in PAYOFF_KINDS:
         if item["payoff"] is None:
             return "no_payoff"

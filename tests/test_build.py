@@ -92,6 +92,7 @@ def test_build_writes_books_and_counts(data, tmp_path):
         "unsupported": 1,
         "unchecked_knowledge": 1,
         "no_verdict": 0,
+        "ma_by_script": 0,
     }
     assert {r["name"]: r["calls"] for r in doc["roles"]} == {"writer": 1, "checker": 1, "deshi": 1}
     hanashi, kata = books(data)
@@ -145,6 +146,33 @@ def test_checker_sees_only_text_and_quotes(data, tmp_path):
     rows = json.loads(text)
     assert set(rows[0]) == {"item_id", "text", "quotes"}
     assert "seg-0012" not in text and "骨折り賃" not in text  # 引用の外の transcript は見せない
+
+
+def test_ma_skips_checker_and_stays_visible(data, tmp_path):
+    """間の根拠は秒数で引用に無いので、照合役に回すと全部保留になる。"""
+    ma = draft_item(
+        kind="間",
+        book="kata",
+        text="「同じでございます」の後に 1.6 秒の間",
+        source={"segs": ["seg-0003", "seg-0003"]},
+    )
+    client = ScriptedClient(writer=[draft(ma)])
+    doc = build(client, data, tmp_path)
+    assert client.calls["checker"] == []
+    assert doc["checker"]["ma_by_script"] == 1
+    assert "held" not in books(data)[1]["items"][0]
+
+
+def test_long_blank_is_shown_as_blank_not_ma(data, tmp_path):
+    neta = store.Neta(P, N, data)
+    path = neta.koza_dir(K) / "transcript.json"
+    doc = store.read(path, "transcript")
+    doc["segments"][2]["pause_after"] = 27.8
+    store.write(path, doc, "transcript")
+    client = ScriptedClient(writer=[draft(draft_item())], checker=[verdicts(("item-0001", "supported"))])
+    build(client, data, tmp_path)
+    text = text_of(client.calls["writer"][0])
+    assert "空白 27.8 秒" in text and "間 27.8 秒" not in text
 
 
 def test_missing_verdict_is_held(data, tmp_path):

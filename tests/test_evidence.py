@@ -105,6 +105,14 @@ def test_ma_pause_must_follow_the_last_segment(transcript):
     assert dropped == {"ma_no_pause": 1}
 
 
+def test_long_blank_is_not_a_ma(transcript):
+    """5 秒を超える空白は間と呼ばない。文字起こしの抜けや客の反応のことが多い。"""
+    t = copy.deepcopy(transcript)
+    t["segments"][2]["pause_after"] = 27.8
+    _, dropped = run(t, item(kind="間", book="kata", source={"segs": ["seg-0003", "seg-0003"]}))
+    assert dropped == {"ma_too_long": 1}
+
+
 def test_ma_needs_a_real_pause(transcript):
     kept, dropped = run(transcript, item(kind="間", book="kata", source={"segs": ["seg-0003", "seg-0003"]}))
     assert kept and not dropped  # seg-0003 の後に 1.6 秒
