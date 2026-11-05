@@ -198,3 +198,9 @@ def test_place_falls_back_to_the_transcript_and_says_so():
 def test_only_laugh_questions_have_a_place():
     assert list(view.question_places(GAPS, QUESTIONS, TRANSCRIPT, None)) == ["q-0001"]
     assert view.question_places(None, QUESTIONS, TRANSCRIPT, None) == {}
+
+
+def test_laugh_without_lines_is_not_called_clean():
+    empty = {"segments": [{"id": "seg-0001", "start": 0.0, "end": 10.0, "text": "遠い"}]}
+    place = view.question_places(GAPS, QUESTIONS, empty, None)["q-0001"]
+    assert place["lines"] == [] and place["clean"] is False

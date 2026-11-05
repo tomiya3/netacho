@@ -302,8 +302,14 @@ function renderDeshi(d) {
     const body = [el("p", {}, q.text)];
     const place = d.places?.[q.id];
     if (place) {
-      if (TOKEN) body.push(el("p", {}, `この所を聞く（${clock(place.t0)} の笑いの少し前から）`), el("audio", { controls: "", preload: "none", src: `/clip?at=${place.t0}&t=${encodeURIComponent(TOKEN)}` }));
-      body.push(el("p", { class: "quote" }, place.clean ? "前後の台詞（清書）：" : "前後の台詞（清書の無い行は文字起こしのまま）："));
+      if (TOKEN) {
+        const player = el("audio", { controls: "", preload: "none", src: `/clip?at=${place.t0}&t=${encodeURIComponent(TOKEN)}` });
+        const why = el("p", { class: "quote", role: "status" });
+        player.addEventListener("error", () => { why.textContent = "録音が見つかりません。"; });
+        body.push(el("p", {}, `この所を聞く（${clock(place.t0)} の笑いの少し前から）`), player, why);
+      }
+      if (!place.lines.length) body.push(el("p", { class: "quote" }, "この前後に文字起こしはありません。"));
+      else body.push(el("p", { class: "quote" }, place.clean ? "前後の台詞（清書）：" : "前後の台詞（清書の無い行は文字起こしのまま）："));
       for (const l of place.lines) body.push(el("p", { class: "script-line" }, (l.speaker ? `${l.speaker}（推定）：` : "") + l.text));
     }
     if (q.answer) body.push(el("div", { class: "meta" }, tag("performer", "演者の決定"), `「${q.answer.words}」`));

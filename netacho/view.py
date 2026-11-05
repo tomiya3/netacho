@@ -66,7 +66,7 @@ def question_places(
                 if line
                 else {"speaker": None, "text": seg["text"].strip()}
             )
-        places[q["id"]] = {"t0": s["t0"], "clean": all_clean, "lines": rows}
+        places[q["id"]] = {"t0": s["t0"], "clean": bool(rows) and all_clean, "lines": rows}
     return places
 
 
