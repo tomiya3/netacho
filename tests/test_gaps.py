@@ -179,6 +179,14 @@ def test_baseline_counts_every_position_with_the_same_rule():
     assert reactions.peak_share({"scores": {"seconds": 10.0}}, [5.0]) is None
 
 
+def test_hit_at_the_edge_of_a_window_counts_as_a_peak():
+    """笑いの区間が窓の端で重なるだけでも、的中なら山ありと数える。"""
+    d = doc(react(1, 11.0, 12.0, 1), seconds=100.0)
+    d["scores"].update(window=5.0, stride=2.0, laugh=[0.0] * 48)
+    r = compare([item(1, 10.0)], d)
+    assert len(r["hits"]) == 1 and r["peak_rate"] == 1.0
+
+
 def test_window_edges_are_half_open():
     d = scored(50.0, {12.5: 0.1})
     assert reactions.window_peak(d, 12.5, 14.0) == 0.1

@@ -64,10 +64,11 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
     for it in candidates.payoff_items(items, koza_id) if judged else []:
         window, clipped = candidates.window_of(it, end)
         windows.append(window)
-        if not clipped:
-            peaks.append(window_peak(reactions, window[0], window[1]))
-            whole.append(window[1] - window[0])
         found = candidates.overlapping(laughs, window[0], window[1])
+        if not clipped:
+            peak = window_peak(reactions, window[0], window[1])
+            peaks.append(max(peak, LAUGH_FLOOR) if found else peak)  # 笑いと重なる窓は山ありとして数える
+            whole.append(window[1] - window[0])
         if found:
             hits.append({"item_id": it["id"], "reaction_ids": [r["id"] for r in found]})
             used |= {r["id"] for r in found}
