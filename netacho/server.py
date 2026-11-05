@@ -3,6 +3,7 @@
 127.0.0.1 だけで待ち受ける。別のサイトの画面から書き込まれないように、起動ごとのトークン、
 Host、Origin を確かめる。配信するのは画面と view.json だけ。演者の言葉はログに出さない。
 読み取りにトークンは要らない。`make viewer` と同じで、同じ機械の上の物は読める前提。
+録音だけは別で、トークンのある画面に、問いの所の短い切り抜きだけを渡す。`out/view` には置かない。
 """
 
 from __future__ import annotations
@@ -11,14 +12,18 @@ import hmac
 import json
 import secrets
 import threading
+import wave
+import webbrowser
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from . import performer, pipeline, store, view
 
 MAX_BODY = 64 * 1024
+CLIP_BEFORE, CLIP_AFTER = 12.0, 6.0  # 笑いの前後に聞かせる長さ。秒
 FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/index.html": ("index.html", "text/html; charset=utf-8"),
@@ -41,6 +46,24 @@ class AnswerServer(ThreadingHTTPServer):
 
     def url(self) -> str:
         return f"http://localhost:{self.port}/?t={self.token}"
+
+
+def clip_wav(path: Path, at: float) -> bytes:
+    """録音の at の前後の短い切り抜き。"""
+    with wave.open(str(path), "rb") as src:
+        rate = src.getframerate()
+        start = max(0, int((at - CLIP_BEFORE) * rate))
+        if start >= src.getnframes():
+            raise ValueError("録音の外")
+        src.setpos(start)
+        frames = src.readframes(int((CLIP_BEFORE + CLIP_AFTER) * rate))
+        out = BytesIO()
+        with wave.open(out, "wb") as dst:
+            dst.setnchannels(src.getnchannels())
+            dst.setsampwidth(src.getsampwidth())
+            dst.setframerate(rate)
+            dst.writeframes(frames)
+    return out.getvalue()
 
 
 def _text(body: dict, key: str) -> str:
@@ -83,8 +106,28 @@ class Handler(BaseHTTPRequestHandler):
             and self.headers.get_content_type() == "application/json"
         )
 
+    def _clip(self, query: str) -> None:
+        args = parse_qs(query)
+        token = args.get("t", [""])[0]
+        if not hmac.compare_digest(token.encode(), self.server.token.encode()):
+            self._json(403, {"error": "受け付けない"})
+            return
+        try:
+            at = float(args.get("at", [""])[0])
+            if not 0 <= at < float("inf"):
+                raise ValueError
+            data = clip_wav(self.server.neta.koza_dir(self.server.koza_id) / "audio.wav", at)
+        except (ValueError, OSError, wave.Error):
+            self._json(404, {"error": "無い"})
+            return
+        self._send(200, data, "audio/wav")
+
     def do_GET(self) -> None:  # noqa: N802
-        found = FILES.get(urlsplit(self.path).path)
+        parts = urlsplit(self.path)
+        if parts.path == "/clip" and self._host_ok():
+            self._clip(parts.query)
+            return
+        found = FILES.get(parts.path)
         if not self._host_ok() or found is None:
             self._json(404, {"error": "無い"})
             return
@@ -161,13 +204,17 @@ class Handler(BaseHTTPRequestHandler):
         return lambda: pipeline.after_performer(neta)
 
 
-def serve(neta: store.Neta, koza_id: str, *, port: int, out: Path = view.OUT) -> None:
+def serve(neta: store.Neta, koza_id: str, *, port: int, out: Path = view.OUT, browser: bool = True) -> None:
     view.write(neta, koza_id, out)
     try:
         server = AnswerServer(neta, koza_id, out=out, port=port)
     except OSError as e:
         raise SystemExit(f"ポート {port} を使えません。--port で別の番号を指定してください") from e
-    print(f"開く：{server.url()}（止めるときは Ctrl-C）")
+    print(
+        f"開く：{server.url()}（止めるときは Ctrl-C）", flush=True
+    )  # 出力先が端末でなくても、すぐ見えるように
+    if browser:
+        webbrowser.open(server.url())
     try:
         server.serve_forever()
     except KeyboardInterrupt:

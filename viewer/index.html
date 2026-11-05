@@ -300,6 +300,12 @@ function renderDeshi(d) {
   if (!questions.length) root.append(el("p", {}, "質問はありません。"));
   for (const q of questions) {
     const body = [el("p", {}, q.text)];
+    const place = d.places?.[q.id];
+    if (place) {
+      if (TOKEN) body.push(el("p", {}, `この所を聞く（${clock(place.t0)} の笑いの少し前から）`), el("audio", { controls: "", preload: "none", src: `/clip?at=${place.t0}&t=${encodeURIComponent(TOKEN)}` }));
+      body.push(el("p", { class: "quote" }, place.clean ? "前後の台詞（清書）：" : "前後の台詞（文字起こしのまま。清書はまだありません）："));
+      for (const l of place.lines) body.push(el("p", { class: "script-line" }, (l.speaker ? `${l.speaker}（推定）：` : "") + l.text));
+    }
     if (q.answer) body.push(el("div", { class: "meta" }, tag("performer", "演者の決定"), `「${q.answer.words}」`));
     if (q.dismissed) body.push(el("div", { class: "meta" }, tag("performer", "演者が捨てた"), `「${q.dismissed.reason}」`));
     if (TOKEN && !q.answer && !q.dismissed) body.push(answerForm(q));
