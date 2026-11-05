@@ -11,7 +11,8 @@
     51.0
    ],
    "reaction_ids": [],
-   "why": "no_candidate"
+   "why": "no_candidate",
+   "note": "見立ての回収の後に、反応候補が少ない所です。"
   },
   {
    "id": "cand-0002",
@@ -24,7 +25,8 @@
    "reaction_ids": [
     "react-0002"
    ],
-   "why": "low_rank"
+   "why": "low_rank",
+   "note": "サゲの後の反応候補が、この高座の中では小さい方です。"
   }
  ]
 }

@@ -64,6 +64,17 @@
               "no_candidate",
               "low_rank"
             ]
+          },
+          "note": {
+            "type": "string",
+            "description": "演者向けの文。ノート役の文か、決まった文"
+          },
+          "note_source": {
+            "enum": [
+              "claude",
+              "fixed"
+            ],
+            "description": "ノート役の文か、スクリプトの決まった文か"
           }
         }
       }

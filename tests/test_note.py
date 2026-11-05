@@ -138,6 +138,15 @@ def test_rejected_note_wording(text):
     assert not pipeline.note_is_ok(text)
 
 
+def test_note_source_tells_who_wrote_it(data, tmp_path):
+    built(data, tmp_path)
+    path = store.Neta(P, N, data).koza_dir(K) / "note_candidates.json"
+    run_note(data, tmp_path, note_doc(("cand-0001", "回収の後に、反応候補が見つからない所です。")))
+    assert store.read(path, "note_candidates")["candidates"][0]["note_source"] == "claude"
+    run_note(data, tmp_path, note_doc(("cand-0001", "ここは受けなかった。")))
+    assert store.read(path, "note_candidates")["candidates"][0]["note_source"] == "fixed"
+
+
 def test_failed_note_leaves_no_old_note(data, tmp_path):
     built(data, tmp_path)
     run_note(data, tmp_path, note_doc(("cand-0001", "文です。")))
@@ -146,6 +155,7 @@ def test_failed_note_leaves_no_old_note(data, tmp_path):
     with pytest.raises(IndexError):  # 偽の client の返事が尽きる = API の失敗の代わり
         run_note(data, tmp_path)
     assert not (kdir / "note.md").exists()
+    assert not (kdir / "note_candidates.json").exists()  # 文の無い候補を残さない
 
 
 def test_after_quote_is_capped(data, tmp_path):

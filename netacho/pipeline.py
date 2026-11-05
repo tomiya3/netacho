@@ -412,20 +412,24 @@ def note_is_ok(text: str) -> bool:
     return NOTE_BANNED.search(plain) is None
 
 
-def checked_notes(doc: dict | None, cands: dict) -> tuple[dict[str, str], int]:
-    """候補ごとに 1 件の文を返す。無い、重なる、断定の語があるものは決まった文に置き換えて数える。"""
+def checked_notes(doc: dict | None, cands: dict) -> tuple[dict[str, str], set[str]]:
+    """候補ごとに 1 件の文を返す。無い、重なる、検査に落ちるものは決まった文にする。
+
+    返すのは (文, 決まった文にした候補の ID)。
+    """
     written: dict[str, list[str]] = {}
     for n in (doc or {"notes": []})["notes"]:
         written.setdefault(n["candidate_id"], []).append(n["text"].strip())
-    out, fallback = {}, 0
+    out: dict[str, str] = {}
+    fixed: set[str] = set()
     for c in cands["candidates"]:
         texts = written.get(c["id"], [])
         if len(texts) == 1 and note_is_ok(texts[0]):
             out[c["id"]] = texts[0]
         else:
             out[c["id"]] = NOTE_FALLBACK[c["why"]]
-            fallback += 1
-    return out, fallback
+            fixed.add(c["id"])
+    return out, fixed
 
 
 def note(
@@ -444,11 +448,8 @@ def note(
     run_path = kdir / "run.json"
     if run_path.exists():
         ctx.usage.restore(store.read(run_path, "run"))  # build の分に積み足す
-    for stale in (
-        kdir / "note.md",
-        kdir / "sokki.md",
-        ctx.neta.drafts / "noter.json",
-    ):  # 途中で落ちても古い文を残さない
+    stale_files = ("note.md", "sokki.md", "note_candidates.json")
+    for stale in (*(kdir / n for n in stale_files), ctx.neta.drafts / "noter.json"):  # 古い文を残さない
         stale.unlink(missing_ok=True)
     reactions = store.read(kdir / "reactions.json", "reactions")
     (kdir / "sokki.md").write_text(
@@ -467,7 +468,6 @@ def note(
         reactions=reactions,
         note_candidates=cands,
     )
-    store.write(kdir / "note_candidates.json", cands, "note_candidates")
     items = {i["id"]: i for i in all_items}
     doc = None
     if cands["candidates"]:
@@ -480,7 +480,11 @@ def note(
             store.write(run_path, ctx.usage.to_json(), "run")  # 費用は実測として残す
             raise
         store.write(ctx.neta.drafts / "noter.json", doc, "noter")
-    notes, fallback = checked_notes(doc, cands)
+    notes, fixed = checked_notes(doc, cands)
+    for c in cands["candidates"]:
+        c["note"] = notes[c["id"]]
+        c["note_source"] = "fixed" if c["id"] in fixed else "claude"
+    store.write(kdir / "note_candidates.json", cands, "note_candidates")  # 文が揃ってから 1 回だけ書く
     scene_of = {s["seg_id"]: s["scene_id"] for s in tl["segments"]}
     titles = {s["id"]: s["title"] for s in ctx.hanashi["scenes"]}
     item_scene = {
@@ -490,7 +494,7 @@ def note(
     (kdir / "note.md").write_text(
         render.note_markdown(ctx.koza, cands, notes, items, item_scene), encoding="utf-8"
     )
-    ctx.usage.extra["notes"] = {"candidates": len(cands["candidates"]), "fallback": fallback}
+    ctx.usage.extra["notes"] = {"candidates": len(cands["candidates"]), "fallback": len(fixed)}
     result = ctx.usage.to_json()
     store.write(run_path, result, "run")
     return result
