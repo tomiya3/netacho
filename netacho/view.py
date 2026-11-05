@@ -7,11 +7,12 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import render, store
+from . import gaps, render, store
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "out" / "view"
 VIEWER = ROOT / "viewer" / "index.html"
+PLACE_BEFORE, PLACE_AFTER = 15.0, 3.0  # 問いの前後に見せる台詞の範囲。秒
 
 
 def _optional(path: Path, schema: str) -> dict | None:
@@ -35,6 +36,40 @@ def _timelines(neta: store.Neta, koza_id: str) -> list[dict]:
     return rows
 
 
+def question_places(
+    gaps_doc: dict | None, questions: dict | None, transcript: dict, clean: dict | None
+) -> dict:
+    """笑いへの問いごとの、時刻と前後の台詞。清書があれば清書で、無ければ文字起こしで。
+
+    問いに添えた台詞は文字起こしのままなので、これが無いと演者にはどこのことか分からない。
+    """
+    if not gaps_doc or not questions:
+        return {}
+    lines = {row["seg_id"]: row for row in (clean or {"lines": []})["lines"]}
+    koza_id = gaps_doc["koza_id"]
+    places = {}
+    for s in gaps_doc["surprises"]:
+        head = gaps.attempt_of(s, koza_id)
+        q = next((x for x in questions["questions"] if x["text"].startswith(head)), None)
+        if q is None:
+            continue
+        rows, all_clean = [], True
+        for seg in transcript["segments"]:
+            if seg["end"] <= s["t0"] - PLACE_BEFORE or seg["start"] >= s["t0"] + PLACE_AFTER:
+                continue
+            line = lines.get(seg["id"])
+            if line is not None and line["raw"].strip() != seg["text"].strip():
+                line = None  # 文字起こしを作り直す前の清書は、別の台詞に当たる
+            all_clean = all_clean and line is not None
+            rows.append(
+                {"speaker": line["speaker"], "text": line["text"]}
+                if line
+                else {"speaker": None, "text": seg["text"].strip()}
+            )
+        places[q["id"]] = {"t0": s["t0"], "clean": bool(rows) and all_clean, "lines": rows}
+    return places
+
+
 def payload(neta: store.Neta, koza_id: str) -> dict:
     """1 つの高座を見るのに要る物を 1 つの JSON にまとめる。"""
     kdir = neta.koza_dir(koza_id)
@@ -43,12 +78,16 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
     hanashi = store.read(neta.hanashi, "book")
     kata = store.read(neta.kata, "book")
     note = kdir / "note.md"
+    gaps_doc = _optional(kdir / "gaps.json", "gaps")
+    clean = _optional(kdir / "seisho.json", "seisho")
+    questions = _optional(neta.questions, "questions")
+    transcript = _optional(kdir / "transcript.json", "transcript")
     return {
         "koza": store.read(kdir / "koza.json", "koza"),
         "reactions": store.read(kdir / "reactions.json", "reactions"),
         "candidates": _optional(kdir / "note_candidates.json", "note_candidates"),
-        "gaps": _optional(kdir / "gaps.json", "gaps"),
-        "seisho": _optional(kdir / "seisho.json", "seisho"),
+        "gaps": gaps_doc,
+        "seisho": clean,
         "note": note.read_text(encoding="utf-8") if note.exists() else None,
         "scenes": sorted(hanashi["scenes"], key=lambda s: s["order"]),
         "characters": hanashi["characters"],
@@ -56,7 +95,8 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "kata": _with_scene(kata["items"], lookup),
         "guide": _optional(neta.guide, "guide"),
         "review": _optional(neta.review, "review"),
-        "questions": _optional(neta.questions, "questions"),
+        "questions": questions,
+        "places": question_places(gaps_doc, questions, transcript, clean) if transcript else {},
         "run": _optional(kdir / "run.json", "run"),
     }
 

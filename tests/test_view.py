@@ -144,3 +144,63 @@ def test_html_never_builds_markup_from_data():
 
 def test_html_loads_nothing_from_outside():
     assert not re.search(r"(src|href)=\"https?://", HTML)
+
+
+GAPS = {"koza_id": "k", "surprises": [{"t0": 100.0}]}
+QUESTIONS = {
+    "questions": [
+        {"id": "q-0001", "text": "1:40.0 の笑いの所（k）「…」：問い"},
+        {"id": "q-0002", "text": "別"},
+    ]
+}
+TRANSCRIPT = {
+    "segments": [
+        {"id": "seg-0001", "start": 50.0, "end": 60.0, "text": "遠い"},
+        {"id": "seg-0002", "start": 90.0, "end": 99.0, "text": " 生の台詞 "},
+        {"id": "seg-0003", "start": 99.0, "end": 102.0, "text": "次の台詞"},
+        {"id": "seg-0004", "start": 104.0, "end": 110.0, "text": "後の台詞"},
+    ]
+}
+
+
+def test_place_uses_the_clean_copy_when_it_exists():
+    clean = {
+        "lines": [
+            {"seg_id": "seg-0002", "speaker": "親方", "text": "清書の台詞", "raw": "生の台詞"},
+            {"seg_id": "seg-0003", "speaker": None, "text": "次の清書", "raw": "次の台詞"},
+        ]
+    }
+    place = view.question_places(GAPS, QUESTIONS, TRANSCRIPT, clean)["q-0001"]
+    assert place["t0"] == 100.0 and place["clean"] is True
+    assert place["lines"] == [
+        {"speaker": "親方", "text": "清書の台詞"},
+        {"speaker": None, "text": "次の清書"},
+    ]
+
+
+def test_a_missing_line_is_not_called_clean():
+    clean = {"lines": [{"seg_id": "seg-0002", "speaker": "親方", "text": "清書", "raw": "生の台詞"}]}
+    place = view.question_places(GAPS, QUESTIONS, TRANSCRIPT, clean)["q-0001"]
+    assert place["clean"] is False and place["lines"][1] == {"speaker": None, "text": "次の台詞"}
+
+
+def test_old_clean_copy_is_not_shown_for_a_changed_line():
+    clean = {"lines": [{"seg_id": "seg-0002", "speaker": "親方", "text": "古い清書", "raw": "前の文字"}]}
+    place = view.question_places(GAPS, QUESTIONS, TRANSCRIPT, clean)["q-0001"]
+    assert place["lines"][0] == {"speaker": None, "text": "生の台詞"}
+
+
+def test_place_falls_back_to_the_transcript_and_says_so():
+    place = view.question_places(GAPS, QUESTIONS, TRANSCRIPT, None)["q-0001"]
+    assert place["clean"] is False and place["lines"][0]["text"] == "生の台詞"
+
+
+def test_only_laugh_questions_have_a_place():
+    assert list(view.question_places(GAPS, QUESTIONS, TRANSCRIPT, None)) == ["q-0001"]
+    assert view.question_places(None, QUESTIONS, TRANSCRIPT, None) == {}
+
+
+def test_laugh_without_lines_is_not_called_clean():
+    empty = {"segments": [{"id": "seg-0001", "start": 0.0, "end": 10.0, "text": "遠い"}]}
+    place = view.question_places(GAPS, QUESTIONS, empty, None)["q-0001"]
+    assert place["lines"] == [] and place["clean"] is False

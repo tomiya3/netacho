@@ -205,6 +205,11 @@ def counts(doc: dict) -> dict:
     }
 
 
+def attempt_of(surprise: dict, koza_id: str) -> str:
+    """問いの見出し。別の高座の同じ時刻と区別する。問いの文の先頭にもなる。"""
+    return f"{clock(surprise['t0'])} の笑いの所（{koza_id}）"
+
+
 def add_questions(doc: dict, review: dict, questions: dict) -> int:
     """予測なしで反応ありの笑いを、演者への質問にする。同じ笑いを 2 度聞かない。足した数を返す。"""
     n_issue = max((int(i["id"].split("-")[1]) for i in review["issues"]), default=0) + 1
@@ -212,7 +217,7 @@ def add_questions(doc: dict, review: dict, questions: dict) -> int:
     asked = {i["attempt"] for i in review["issues"]}
     added = 0
     for s in doc["surprises"]:
-        attempt = f"{clock(s['t0'])} の笑いの所（{doc['koza_id']}）"  # 別の高座の同じ時刻と区別する
+        attempt = attempt_of(s, doc["koza_id"])
         if s["scene_id"] is None or attempt in asked:
             continue
         issue_id = f"issue-{n_issue:04d}"

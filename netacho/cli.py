@@ -328,7 +328,7 @@ def cmd_dismiss(args: argparse.Namespace) -> None:
 def cmd_serve(args: argparse.Namespace) -> None:
     from . import server
 
-    server.serve(store.Neta(args.performer, args.neta), args.koza, port=args.port)
+    server.serve(store.Neta(args.performer, args.neta), args.koza, port=args.port, browser=not args.no_open)
 
 
 def cmd_guide(args: argparse.Namespace) -> None:
@@ -462,6 +462,7 @@ def build_parser() -> argparse.ArgumentParser:
     _who(serve)
     serve.add_argument("--koza", required=True)
     serve.add_argument("--port", type=int, default=8765)
+    serve.add_argument("--no-open", action="store_true", help="ブラウザを開かない")
     serve.set_defaults(func=cmd_serve)
 
     guide = sub.add_parser("guide", help="案内の札（LLM 0 回）")

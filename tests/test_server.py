@@ -1,5 +1,6 @@
 """画面から答えるサーバのテスト。LLM は使わない。"""
 
+import io
 import json
 import shutil
 import socket
@@ -8,6 +9,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import wave
 from pathlib import Path
 
 import pytest
@@ -318,3 +320,90 @@ def test_token_does_not_leak_by_referrer(running):
 def test_dismiss_has_its_own_reason_and_warns_it_cannot_be_undone():
     html = (Path(__file__).parents[1] / "viewer" / "index.html").read_text(encoding="utf-8")
     assert "元に戻せません" in html and "reason: words.value" not in html
+
+
+def put_wav(srv, seconds=60):
+    path = srv.neta.koza_dir(K) / "audio.wav"
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(b"\x00\x00" * 16000 * seconds)
+
+
+def clip_seconds(data):
+    with wave.open(io.BytesIO(data)) as w:
+        return w.getnframes() / w.getframerate()
+
+
+def test_clip_is_short_and_needs_the_token(running):
+    put_wav(running)
+    status, data = call(running, f"/clip?at=30&t={running.token}", headers={})
+    assert status == 200 and clip_seconds(data) == 18
+    assert call(running, "/clip?at=30", headers={})[0] == 403
+    assert call(running, "/clip?at=30&t=x", headers={})[0] == 403
+
+
+def test_clip_at_the_start_and_end_of_the_recording(running):
+    put_wav(running)
+    assert clip_seconds(call(running, f"/clip?at=5&t={running.token}", headers={})[1]) == 18
+    assert clip_seconds(call(running, f"/clip?at=59&t={running.token}", headers={})[1]) == 13
+
+
+def test_clip_answers_range_requests(running):
+    put_wav(running)
+    path = f"/clip?at=30&t={running.token}"
+    whole = call(running, path, headers={})[1]
+    status, part = call(running, path, headers={"Range": "bytes=0-1"})
+    assert status == 206 and part == whole[:2]
+    status, part = call(running, path, headers={"Range": "bytes=100-"})
+    assert status == 206 and part == whole[100:]
+    assert call(running, path, headers={"Range": f"bytes={len(whole)}-"})[0] == 416
+
+
+@pytest.mark.parametrize("at", ["x", "-1", "nan", "inf", "1e306", "9999", ""])
+def test_bad_clip_time_is_not_found(running, at):
+    put_wav(running)
+    assert call(running, f"/clip?at={at}&t={running.token}", headers={})[0] == 404
+
+
+def test_missing_recording_is_not_found(running):
+    assert call(running, f"/clip?at=5&t={running.token}", headers={})[0] == 404
+
+
+def test_clip_with_another_host_is_refused(running):
+    put_wav(running)
+    assert call(running, f"/clip?at=5&t={running.token}", headers={"Host": "evil.example"})[0] == 404
+
+
+def test_recording_is_not_written_to_the_screen_folder(running):
+    put_wav(running)
+    view.write(running.neta, K, running.out)
+    assert sorted(p.name for p in running.out.iterdir()) == ["index.html", "view.json"]
+
+
+def test_serve_shows_the_url_at_once_and_opens_the_browser(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    opened = []
+    monkeypatch.setattr(server.webbrowser, "open", opened.append)
+    monkeypatch.setattr(server.AnswerServer, "serve_forever", lambda self: None)
+    server.serve(store.Neta(P, N, root), K, port=0, out=tmp_path / "view")
+    assert "http://localhost:" in capsys.readouterr().out and len(opened) == 1
+    server.serve(store.Neta(P, N, root), K, port=0, out=tmp_path / "view", browser=False)
+    assert len(opened) == 1
+
+
+def test_serve_flushes_the_url(tmp_path, monkeypatch):
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    flushed = []
+    monkeypatch.setattr(server.AnswerServer, "serve_forever", lambda self: None)
+
+    class Out(io.StringIO):
+        def flush(self):
+            flushed.append(self.getvalue())
+
+    monkeypatch.setattr(sys, "stdout", Out())
+    server.serve(store.Neta(P, N, root), K, port=0, out=tmp_path / "view", browser=False)
+    assert any("http://localhost:" in text for text in flushed)
