@@ -218,6 +218,9 @@ def cmd_build(args: argparse.Namespace) -> None:
     print(f"項目 {stats['evidence']['kept']}、落とした数 {sum(stats['evidence']['dropped'].values())}")
     print(f"照合 {stats['checker']}")
     print(f"弟子役の指摘 {stats['deshi']}、質問 {stats['questions']}")
+    left = stats["evidence"]["held_internal_id"]
+    if left:
+        print(f"文に内部の番号が残って保留の項目 {left}。`.md`、札、ノートの候補には出ません")
 
 
 def cmd_note(args: argparse.Namespace) -> None:
