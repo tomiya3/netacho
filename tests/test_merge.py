@@ -118,3 +118,13 @@ def test_performer_item_is_never_held_for_ids():
     merge.merge(h, k, items=[row("item-0002")], scenes=[], characters=[], held_ids=set())
     assert "held" not in h["items"][0]
     assert merge.id_rework(h, k) == []
+
+
+def test_checker_hold_is_not_overwritten_by_the_id_hold():
+    h, k = book("hanashi"), book("kata")
+    h["items"] = [{**strip(row("item-0001", text="scene-07 の後")), "held": True}]
+    fixed = {**row("item-0001", text="結びの一番の後"), "basis": "knowledge"}
+    merge.merge(h, k, items=[row("item-0002")], scenes=[], characters=[], held_ids=set())
+    assert "held_reason" not in h["items"][0]
+    merge.merge(h, k, items=[fixed], scenes=[], characters=[], held_ids=set())
+    assert h["items"][0]["held"] is True  # 照合で落ちた項目は、knowledge に書き換えても解けない

@@ -58,7 +58,8 @@ def _union(old: list[dict], new: list[dict]) -> list[dict]:
 def hold_internal_ids(hanashi: dict, kata: dict) -> None:
     """文に内部の番号が残る項目を保留にする。前の版の帳面も見る。解けるのは書き直されたときだけ。"""
     for item in hanashi["items"] + kata["items"]:
-        if item["edited_by"] == "tool" and has_internal_id(item["text"]):
+        # 照合で保留の項目はその理由のまま。理由を上書きすると、書き直しで照合なしに解けてしまう
+        if item["edited_by"] == "tool" and not item.get("held") and has_internal_id(item["text"]):
             item["held"] = True
             item["held_reason"] = "internal_id"
 

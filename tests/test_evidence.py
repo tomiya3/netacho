@@ -228,6 +228,7 @@ def test_scenes_and_timeline(transcript):
         "ｓｃｅｎｅ－０７ の最後",
         "Scene-07 の最後",
         "scene_07 の最後",
+        "issue-0003 の指摘",
     ],
 )
 def test_internal_id_is_found(text):

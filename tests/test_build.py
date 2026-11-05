@@ -455,3 +455,31 @@ def test_id_left_after_rework_stays_held(data, tmp_path):
     stats = build(client, data, tmp_path)
     assert books(data)[0]["items"][0]["held_reason"] == "internal_id"
     assert stats["evidence"]["held_internal_id"] == 1
+
+
+def test_writer_gets_the_script_rework_with_the_text_to_fix(data, tmp_path):
+    client = ScriptedClient(
+        writer=[draft(draft_item(text="scene-02 で太助が傘を借りる")), draft()],
+        checker=[verdicts(("item-0001", "supported"))],
+    )
+    build(client, data, tmp_path)
+    text = text_of(client.calls["writer"][1])
+    rest = json.loads(text[text.index('{\n "演目"') :])
+    assert rest["差し戻し"][0]["anchor"] == {"item_id": "item-0001"}
+    assert rest["差し戻し"][0]["kind"] == "unclear_scene"
+    assert any(i["text"] == "scene-02 で太助が傘を借りる" for i in rest["既存の噺・型"]["items"])
+    assert "scene-02 で太助" not in text_of(client.calls["deshi"][0])  # 保留は弟子役に見えない
+
+
+def test_rebuild_fixes_an_item_held_in_the_book(data, tmp_path):
+    first = ScriptedClient(
+        writer=[draft(draft_item(text="scene-02 で太助が傘を借りる")), draft()],
+        checker=[verdicts(("item-0001", "supported"))],
+    )
+    build(first, data, tmp_path)
+    assert books(data)[0]["items"][0]["held_reason"] == "internal_id"
+    fixed = draft_item(id="item-0001", text="傘を借りる所で太助が傘を借りる")
+    again = ScriptedClient(writer=[draft(), draft(fixed)], checker=[verdicts(("item-0001", "supported"))])
+    stats = build(again, data, tmp_path)
+    assert "held" not in books(data)[0]["items"][0]
+    assert stats["evidence"]["held_internal_id"] == 0
