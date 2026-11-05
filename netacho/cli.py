@@ -16,7 +16,7 @@ from pathlib import Path
 from . import reactions, store
 
 SCHEMA_VERSION = 1
-STALE_AFTER_MARK = ("note_candidates.json", "gaps.json", "note.md", "sokki.md")
+STALE_AFTER_MARK = ("note_candidates.json", "gaps.json", "note.md", "sokki.md", "seisho.json", "seisho.md")
 # prep をやり直すと意味を失う物
 PREP_OUTPUTS = (
     "koza.json",
@@ -268,8 +268,12 @@ def cmd_seisho(args: argparse.Namespace) -> None:
     s = doc["seisho"]
     print(f"清書 {s['lines']} 行、直した行 {s['changed']}、大きく直した行 {s['heavy']}")
     print(f"原文に戻した行 {s['kept_raw']}、抜け {s['missing']}、重複 {s['duplicate']}")
-    if s["missing"] or s["duplicate"]:
-        print("速記役が返さなかった区間がある。その行は原文のまま", file=sys.stderr)
+    if s["missing"] or s["duplicate"] or s["extra"] or s["unknown_speaker"]:
+        print(
+            f"確かめる：余分な行 {s['extra']}、人物に無い話者 {s['unknown_speaker']}。"
+            "返らなかった区間は原文のまま",
+            file=sys.stderr,
+        )
 
 
 def cmd_decide(args: argparse.Namespace) -> None:

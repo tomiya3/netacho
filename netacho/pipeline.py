@@ -536,10 +536,13 @@ def note(
     return result
 
 
-def scribe_content(ctx: Context) -> list[dict]:
-    """速記役に見せる物：文字起こし、演目名、人物。反応は見せない。"""
+SCRIBE_CHUNK = 120  # 1 回に渡す区間の数。40 分の高座でも切れない長さ。暫定
+
+
+def scribe_content(ctx: Context, segments: list[dict]) -> list[dict]:
+    """速記役に見せる物：文字起こし、演目名、人物の名前。反応は見せない。"""
     head = {"演目": ctx.koza["neta"], "人物": [c["name"] for c in ctx.hanashi["characters"]]}
-    lines = [{"seg_id": s["id"], "text": s["text"]} for s in ctx.transcript["segments"] if s["text"].strip()]
+    lines = [{"seg_id": s["id"], "text": s["text"]} for s in segments if s["text"].strip()]
     return [
         {"type": "text", "text": json.dumps(head, ensure_ascii=False, indent=1)},
         {"type": "text", "text": json.dumps(lines, ensure_ascii=False)},
@@ -560,7 +563,18 @@ def clean_copy(
     ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
     kdir = ctx.neta.koza_dir(koza_id)
     run_path = kdir / "run.json"
-    draft = call_role(ctx.client, "scribe", scribe_content(ctx), "scribe", ctx.usage, ctx.budget, ctx.cache)
+    segs = ctx.transcript["segments"]
+    lines: list[dict] = []
+    try:
+        # 1 回の出力が max_tokens で切れないように、区間を分けて呼ぶ
+        for i in range(0, len(segs), SCRIBE_CHUNK):
+            content = scribe_content(ctx, segs[i : i + SCRIBE_CHUNK])
+            part = call_role(ctx.client, "scribe", content, "scribe", ctx.usage, ctx.budget, ctx.cache)
+            lines += part["lines"]
+    except Exception:
+        store.write(run_path, ctx.usage.to_json(), "run")  # 費用は実測として残す
+        raise
+    draft = {"schema_version": 1, "lines": lines}
     store.write(ctx.neta.drafts / "scribe.json", draft, "scribe")
     reactions_path = kdir / "reactions.json"
     reactions = store.read(reactions_path, "reactions") if reactions_path.exists() else None
