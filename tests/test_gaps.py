@@ -6,7 +6,7 @@ from pathlib import Path
 from fakes import ScriptedClient, text_of
 from test_build import K, N, P, draft, draft_item, verdicts
 
-from netacho import gaps, performer, pipeline, reactions, render, schema, store, view
+from netacho import cli, gaps, performer, pipeline, reactions, render, schema, store, view
 from netacho.budget import Budget
 
 
@@ -344,6 +344,22 @@ def test_expected_share_includes_the_width_of_a_hump():
 def test_expected_share_of_many_windows_does_not_exceed_one():
     assert gaps._humps_expected([[50.0]], [[0.0, 200.0]], 110.0) == 1.0
     assert gaps._humps_expected([], [[0.0, 10.0]], 110.0) is None
+
+
+def test_clipped_window_is_left_out_of_humps_with_its_hump():
+    items = [item(1, 10.0), item(2, 97.0)]  # 2 件目の窓は録音の末尾で切れる
+    r = compare(items, scored(100.0, {12.5: 0.1, 40.5: 0.1, 96.5: 0.1}))
+    assert (r["humps_hit"], r["humps_total"]) == (1, 2)
+
+
+def test_markdown_keeps_the_share_of_windows():
+    r = compare([item(1, 10.0)], scored(100.0, {12.5: 0.1}))
+    assert "を覆っている" in "\n".join(render.gaps_markdown(r, {}))
+
+
+def test_hump_line_does_not_print_none():
+    assert "None" not in cli._hump_line({"humps_total": 0, "humps_hit": 0, "humps_expected": None})
+    assert "見込み 0.25" in cli._hump_line({"humps_total": 4, "humps_hit": 2, "humps_expected": 0.25})
 
 
 def test_zero_humps_is_written_as_measured():

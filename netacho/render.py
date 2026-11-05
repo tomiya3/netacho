@@ -98,7 +98,8 @@ def gaps_markdown(gaps: dict, items: dict) -> list[str]:
         "",
         "Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。",
         "",
-        f"- 笑い {gaps['laughs_total']} か所のうち、予測の窓に入ったのは {gaps['laughs_hit']} か所",
+        f"- 笑い {gaps['laughs_total']} か所のうち、予測の窓に入ったのは {gaps['laughs_hit']} か所。"
+        f"窓は音声の {gaps['window_share']:.0%} を覆っている",
         *_rate_line(gaps),
         f"- 項目ごとの内訳：的中 {len(gaps['hits'])}{weak}、空振り {len(gaps['misses'])}、"
         f"予測なしで反応あり {gaps['surprise_total']}。1 つの笑いに項目が重なることがあります",

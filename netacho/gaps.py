@@ -51,12 +51,16 @@ def _window_share(windows: list[list[float]], seconds: float | None) -> float:
     return round(covered / seconds, 3)
 
 
+def _touches(hump: list[float], windows: list[list[float]]) -> bool:
+    return any(w0 <= c < w1 for w0, w1 in windows for c in hump)
+
+
 def _humps_hit(humps: list[list[float]], windows: list[list[float]]) -> int:
     """どれかの窓に入った山の数。同じ山に窓が 2 つ重なっても 1 つと数える。
 
     窓の判定は window_peak と同じ半開区間。スコアの窓の中央が入れば、その山に触れている。
     """
-    return sum(any(w0 <= c < w1 for w0, w1 in windows for c in hump) for hump in humps)
+    return sum(_touches(hump, windows) for hump in humps)
 
 
 def _touch_chance(hump: list[float], width: float, seconds: float) -> float:
@@ -91,12 +95,15 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
     laughs = [r for r in reactions["reactions"] if r["kind"] == "laugh" and r["method"] == "auto"]
     judged = bool(laughs)  # 自動の笑いが 1 件も無ければ比べない（全部の予測を空振りにしない）
     hits, weak, misses, windows = [], [], [], []
+    clipped_windows: list[list[float]] = []
     peaks: list[float] = []
     whole: list[float] = []
     used: set[str] = set()
     for it in candidates.payoff_items(items, koza_id) if judged else []:
         window, clipped = candidates.window_of(it, end)
         windows.append(window)
+        if clipped:
+            clipped_windows.append(window)
         found = candidates.overlapping(laughs, window[0], window[1])
         peak = window_peak(reactions, window[0], window[1])
         if not clipped:  # 予測も基準もスコアだけで数える（的中の判定を混ぜると予測に有利になる）
@@ -119,6 +126,9 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
         return scene_of.get(seg["id"]) if seg else None
 
     humps = laugh_humps(reactions) if judged else None  # 判定しない高座を 0 と書かない
+    whole_windows = [w for w in windows if w not in clipped_windows]
+    if humps is not None:  # 末尾で切れた窓は判定しない。その窓に触れる山も、母数から外す
+        humps = [h for h in humps if not _touches(h, clipped_windows)]
     rest = [r for r in laughs if r["id"] not in used]
     rest.sort(key=lambda r: (r["strength_rank"] is None, r["strength_rank"] or 0))
     askable = [r for r in rest if scene_at(r["t0"]) is not None]  # 場面が決まらない笑いは問えない
@@ -146,8 +156,8 @@ def compare(items: list[dict], reactions: dict, transcript: dict, timeline: dict
         "laughs_hit": len(used),
         "window_share": _window_share(windows, end),
         "humps_total": None if humps is None else len(humps),
-        "humps_hit": None if humps is None else _humps_hit(humps, windows),
-        "humps_expected": None if not humps or not end else _humps_expected(humps, windows, end),
+        "humps_hit": None if humps is None else _humps_hit(humps, whole_windows),
+        "humps_expected": None if not humps or not end else _humps_expected(humps, whole_windows, end),
         # 予測と基準は同じ定義で数える。録音の末尾で切れた窓は両方から外す
         "peak_rate": _rate(sum(p >= LAUGH_FLOOR for p in peaks), sum(p < LAUGH_FLOOR for p in peaks)),
         "peak_n": len(peaks),

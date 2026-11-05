@@ -231,7 +231,7 @@ transcript: segments[{id,start,end,text,words,no_speech_prob,pause_after}], vad[
 timeline: segments[{seg_id,scene_id,speaker(null可),confidence}]
 reactions: reactions[{id,t0,t1,kind(laugh|applause|reaction),strength_rank(null可),method(auto|manual)}], music[], hints[], scores
 note_candidates: candidates[{id,item_id,payoff_t,window,reaction_ids,why(no_candidate|low_rank)}]
-gaps: judged, hits[], weak[], misses[], surprises[{id,reaction_id,t0,t1,scene_id,before_quote,question?}], peak_rate, baseline_rate
+gaps: judged, hits[], weak[], misses[], surprises[{id,reaction_id,t0,t1,scene_id,before_quote,question?}], peak_rate, baseline_rate, humps_total, humps_hit, humps_expected
 review: issues[{id,role,kind,anchor{scene_id|item_id},attempt,what_is_missing,round,resolved}]
 questions: questions[{id,issue_id,scene_id,text,answer?}]
 guide: cards[{order,scene_id,item_id,text,copied_fields,llm_fields}]

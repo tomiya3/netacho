@@ -223,6 +223,11 @@ def cmd_build(args: argparse.Namespace) -> None:
         print(f"文に内部の番号が残って保留の項目 {left}。`.md`、札、ノートの候補には出ません")
 
 
+def _hump_line(g: dict) -> str:
+    line = f"笑いの山 {g['humps_total']} のうち窓に入った {g['humps_hit']}"
+    return line if g["humps_expected"] is None else f"{line}、見込み {g['humps_expected']}"
+
+
 def cmd_note(args: argparse.Namespace) -> None:
     from . import pipeline, runner
 
@@ -234,7 +239,7 @@ def cmd_note(args: argparse.Namespace) -> None:
     print(f"山のある割合 予測 {g['peak_rate']}、音声全体 {g['baseline_rate']}、質問 {doc['questions']}")
     print(f"笑い {g['laughs_total']} のうち窓に入った {g['laughs_hit']}、窓の割合 {g['window_share']:.0%}")
     if g["humps_total"] is not None:
-        print(f"笑いの山 {g['humps_total']} のうち窓に入った {g['humps_hit']}、見込み {g['humps_expected']}")
+        print(_hump_line(g))
 
 
 def _rewrite_markdown(neta: store.Neta) -> None:
