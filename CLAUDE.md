@@ -32,7 +32,7 @@ feat（機能追加）/ fix（バグ修正）/ docs（文書だけ）/ style（�
 - 1 タスク = 1 Issue = 1 PR。`/start <issue>` → 作業 → `/pr`。Squash merge（題名も上の規約で）
 - PR は必ず `/pr` で作る。PR の前に文脈なしの `reviewer` を通す。reviewer を呼ぶとブランチに印が付き、印が無い PR 作成はフックで止まる
 - 報告書は `docs/reports/`（`/report`）。小さな修正は Issue と報告書を省いてよい（PR 本文に「省略」と書く）。reviewer は省かない
-- PR を作ると Claude Code Review が自動で走る。指摘は 3 周まで反映し、4 周目以降は Issue に回す。機能凍結の後は待たない
+- PR を作ると Claude Code Review が自動で走る。`scripts/pr-reviews.sh` で必ず指摘を読む（チェックが緑でも付く）。指摘は 3 周まで反映し、4 周目以降は Issue に回す。機能凍結の後は待たない
 - 終わりに `/log`（`progress.md` に追記）
 - フック（`.claude/settings.json` → `.claude/hooks/`）：`.env` / `*.key` / `credentials*.json` / `netacho-data/` への書き込みは拒否、消す・書き換える系の Bash は承認を挟む、PR 前レビューの印が無い PR 作成は止める、.py を書いたら ruff が自動で走る、progress.md に今日の記録が無ければ Stop 時に催促
 - `.githooks/pre-push`：main への push を止める。`forbidden-words.txt`（repo の外）の語を検査する

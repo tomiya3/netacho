@@ -303,7 +303,7 @@ netacho view    --performer ID --neta 演目 --koza KOZA             # out/view/
 1. `/start <issue>`：Issue を読むか作り、main から `<N>-<slug>` のブランチを切る
 2. 実装
 3. `/pr`：`make lint && make test` → 文脈なしの reviewer → `/report` で `docs/reports/` に報告書 → PR 作成（`Closes #N`）
-4. 自動レビューの指摘を反映する。上限は 3 周で、4 周目以降は Issue に回す。**機能凍結の後は待たない**
+4. `scripts/pr-reviews.sh` で自動レビューの指摘を読み、反映する。上限は 3 周で、4 周目以降は Issue に回す。**機能凍結の後は待たない**
 5. ユーザーが「マージして」と言ったら Squash merge
 6. `/log`：progress.md と Issue に記録
 
