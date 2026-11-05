@@ -61,7 +61,7 @@ def transcript_text(transcript: dict) -> str:
     for s in transcript["segments"]:
         pause = s["pause_after"] or 0
         tail = ""
-        if pause > evidence.MAX_MA_SEC:  # 間と書かせない
+        if evidence.is_blank(pause):  # 間と書かせない
             tail = f"（空白 {pause:.1f} 秒。文字起こしの抜けか、間ではない）"
         elif pause >= evidence.MIN_PAUSE_SEC:
             tail = f"（間 {pause:.1f} 秒）"
@@ -114,7 +114,7 @@ def checker_rows(items: list[dict]) -> list[dict]:
 def _check_items(ctx: Context, items: list[dict], draft_name: str) -> set[str]:
     """照合して、保留にする id を返す。判定の返らなかった項目も保留にする（確かめられていないので）。"""
     # 間の根拠は秒数で、引用には書いていない。照合役には確かめられないので、スクリプトの検証だけで通す
-    ma = [i for i in items if i["kind"] == "間"]
+    ma = [i for i in items if i["kind"] == "間" and i["basis"] == "heard"]
     heard = [i for i in items if i["basis"] == "heard" and i["kind"] != "間"]
     ctx.checker["ma_by_script"] += len(ma)
     ctx.checker["unchecked_knowledge"] += len(items) - len(heard) - len(ma)
