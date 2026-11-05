@@ -3,13 +3,14 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from netacho import cli, store, view
+from netacho import cli, gaps, store, view
 
 ROOT = Path(__file__).parent.parent
 DATA = Path(__file__).parent / "fixtures" / "dummy_koza"
@@ -204,3 +205,102 @@ def test_laugh_without_lines_is_not_called_clean():
     empty = {"segments": [{"id": "seg-0001", "start": 0.0, "end": 10.0, "text": "遠い"}]}
     place = view.question_places(GAPS, QUESTIONS, empty, None)["q-0001"]
     assert place["lines"] == [] and place["clean"] is False
+
+
+CLEAN = {
+    "lines": [
+        {"seg_id": "seg-0002", "speaker": "親方", "text": "清書の台詞", "raw": "生の台詞"},
+        {"seg_id": "seg-0003", "speaker": None, "text": "次の清書", "raw": "次の台詞"},
+    ]
+}
+
+
+def item_at(first, last, koza="k"):
+    return {
+        "id": "item-0001",
+        "source": {"koza_id": koza, "segs": [first, last], "quote": "元の引用"},
+        "payoff": {"segs": [last, last], "quote": "元の回収"},
+    }
+
+
+def test_quote_becomes_the_clean_copy_and_keeps_the_original():
+    lines = view.clean_lines(TRANSCRIPT, CLEAN)
+    [row] = view.clean_items([item_at("seg-0002", "seg-0003")], "k", TRANSCRIPT, lines)
+    assert row["source"]["quote"] == "清書の台詞次の清書" and row["source"]["quote_raw"] == "元の引用"
+    assert row["payoff"]["quote"] == "次の清書" and row["payoff"]["quote_raw"] == "元の回収"
+
+
+def test_quote_stays_when_a_line_has_no_clean_copy():
+    lines = view.clean_lines(TRANSCRIPT, CLEAN)
+    [row] = view.clean_items([item_at("seg-0003", "seg-0004")], "k", TRANSCRIPT, lines)
+    assert row["source"]["quote"] == "元の引用" and "quote_raw" not in row["source"]
+
+
+def test_old_clean_copy_is_not_used_for_quotes():
+    old = {"lines": [{"seg_id": "seg-0002", "speaker": None, "text": "古い", "raw": "前の文字"}]}
+    assert view.clean_lines(TRANSCRIPT, old) == {}
+
+
+def test_items_of_another_koza_are_left_alone():
+    lines = view.clean_lines(TRANSCRIPT, CLEAN)
+    item = item_at("seg-0002", "seg-0003", koza="別の高座")
+    assert view.clean_items([item], "k", TRANSCRIPT, lines) == [item]
+
+
+def test_performer_item_without_segs_is_left_alone():
+    item = {"id": "item-0002", "source": {"koza_id": "k", "words": "演者の言葉"}}
+    assert view.clean_items([item], "k", TRANSCRIPT, view.clean_lines(TRANSCRIPT, CLEAN)) == [item]
+
+
+def test_questions_lose_the_mistranscribed_words_and_keep_the_answer():
+    lines = view.clean_lines(TRANSCRIPT, CLEAN)
+    places = view.question_places(GAPS, QUESTIONS, TRANSCRIPT, CLEAN)
+    doc = {
+        "questions": [{**QUESTIONS["questions"][0], "answer": {"words": "言葉"}}, QUESTIONS["questions"][1]]
+    }
+    out = view.clean_questions(doc, places, lines)["questions"]
+    assert out[0]["text"] == gaps.FALLBACK_QUESTION and out[0]["text_raw"].startswith("1:40.0")
+    assert out[0]["answer"] == {"words": "言葉"} and out[1]["text"] == "別"
+
+
+def test_surprise_uses_clean_lines_before_the_laugh():
+    doc = {"surprises": [{"t0": 100.0, "question": "聞き違いの語", "before_quote": "生"}]}
+    [row] = view.clean_gaps(doc, TRANSCRIPT, view.clean_lines(TRANSCRIPT, CLEAN))["surprises"]
+    assert row["question"] == gaps.FALLBACK_QUESTION and row["before_quote"] == "清書の台詞次の清書"
+
+
+def test_only_note_role_issues_are_reworded():
+    doc = {
+        "issues": [
+            {"role": "noter", "what_is_missing": "生"},
+            {"role": "deshi", "what_is_missing": "弟子の言葉"},
+        ]
+    }
+    out = view.clean_review(doc, view.clean_lines(TRANSCRIPT, CLEAN))["issues"]
+    assert out[0]["what_is_missing"] == gaps.FALLBACK_QUESTION and out[1]["what_is_missing"] == "弟子の言葉"
+
+
+def test_without_a_clean_copy_nothing_changes():
+    assert view.clean_gaps(GAPS, TRANSCRIPT, {}) is GAPS
+    assert view.clean_questions(QUESTIONS, {}, {}) is QUESTIONS
+    item = item_at("seg-0002", "seg-0003")
+    assert view.clean_items([item], "k", TRANSCRIPT, {}) == [item]
+
+
+def test_screen_data_does_not_change_the_saved_books(tmp_path):
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    neta = store.Neta(P, N, root)
+    before = (
+        neta.hanashi.read_bytes(),
+        neta.kata.read_bytes(),
+        neta.review.read_bytes(),
+        neta.questions.read_bytes(),
+    )
+    view.payload(neta, K)
+    assert before == (
+        neta.hanashi.read_bytes(),
+        neta.kata.read_bytes(),
+        neta.review.read_bytes(),
+        neta.questions.read_bytes(),
+    )
