@@ -119,7 +119,7 @@ def window_peak(doc: dict, t0: float, t1: float) -> float:
         return 0.0
     half, stride = scores["window"] / 2, scores["stride"]
     lo = max(ceil((t0 - half) / stride), 0)  # 中央が t0 以上の最初の窓。全部を走査しない
-    hi = ceil((t1 - half) / stride)
+    hi = max(ceil((t1 - half) / stride), 0)  # 負だと末尾から数えるスライスになる
     return max(scores["laugh"][lo:hi], default=0.0)
 
 

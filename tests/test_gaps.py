@@ -203,6 +203,11 @@ def test_long_audio_is_fast():
     assert time.time() - t0 < 2.0
 
 
+def test_window_before_the_first_center_is_empty():
+    d = scored(50.0, {12.5: 0.1})
+    assert reactions.window_peak(d, 0.0, 1.0) == 0.0
+
+
 def test_window_edges_are_half_open():
     d = scored(50.0, {12.5: 0.1})
     assert reactions.window_peak(d, 12.5, 14.0) == 0.1
