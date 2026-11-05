@@ -15,7 +15,7 @@ from difflib import SequenceMatcher
 
 from .reactions import laugh_humps
 
-MIN_BLOCK = 8  # これより短い一致は、偶然として使わない。字数
+MIN_BLOCK = 12  # これより短い一致は、決まり文句の偶然として使わない。字数
 MIN_SHARE = 0.3  # 文字がこれしか揃わなければ、2 本を比べない
 SAME_SEC = 6.0  # 笑いがこの範囲なら同じ所。窓の幅と刻みから
 MOVED_SEC = 20.0  # この範囲なら、来る所がずれたと見る
@@ -25,6 +25,8 @@ MA_NEAR = 1.0  # 行の始まりのこの範囲の無音を、一言の前の間
 MIN_WORDS = 30  # 言葉を変えた所と見る最小の字数。清書の揺れを拾わない長さ
 SPOT_GAP = 30.0  # 問う所をこれより近づけない。秒
 ROTATION = ("moved", "ma", "kept", "one_side", "words")
+# 言葉の差は清書の揺れの偽物が混ざる。本物の 2 本で測るまで、画面に出すだけで問いにしない
+ASK_KINDS = ("moved", "ma", "kept", "one_side")
 QUOTE_MAX = 60
 
 
@@ -286,10 +288,10 @@ def compare(a: Side, b: Side, titles: dict) -> dict:
 
 def select(spots: list[dict], limit: int) -> list[dict]:
     """問う所を選ぶ。種類を順に回して、1 種類で埋めない。近い所は重ねない。"""
-    queues = {kind: [s for s in spots if s["kind"] == kind] for kind in ROTATION}
+    queues = {kind: [s for s in spots if s["kind"] == kind] for kind in ASK_KINDS}
     chosen: list[dict] = []
     while len(chosen) < limit and any(queues.values()):
-        for kind in ROTATION:
+        for kind in ASK_KINDS:
             while queues[kind]:
                 spot = queues[kind].pop(0)
                 if all(abs(spot["a"]["t"] - c["a"]["t"]) >= SPOT_GAP for c in chosen):

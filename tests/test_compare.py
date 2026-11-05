@@ -210,6 +210,11 @@ def test_select_mixes_kinds_and_keeps_distance():
     assert [c["id"] for c in chosen] == ["spot-0001", "spot-0003", "spot-0004"]
 
 
+def test_words_are_shown_but_not_asked():
+    rows = [make_spot(1, "words", 0.0), make_spot(2, "kept", 100.0)]
+    assert [c["id"] for c in compare.select(rows, 5)] == ["spot-0002"]
+
+
 def test_select_stops_at_the_limit():
     assert len(compare.select([make_spot(n, "kept", n * 100.0) for n in range(9)], 5)) == 5
 
@@ -323,7 +328,6 @@ def test_second_run_does_not_ask_the_same_place_twice(tmp_path):
     assert len(after) == len(first)
     ids = {s["id"] for s in doc["spots"]}
     assert all(q["spot_id"] in ids for q in after if "spot_id" in q)  # 問いが別の所を指さない
-    assert any("question_id" in s for s in doc["spots"])
     assert store.read(neta.koza_dir(K1) / "run.json", "run")["compare"]["fallback"] == 0
 
 

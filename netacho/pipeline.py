@@ -650,7 +650,7 @@ def compare_koza(
                 if attempt in issue_of:  # 既に問うた所。問いと比較の所のつながりだけ保つ
                     q = next((x for x in questions["questions"] if x["issue_id"] == issue_of[attempt]), None)
                     if q is not None:
-                        q["spot_id"], spot["question_id"] = spot["id"], q["id"]
+                        q["spot_id"] = spot["id"]
                     continue
                 texts = written.get(spot["id"], [])
                 ok = len(texts) == 1 and ask_is_ok(texts[0], spot)
@@ -678,7 +678,6 @@ def compare_koza(
                         "spot_id": spot["id"],
                     }
                 )
-                spot["question_id"] = q_id
                 n_issue, n_q, added = n_issue + 1, n_q + 1, added + 1
             store.write(
                 kdir / "compare.json", doc, "compare"
