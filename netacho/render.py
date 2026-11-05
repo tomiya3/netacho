@@ -68,8 +68,44 @@ def clock(t: float) -> str:
     return f"{int(t // 60)}:{int(t % 60):02d}"
 
 
+def gaps_markdown(gaps: dict, items: dict) -> list[str]:
+    """予測と実際の比較。判定できない高座では、そう書く。"""
+    if not gaps["judged"]:
+        return ["## 笑いどころの予測と実際", "", "自動で拾った笑いが無いので、比べていません。", ""]
+    out = [
+        "## 笑いどころの予測と実際",
+        "",
+        "Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。",
+        "",
+        f"- 的中 {len(gaps['hits'])}、空振り {len(gaps['misses'])}、"
+        f"予測なしで反応あり {gaps['surprise_total']}",
+        f"- 笑い {gaps['laughs_total']} か所のうち、予測の窓に入ったのは {gaps['laughs_hit']} か所。"
+        f"窓は音声の {gaps['window_share']:.0%} を覆っている",
+        "- 空振りは、検出できなかっただけのこともあります。反応が無かったという意味ではありません",
+        "",
+    ]
+    if gaps["surprises"]:
+        out += [f"### 文字からは読めなかった所（{gaps['surprise_total']} か所から、離れた強い順に）", ""]
+        for s in gaps["surprises"]:
+            out += [
+                f"- {clock(s['t0'])} {s.get('question', '')}",
+                f"  - 前の台詞：「{s['before_quote']}」",
+            ]
+        out.append("")
+    if gaps["misses"]:
+        out += ["### 予測したが、反応候補が見つからない所", ""]
+        out += [f"- 【{items[m['item_id']]['kind']}】{items[m['item_id']]['text']}" for m in gaps["misses"]]
+        out.append("")
+    return out
+
+
 def note_markdown(
-    koza: dict, candidates: dict, notes: dict[str, str], items: dict, scene_titles: dict
+    koza: dict,
+    candidates: dict,
+    notes: dict[str, str],
+    items: dict,
+    scene_titles: dict,
+    gaps: dict | None = None,
 ) -> str:
     """演者が読むノート。文はノート役、それ以外はスクリプトが写す。"""
     out = [
@@ -81,6 +117,8 @@ def note_markdown(
     ]
     if candidates.get("notices"):
         out += [*candidates["notices"], ""]
+    if gaps is not None:
+        out += gaps_markdown(gaps, items)
     if not candidates["candidates"]:
         out += ["今回は候補を選びませんでした。反応が十分だったという意味ではありません。", ""]
     for c in candidates["candidates"]:

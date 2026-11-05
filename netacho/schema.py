@@ -18,7 +18,7 @@ SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schemas"
 # kind の振り分けの既定。見立て・地口・知らない物は構成作家役が決める
 HANASHI_KINDS = frozenset({"場面", "人物", "サゲ"})
 KATA_KINDS = frozenset({"枕", "間", "上下", "staging"})
-PAYOFF_KINDS = frozenset({"見立て", "地口", "サゲ"})
+PAYOFF_KINDS = frozenset({"見立て", "地口", "くすぐり", "サゲ"})
 POSITION_ORDER = {"before": 0, "within": 1, "after": 2}
 
 

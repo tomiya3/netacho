@@ -153,6 +153,31 @@ def test_rebuild_keeps_answered_questions(data, tmp_path):
     assert doc["issues"][0]["resolved"] is True
 
 
+def test_noter_question_does_not_swallow_deshi_ask():
+    """ノート役の問いに答えても、同じ場面への弟子役の問いは別のもの。"""
+    from netacho import review
+
+    doc = {
+        "issues": [
+            {
+                "id": "issue-0001",
+                "role": "noter",
+                "kind": "ask_performer",
+                "anchor": {"scene_id": "scene-02"},
+                "attempt": "1:00 の笑いの所",
+                "what_is_missing": "何をしていますか",
+                "round": 1,
+                "resolved": True,
+            }
+        ]
+    }
+    hanashi = {"scenes": [{"id": "scene-02"}], "items": []}
+    raw = {"issues": [issue("ask_performer", scene="scene-02")]}
+    current, dropped = review.receive(raw, doc, hanashi, {"items": []}, 1)
+    assert len(current) == 1 and dropped == 0
+    assert "suppressed_answered" not in doc
+
+
 def test_rephrased_kind_on_same_scene_is_not_resolved(data, tmp_path):
     """2 周目に同じ場面を別の kind で指されたら、直っていない。"""
     c = client(deshi(issue(scene="scene-02")), deshi(issue("unclear_scene", scene="scene-02")))

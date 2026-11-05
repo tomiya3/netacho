@@ -133,6 +133,9 @@ function drawWave(root, d) {
     const pts = s[key].map((p, i) => `${x(center(i)).toFixed(1)},${y(p / top[key]).toFixed(1)}`).join(" ");
     g.append(svg("polyline", { points: pts, fill: "none", stroke: `var(${v})`, "stroke-width": 2, "stroke-linejoin": "round" }));
   }
+  for (const m of (d.gaps?.surprises || [])) {
+    g.append(svg("circle", { cx: x((m.t0 + m.t1) / 2), cy: T - 9, r: 5, fill: "none", stroke: "var(--claude)", "stroke-width": 2 }));
+  }
   for (const c of (d.candidates?.candidates || [])) {
     g.append(svg("path", { d: `M${x(c.payoff_t) - 6} ${T - 14} h12 l-6 10 z`, fill: "var(--claude)" }));
     g.append(svg("line", { x1: x(c.payoff_t), x2: x(c.payoff_t), y1: T - 4, y2: H - B, stroke: "var(--claude)", "stroke-dasharray": "3 3" }));
@@ -157,7 +160,8 @@ function drawWave(root, d) {
   root.append(el("div", { class: "legend" },
     el("span", { class: "tag", style: "--c: var(--laugh)" }, `笑い（${top.laugh.toFixed(2)} を 1 とする）`),
     el("span", { class: "tag", style: "--c: var(--applause)" }, `拍手（${top.applause.toFixed(2)} を 1 とする）`),
-    el("span", { class: "tag claude" }, "反応候補が少ない回収（破線）")));
+    el("span", { class: "tag claude" }, "反応候補が少ない回収（破線）"),
+    el("span", { class: "tag claude" }, "文字からは読めなかった笑い（丸）")));
 }
 
 function renderWave(d) {
@@ -167,6 +171,20 @@ function renderWave(d) {
   root.append(el("div", { class: "notice" }, "反応の候補は機械的に拾ったものです。候補が無い所も、反応が無かったという意味ではありません。"));
   drawWave(root, d);
   for (const n of (d.candidates?.notices || [])) root.append(el("div", { class: "notice" }, n));
+  const g = d.gaps;
+  if (g) {
+    root.append(el("h2", {}, "笑いどころの予測と実際"));
+    if (!g.judged) root.append(el("p", {}, "自動で拾った笑いが無いので、比べていません。"));
+    else {
+      root.append(el("p", { class: "big" }, `的中 ${g.hits.length}  空振り ${g.misses.length}  予測なしで反応あり ${g.surprise_total}`));
+      root.append(el("p", { class: "quote" }, `Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。笑い ${g.laughs_total} か所のうち ${g.laughs_hit} か所が予測の窓に入り、窓は音声の ${Math.round(g.window_share * 100)}% を覆っています。空振りは、検出できなかっただけのこともあります。`));
+      for (const s of g.surprises) {
+        const fixed = s.question_source !== "claude";
+        root.append(card(fixed ? "script" : "claude", fixed ? "スクリプトの決まった文" : "Claude の問い", `${clock(s.t0)}  文字からは読めなかった所`,
+          el("p", {}, s.question || ""), el("p", { class: "quote" }, `前の台詞：「${s.before_quote}」`)));
+      }
+    }
+  }
   root.append(el("h2", {}, "ノート"));
   const items = Object.fromEntries([...d.hanashi, ...d.kata].map(i => [i.id, i]));
   const cands = d.candidates?.candidates || [];

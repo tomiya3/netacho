@@ -396,7 +396,8 @@ def test_decide_reread_answer_reread_brings_the_card_back(built, data, tmp_path)
         root=data,
     )
     assert len(store.read(built.guide, "guide")["cards"]) == 1  # 聞き直して止めない
-    assert len(store.read(built.questions, "questions")["questions"]) == 1
+    asked = [x for x in store.read(built.questions, "questions")["questions"] if "値段" in x["text"]]
+    assert len(asked) == 1
 
 
 def test_answer_retried_after_a_crash_does_not_double(built, data, tmp_path, monkeypatch):
@@ -458,7 +459,8 @@ def test_reread_updates_numbers_in_run_json(built, data, tmp_path):
     q = _with_question(built, data, tmp_path)
     assert q
     run = store.read(built.koza_dir(K) / "run.json", "run")
-    assert run["deshi"]["reread"] == 1 and run["questions"] == 1
+    total = len(store.read(built.questions, "questions")["questions"])
+    assert run["deshi"]["reread"] == 1 and run["questions"] == total
 
 
 def test_approved_card_without_text_is_skipped_by_builder(built):

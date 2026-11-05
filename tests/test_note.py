@@ -75,7 +75,7 @@ def test_noter_sees_only_candidate_quotes_and_scene_length(data, tmp_path):
     }
     assert rows[0]["scene"] == "傘を借りる"
     assert "ご隠居さん、傘を返しに来ました。" in rows[0]["after_quote"]  # 窓の中の台詞
-    assert "骨折り賃" not in text  # 窓の外は見せない
+    assert "骨折り賃" not in rows[0]["after_quote"]  # 窓の外は見せない
 
 
 @pytest.mark.parametrize(
@@ -146,6 +146,12 @@ def test_note_source_tells_who_wrote_it(data, tmp_path):
     assert store.read(path, "note_candidates")["candidates"][0]["note_source"] == "claude"
     run_note(data, tmp_path, note_doc(("cand-0001", "ここは受けなかった。")))
     assert store.read(path, "note_candidates")["candidates"][0]["note_source"] == "fixed"
+
+
+def test_question_wording_is_only_for_questions():
+    text = "「利息」の後は、文字からは笑いどころと読めませんでした。ここでは何をしていますか。"
+    assert pipeline.note_is_ok(text, pipeline.QUESTION_ALLOWED)
+    assert not pipeline.note_is_ok(text)
 
 
 def test_failed_note_leaves_no_old_note(data, tmp_path):

@@ -222,6 +222,51 @@
         }
       },
       "description": "prep の実測。文字起こしと反応の検出にかかった秒数"
+    },
+    "gaps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hit",
+        "miss",
+        "surprise",
+        "hit_rate",
+        "laughs_total",
+        "laughs_hit",
+        "window_share"
+      ],
+      "description": "笑いどころの予測と実際の比較",
+      "properties": {
+        "hit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "miss": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "surprise": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hit_rate": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "laughs_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "laughs_hit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "window_share": {
+          "type": "number"
+        }
+      }
     }
   }
 }

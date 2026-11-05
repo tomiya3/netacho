@@ -16,7 +16,7 @@ from pathlib import Path
 from . import reactions, store
 
 SCHEMA_VERSION = 1
-STALE_AFTER_MARK = ("note_candidates.json", "note.md", "sokki.md")
+STALE_AFTER_MARK = ("note_candidates.json", "gaps.json", "note.md", "sokki.md")
 # prep をやり直すと意味を失う物
 PREP_OUTPUTS = (
     "koza.json",
@@ -25,6 +25,7 @@ PREP_OUTPUTS = (
     "reactions.auto.json",
     "timeline.json",
     "note_candidates.json",
+    "gaps.json",
     "note.md",
     "sokki.md",
 )
@@ -222,6 +223,9 @@ def cmd_note(args: argparse.Namespace) -> None:
 
     doc = pipeline.note(args.performer, args.neta, args.koza, client=runner.make_client(), reuse=args.reuse)
     print(f"候補 {doc['notes']['candidates']}、決まった文に置き換えた数 {doc['notes']['fallback']}")
+    g = doc["gaps"]
+    print(f"的中 {g['hit']}、空振り {g['miss']}、予測なしで反応あり {g['surprise']}、質問 {doc['questions']}")
+    print(f"笑い {g['laughs_total']} のうち窓に入った {g['laughs_hit']}、窓の割合 {g['window_share']:.0%}")
 
 
 def _rewrite_markdown(neta: store.Neta) -> None:

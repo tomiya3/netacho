@@ -18,8 +18,19 @@ def payoff_items(items: list[dict], koza_id: str) -> list[dict]:
     return sorted(rows, key=lambda i: i["payoff"]["t1"])
 
 
-def _overlapping(reactions: list[dict], t0: float, t1: float) -> list[dict]:
+def overlapping(reactions: list[dict], t0: float, t1: float) -> list[dict]:
     return [r for r in reactions if r["t0"] < t1 and r["t1"] > t0]
+
+
+def window_of(item: dict, end: float | None) -> tuple[list[float], bool]:
+    """回収の窓と、録音の末尾で切れたかどうか。
+
+    笑いは台詞に重なり、Whisper の区間は長いので、回収の区間の始まりから見る。
+    """
+    t0 = item["payoff"]["t0"]
+    t1 = item["payoff"]["t1"] + WINDOW_SEC
+    clipped = end is not None and t1 > end
+    return [t0, round(min(t1, end), 3) if clipped else round(t1, 3)], clipped
 
 
 def select(items: list[dict], reactions: dict) -> dict:
@@ -39,11 +50,8 @@ def select(items: list[dict], reactions: dict) -> dict:
     silent: list[tuple[dict, list[float]]] = []
     ranked: list[tuple[int, dict, list[float], list[str]]] = []
     for it in payoff_items(items, koza_id):
-        t0 = it["payoff"]["t0"]  # 笑いは台詞に重なり、Whisper の区間は長いので、回収の区間の中から見る
-        t1 = it["payoff"]["t1"] + WINDOW_SEC
-        clipped = end is not None and t1 > end
-        window = [t0, round(min(t1, end), 3) if clipped else round(t1, 3)]
-        hits = _overlapping(reactions["reactions"], window[0], window[1])
+        window, clipped = window_of(it, end)
+        hits = overlapping(reactions["reactions"], window[0], window[1])
         if not hits:
             if not clipped and has_auto:
                 silent.append((it, window))
