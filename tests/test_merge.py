@@ -128,3 +128,10 @@ def test_checker_hold_is_not_overwritten_by_the_id_hold():
     assert "held_reason" not in h["items"][0]
     merge.merge(h, k, items=[fixed], scenes=[], characters=[], held_ids=set())
     assert h["items"][0]["held"] is True  # 照合で落ちた項目は、knowledge に書き換えても解けない
+
+
+def test_checker_held_item_with_id_is_also_sent_back():
+    h, k = book("hanashi"), book("kata")
+    h["items"] = [{**strip(row("item-0001", text="scene-07 の後")), "held": True}]
+    assert [r["anchor"] for r in merge.id_rework(h, k)] == [{"item_id": "item-0001"}]
+

@@ -74,7 +74,7 @@ def id_rework(hanashi: dict, kata: dict) -> list[dict]:
             "what_is_missing": "文に内部の番号が残っている。番号を使わず、場面の名前や台詞で書き直す",
         }
         for i in hanashi["items"] + kata["items"]
-        if i.get("held_reason") == "internal_id" and i["edited_by"] == "tool"
+        if i["edited_by"] == "tool" and has_internal_id(i["text"])
     ]
 
 
