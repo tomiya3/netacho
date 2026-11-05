@@ -368,6 +368,11 @@
         "unknown_speaker": {
           "type": "integer",
           "minimum": 0
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "清書に渡した演目の題"
         }
       }
     }

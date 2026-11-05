@@ -28,7 +28,7 @@ ROLES = {
     "checker": (SONNET, "medium", 8000),
     "noter": (SONNET, "medium", 4000),
     "deshi": (OPUS, "high", 8000),
-    "scribe": (SONNET, "medium", 32000),
+    "scribe": (OPUS, "high", 32000),
 }
 
 
