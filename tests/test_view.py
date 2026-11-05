@@ -252,37 +252,58 @@ def test_performer_item_without_segs_is_left_alone():
     assert view.clean_items([item], "k", TRANSCRIPT, view.clean_lines(TRANSCRIPT, CLEAN)) == [item]
 
 
-def test_questions_lose_the_mistranscribed_words_and_keep_the_answer():
-    lines = view.clean_lines(TRANSCRIPT, CLEAN)
-    places = view.question_places(GAPS, QUESTIONS, TRANSCRIPT, CLEAN)
-    doc = {
-        "questions": [{**QUESTIONS["questions"][0], "answer": {"words": "言葉"}}, QUESTIONS["questions"][1]]
-    }
-    out = view.clean_questions(doc, places, lines)["questions"]
-    assert out[0]["text"] == gaps.FALLBACK_QUESTION and out[0]["text_raw"].startswith("1:40.0")
-    assert out[0]["answer"] == {"words": "言葉"} and out[1]["text"] == "別"
+def test_readable_question_is_kept_and_a_misheard_one_is_replaced():
+    good = "「清書の台詞」の後は、文字からは読めませんでした"
+    assert view.readable_question(good, "前の清書の台詞") == good
+    assert view.readable_question("「聞き違い」の後は", "前の清書の台詞") == gaps.FALLBACK_QUESTION
+    assert view.readable_question("引用の無い文", "前") == gaps.FALLBACK_QUESTION
+    assert view.readable_question(None, "前") == gaps.FALLBACK_QUESTION
+
+
+LAUGH_GAPS = {
+    "koza_id": "k",
+    "surprises": [{"t0": 100.0, "question": "「清書の台詞」の後は", "before_quote": "生"}],
+}
 
 
 def test_surprise_uses_clean_lines_before_the_laugh():
-    doc = {"surprises": [{"t0": 100.0, "question": "聞き違いの語", "before_quote": "生"}]}
-    [row] = view.clean_gaps(doc, TRANSCRIPT, view.clean_lines(TRANSCRIPT, CLEAN))["surprises"]
-    assert row["question"] == gaps.FALLBACK_QUESTION and row["before_quote"] == "清書の台詞次の清書"
+    [row] = view.clean_gaps(LAUGH_GAPS, TRANSCRIPT, view.clean_lines(TRANSCRIPT, CLEAN))["surprises"]
+    assert row["before_quote"] == "清書の台詞次の清書" and row["question"] == "「清書の台詞」の後は"
 
 
-def test_only_note_role_issues_are_reworded():
+def test_questions_show_the_clean_text_and_keep_the_answer():
+    lines = view.clean_lines(TRANSCRIPT, CLEAN)
+    cleaned = view.clean_gaps(LAUGH_GAPS, TRANSCRIPT, lines)
+    doc = {
+        "questions": [{**QUESTIONS["questions"][0], "answer": {"words": "言葉"}}, QUESTIONS["questions"][1]]
+    }
+    out = view.clean_questions(doc, cleaned)["questions"]
+    assert out[0]["text"] == "「清書の台詞」の後は" and out[0]["text_raw"].startswith("1:40.0")
+    assert out[0]["answer"] == {"words": "言葉"} and out[1]["text"] == "別"
+
+
+def test_only_issues_of_laugh_questions_are_reworded():
+    questions = {"questions": [{"id": "q-1", "issue_id": "issue-1", "text": "生"}]}
+    shown = {"questions": [{"id": "q-1", "issue_id": "issue-1", "text": "読める問い", "text_raw": "生"}]}
     doc = {
         "issues": [
-            {"role": "noter", "what_is_missing": "生"},
-            {"role": "deshi", "what_is_missing": "弟子の言葉"},
+            {"id": "issue-1", "role": "noter", "what_is_missing": "生"},
+            {"id": "issue-2", "role": "noter", "what_is_missing": "別のノート役の指摘"},
+            {"id": "issue-3", "role": "deshi", "what_is_missing": "弟子の言葉"},
         ]
     }
-    out = view.clean_review(doc, view.clean_lines(TRANSCRIPT, CLEAN))["issues"]
-    assert out[0]["what_is_missing"] == gaps.FALLBACK_QUESTION and out[1]["what_is_missing"] == "弟子の言葉"
+    out = view.clean_review(doc, questions, shown)["issues"]
+    assert [i["what_is_missing"] for i in out] == ["読める問い", "別のノート役の指摘", "弟子の言葉"]
+
+
+def test_held_quote_stays_as_transcribed():
+    item = {**item_at("seg-0002", "seg-0003"), "held": True}
+    assert view.clean_items([item], "k", TRANSCRIPT, view.clean_lines(TRANSCRIPT, CLEAN)) == [item]
 
 
 def test_without_a_clean_copy_nothing_changes():
     assert view.clean_gaps(GAPS, TRANSCRIPT, {}) is GAPS
-    assert view.clean_questions(QUESTIONS, {}, {}) is QUESTIONS
+    assert view.clean_questions(QUESTIONS, None) is QUESTIONS
     item = item_at("seg-0002", "seg-0003")
     assert view.clean_items([item], "k", TRANSCRIPT, {}) == [item]
 
