@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import Counter
 
 from .schema import HANASHI_KINDS, KATA_KINDS, PAYOFF_KINDS
@@ -51,7 +52,8 @@ def _ma_problem(item: dict, pause: float) -> str | None:
     if is_blank(pause):
         return "ma_too_long"
     # 文に秒数を書くなら、実際の pause_after と合うこと（照合役には確かめられない）
-    written = re.findall(r"([0-9]+(?:\.[0-9]+)?)\s*秒", item["text"])
+    text = unicodedata.normalize("NFKC", item["text"])  # 全角の数字も見る
+    written = re.findall(r"([0-9]+(?:\.[0-9]+)?)\s*秒", text)
     if written and not any(abs(float(x) - pause) <= MA_SECONDS_TOLERANCE for x in written):
         return "ma_wrong_seconds"
     return None

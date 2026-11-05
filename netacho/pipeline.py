@@ -62,7 +62,7 @@ def transcript_text(transcript: dict) -> str:
         pause = s["pause_after"] or 0
         tail = ""
         if evidence.is_blank(pause):  # 間と書かせない
-            tail = f"（空白 {pause:.1f} 秒。文字起こしの抜けか、間ではない）"
+            tail = f"（空白 {pause:.1f} 秒）"  # 原因は書かない（反応を見せないため）
         elif pause >= evidence.MIN_PAUSE_SEC:
             tail = f"（間 {pause:.1f} 秒）"
         lines.append(f"{s['id']} {s['text']}{tail}")
