@@ -127,8 +127,11 @@ class Handler(BaseHTTPRequestHandler):
             and self.headers.get_content_type() == "application/json"
         )
 
-    def _audio(self, side: str) -> Path:
-        """1 本目か、比較の 2 本目の録音。"""
+    def _audio(self, args: dict) -> Path:
+        """画面が指した高座の録音。指定が無ければ、開いている高座か、比較の 2 本目。"""
+        if "koza" in args:  # 高座を指す。サーバの開いている高座が変わっても、別の録音を鳴らさない
+            return self.server.neta.sibling(args["neta"][0]).koza_dir(args["koza"][0]) / "audio.wav"
+        side = args.get("side", ["a"])[0]
         kdir = self.server.neta.koza_dir(self.server.koza_id)
         if side != "b":
             return kdir / "audio.wav"
@@ -143,7 +146,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             t0, t1 = _clip_range(args)
-            data = clip_wav(self._audio(args.get("side", ["a"])[0]), t0, t1)
+            data = clip_wav(self._audio(args), t0, t1)
         except (KeyError, ValueError, OverflowError, OSError, wave.Error):
             self._json(404, {"error": "無い"})
             return

@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import wave
 from pathlib import Path
@@ -649,3 +650,24 @@ def test_viewer_lets_the_performer_fix_an_answer():
     html = (Path(__file__).parents[1] / "viewer" / "index.html").read_text(encoding="utf-8")
     assert "あとから直せます" in html and "あとから直せません" not in html
     assert "/api/edit" in html
+
+
+def test_clip_plays_the_koza_the_screen_names_not_the_open_one(running):
+    neta, koza = second_koza(running)
+    for path, rate in ((running.neta.koza_dir(K), 8000), (running.neta.sibling(neta).koza_dir(koza), 16000)):
+        with wave.open(str(path / "audio.wav"), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(b"\0\0" * rate * 3)
+    query = urllib.parse.urlencode({"from": 0, "to": 1, "neta": neta, "koza": koza, "t": running.token})
+    status, data = call(running, f"/clip?{query}", headers={})
+    assert status == 200
+    with wave.open(io.BytesIO(data)) as w:
+        assert w.getframerate() == 16000
+
+
+def test_clip_does_not_leave_the_performer(running):
+    query = urllib.parse.urlencode({"from": 0, "to": 1, "neta": "../..", "koza": K, "t": running.token})
+    status, _ = call(running, f"/clip?{query}", headers={})
+    assert status == 404

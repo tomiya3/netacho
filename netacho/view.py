@@ -230,7 +230,6 @@ def koza_list(neta: store.Neta) -> list[dict]:
             scores = store.read(kdir / "reactions.json", "reactions").get("scores") or {}
             title = _run_title(kdir)
             questions = _optional(other.questions, "questions") or {"questions": []}
-            compared = _optional(kdir / "compare.json", "compare")
         except (ValueError, OSError):
             print(f"読み飛ばした：{kdir.name} の高座", file=sys.stderr)
             continue
@@ -243,9 +242,6 @@ def koza_list(neta: store.Neta) -> list[dict]:
                 "venue": koza["venue"],
                 "seconds": scores.get("seconds"),
                 "open": sum(1 for q in questions["questions"] if "answer" not in q and "dismissed" not in q),
-                "compared": {"neta": compared["other_neta"], "koza_id": compared["koza_b"]}
-                if compared and compared.get("other_neta")
-                else None,
             }
         )
     rows.sort(key=lambda r: r["koza_id"])
@@ -292,7 +288,27 @@ def compare_view(neta: store.Neta, kdir: Path) -> dict | None:
     if doc is None:
         return None
     other = neta.sibling(doc["other_neta"]).koza_dir(doc["koza_b"]) / "reactions.json"
-    return {**doc, "other_reactions": _optional(other, "reactions")}
+    return {
+        **doc,
+        "neta_a": neta.neta,
+        "neta_b": doc["other_neta"],
+        "other_reactions": _optional(other, "reactions"),
+    }
+
+
+def compares_from_others(neta: store.Neta, koza_id: str) -> list[dict]:
+    """別の高座の側で作った、この高座との比較。開いている高座を変えずに見られるように。"""
+    rows = []
+    for path in sorted(neta.base.parent.glob("*/koza/*/compare.json")):
+        try:
+            doc = store.read(path, "compare")
+            if doc["koza_b"] == koza_id and doc["other_neta"] == neta.neta:
+                owner = path.parents[2].name
+                other = _optional(path.parent / "reactions.json", "reactions")
+                rows.append({**doc, "neta_a": owner, "neta_b": neta.neta, "other_reactions": other})
+        except (ValueError, OSError, KeyError):
+            print(f"読み飛ばした：{path.parent.name} の比較", file=sys.stderr)
+    return rows
 
 
 def book_items(book: dict, lookup: dict, koza_id: str, transcript: dict, lines: dict) -> list[dict]:
@@ -343,6 +359,7 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "questions": shown,
         "places": places,
         "compare": compare_view(neta, kdir),
+        "compares": compares_from_others(neta, koza_id),
         "run": _optional(kdir / "run.json", "run"),
     }
 

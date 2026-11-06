@@ -507,3 +507,26 @@ def test_koza_list_keeps_a_koza_whose_run_json_is_old(tmp_path):
     (root / P / N / "koza" / K / "run.json").write_text('{"old": true}', encoding="utf-8")
     rows = view.koza_list(store.Neta(P, N, root))
     assert [(r["koza_id"], r["title"]) for r in rows] == [(K, N)]
+
+
+def test_compares_from_others_finds_the_pair_kept_on_the_other_side(tmp_path):
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    other = _second_koza(root)
+    koza = "2026-02-03-other-hall"
+    path = other.koza_dir(koza) / "compare.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**doc, "koza_a": koza, "koza_b": K, "other_neta": N}), encoding="utf-8")
+    rows = view.compares_from_others(store.Neta(P, N, root), K)
+    assert [(r["neta_a"], r["koza_a"], r["neta_b"], r["koza_b"]) for r in rows] == [("別の会", koza, N, K)]
+    assert rows[0]["other_reactions"]["reactions"]
+    assert view.compares_from_others(other, koza) == []  # 自分の側の比較は compare に入る
+
+
+def test_html_keeps_the_open_koza_on_the_left_of_a_compare():
+    assert "[mineKey(c), otherKey(c)]" in HTML
+    assert "shownPair = pair; renderCompare(d);" in HTML
+
+
+def test_html_names_the_koza_of_every_clip():
+    assert "&neta=${encodeURIComponent(src.neta)}&koza=${encodeURIComponent(src.koza)}" in HTML

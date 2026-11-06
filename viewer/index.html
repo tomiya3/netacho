@@ -192,7 +192,7 @@ details.more > summary { cursor: pointer; color: var(--ink-2); min-height: 44px;
 <script>
 "use strict";
 const TABS = [["list", "高座帳"], ["deshi", "弟子の問い"], ["wave", "高座の波"], ["compare", "比べる"], ["kata", "帳面"], ["cards", "札"], ["seisho", "清書"], ["numbers", "数字"]];
-const SPOT = { kept: "2 本とも同じ言葉", moved: "来る所がずれた", ma: "一言の前の間が違う", one_side: "片方の録音でだけ拾えた", words: "笑いの所で言葉が違う", added: "2 本目に無い言葉で笑いの山", changed: "言葉が違う", makura: "枕の笑い" };
+const SPOT = { kept: "2 本とも同じ言葉", moved: "来る所がずれた", ma: "一言の前の間が違う", one_side: "片方の録音でだけ拾えた", words: "笑いの所で言葉が違う", added: "片方に無い言葉で笑いの山", changed: "言葉が違う", makura: "枕の笑い" };
 const SVG = "http://www.w3.org/2000/svg";
 const POSITION = { before: "場面の前", after: "場面の後" };  // 場面の中が既定なので書かない
 const WHY = { no_candidate: "回収の後に反応候補が見つからない", low_rank: "回収の後の反応候補が小さい方" };
@@ -230,8 +230,10 @@ const writer = () => localStorage.getItem("netacho-speaker") || "";  // 代筆�
 const ja = t => t.replace(/\?/g, "？").replace(/!/g, "！");  // 文字起こし由来の文だけ。演者の言葉には使わない
 const kozaName = id => id.replace(/^0000-00-00-?/, "") || id;
 let KOZAS = [];
+let NETA = null;
 let KOZA = null;  // 型と噺は演目全体の物。別の高座の項目の時刻で、この高座の録音を鳴らさない
 const here = i => i?.source?.koza_id === KOZA;
+const HERE = () => ({ neta: NETA, koza: KOZA });
 const dateOf = date => date === "0000-00-00" ? "日付なし" : date;
 
 /* どの画面の「聞く」も、下の帯 1 本で鳴らす */
@@ -243,7 +245,7 @@ function stop() {
   playing?.classList.remove("on");
   playing = null;
 }
-function play(button, label, from, to, side = "a") {
+function play(button, label, from, to, src = HERE()) {
   const wasOn = button && playing === button;
   stop();
   if (wasOn) return;
@@ -251,23 +253,23 @@ function play(button, label, from, to, side = "a") {
   playing = button;
   button?.classList.add("on");
   from = Math.max(0, from);
-  audio.src = `/clip?from=${from.toFixed(1)}&to=${to.toFixed(1)}&side=${side}&t=${encodeURIComponent(TOKEN || "")}`;
+  audio.src = `/clip?from=${from.toFixed(1)}&to=${to.toFixed(1)}&neta=${encodeURIComponent(src.neta)}&koza=${encodeURIComponent(src.koza)}&t=${encodeURIComponent(TOKEN || "")}`;
   const fill = el("i");
   const text = el("span", {}, `${label}　${clock(from)} から`);
   bar.replaceChildren(text, el("div", { class: "bar" }, fill), el("button", { type: "button", onclick: stop }, "止める"));
   bar.classList.add("show");
   audio.ontimeupdate = () => {
     fill.style.width = `${Math.min(100, audio.currentTime / (to - from) * 100)}%`;
-    window.dispatchEvent(new CustomEvent("playhead", { detail: { t: from + audio.currentTime, side } }));
+    window.dispatchEvent(new CustomEvent("playhead", { detail: { t: from + audio.currentTime, koza: src.koza } }));
   };
   audio.onended = stop;
   audio.onerror = () => { playing?.classList.remove("on"); playing = null; text.textContent = "録音が見つかりません。"; };
   audio.play().catch(() => {});
 }
-function playButton(label, from, to, side = "a", title = label) {
+function playButton(label, from, to, src = HERE(), title = label) {
   if (!TOKEN) return null;  // 切り抜きはトークンのある画面にだけ渡す
   const b = el("button", { type: "button", class: "play" }, label);
-  b.addEventListener("click", () => play(b, title, from, to, side));
+  b.addEventListener("click", () => play(b, title, from, to, src));
   return b;
 }
 
@@ -291,18 +293,24 @@ const sceneAt = (scenes, t) => scenes.find(s => t >= s.t0 && t < s.t1);
 
 /* ---------- 比べた所 ---------- */
 const rowName = r => [r.date === "0000-00-00" ? "" : r.date, r.venue].filter(Boolean).join(" ");
-function compareNames(c) {
-  const name = id => { const r = KOZAS.find(x => x.koza_id === id); return r ? rowName(r) : kozaName(id); };
-  return c.practice ? ["本番", "稽古"] : [name(c.koza_a), name(c.koza_b)];
+const mineKey = c => c.koza_a === KOZA && c.neta_a === NETA ? "a" : "b";
+const otherKey = c => mineKey(c) === "a" ? "b" : "a";
+const sideOf = (c, key) => ({ neta: c["neta_" + key], koza: c["koza_" + key] });
+function compareName(c, key) {
+  if (c.practice) return key === "a" ? "本番" : "稽古";
+  const { neta, koza } = sideOf(c, key);
+  const r = KOZAS.find(x => x.koza_id === koza && x.neta === neta);
+  return r ? rowName(r) : kozaName(koza);
 }
 function spotBody(s, c) {
-  const [nameA, nameB] = compareNames(c);
-  const side = (name, row, laugh, key) => el("div", {}, el("div", { class: "label" }, `${name}（${clock(row.t)}）`),
-    el("p", { class: "q" }, `「${ja(row.quote)}」`), playButton(`${name}を聞く`, row.t - 8, Math.max(row.end, laugh ?? 0) + 6, key));
-  const left = side(nameA, s.a, s.laugh_a, "a");
-  const right = s.b ? side(nameB, s.b, s.laugh_b, "b")
-    : s.kind === "makura" ? null : el("div", {}, el("div", { class: "label" }, nameB), el("p", { class: "small" }, "この言葉はありません。"));
-  return el("div", { class: "two" }, left, right);
+  const side = key => {
+    const name = compareName(c, key), row = s[key];
+    if (!row) return el("div", {}, el("div", { class: "label" }, name), el("p", { class: "small" }, "この言葉はありません。"));
+    return el("div", {}, el("div", { class: "label" }, `${name}（${clock(row.t)}）`), el("p", { class: "q" }, `「${ja(row.quote)}」`),
+      playButton(`${name}を聞く`, row.t - 8, Math.max(row.end, s["laugh_" + key] ?? 0) + 6, sideOf(c, key)));
+  };
+  const keys = [mineKey(c), otherKey(c)].filter(k => s[k] || s.kind !== "makura");
+  return el("div", { class: "two" }, keys.map(side));
 }
 
 /* ---------- 高座帳 ---------- */
@@ -437,7 +445,7 @@ function renderDeshi(d) {
 
 /* ---------- 高座の波 ---------- */
 function drawWave(root, reactions, opts = {}) {
-  const { scenes = [], marks = [], side = "a", height = 300 } = opts;
+  const { scenes = [], marks = [], src = HERE(), height = 300 } = opts;
   const s = reactions?.scores;
   if (!s || !s.laugh.length) { root.append(el("p", { class: "notice" }, "スコアがありません。")); return null; }
   const W = 1120, H = height, L = 10, R = 10, BAND = scenes.length ? 30 : 0, MARK = marks.length ? 58 : 14, T = BAND + MARK + 6, B = 26;
@@ -508,9 +516,9 @@ function drawWave(root, reactions, opts = {}) {
     tip.style.display = "block"; tip.style.left = Math.max(0, Math.min(ev.clientX - r.left + 14, r.width - 340)) + "px"; tip.style.top = "36px";
   });
   g.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; });
-  g.addEventListener("click", ev => { if (TOKEN) { const t = timeAt(ev); play(null, sceneAt(scenes, t)?.title || "高座", t - 3, t + 20, side); } });
+  g.addEventListener("click", ev => { if (TOKEN) { const t = timeAt(ev); play(null, sceneAt(scenes, t)?.title || "高座", t - 3, t + 20, src); } });
   window.addEventListener("playhead", ev => {
-    if (ev.detail.side !== side) return;
+    if (ev.detail.koza !== src.koza) return;
     head.setAttribute("x1", x(ev.detail.t)); head.setAttribute("x2", x(ev.detail.t)); head.setAttribute("visibility", "visible");
   });
   root.append(box);
@@ -537,7 +545,7 @@ function renderWave(d) {
       return perScene[id] <= 3;
     }) : res.laughs.slice(0, res.nBig)).sort((a, b) => a.t0 - b.t0);
     if (big.length) root.append(el("h3", {}, "ここで受けた"), el("div", {}, big.map(r => el("div", { class: "peak" },
-      playButton(clock(r.t0), r.t0 - 10, r.t1 + 4, "a", sceneAt(scenes, r.t0)?.title || "笑いの所") || el("b", {}, clock(r.t0)),
+      playButton(clock(r.t0), r.t0 - 10, r.t1 + 4, HERE(), sceneAt(scenes, r.t0)?.title || "笑いの所") || el("b", {}, clock(r.t0)),
       el("div", {}, el("span", { class: "line" }, d.laugh_lines?.[r.id] ? `「${ja(d.laugh_lines[r.id].text)}」` : ""), el("span", { class: "where" }, sceneAt(scenes, r.t0)?.title || ""))))));
   }
   if (!d.seisho) root.append(el("p", { class: "small" }, "この高座は清書がまだ無いので、台詞は出していません。"));
@@ -560,48 +568,51 @@ function renderWave(d) {
 /* ---------- 比べる ---------- */
 function renderMakura(root, c) {
   if (!c.makura?.length) return;
-  const [nameA, nameB] = compareNames(c);
+  const mine = mineKey(c), other = otherKey(c);
   const cell = row => el("td", {}, !row ? "なし" : `${clock(row.t)}〜${clock(row.end)}${row.humps === null ? "" : `（検出した山 ${row.humps}）`}`);
   root.append(el("details", { class: "more" }, el("summary", {}, `枕の話題（${c.makura.length} 件）`),
     el("p", { class: "small" }, "枕は会ごとに変わるので、話題で比べています。話題と下地は Claude の読みで、位置と山の数は録音からの実測です。山 0 は検出できなかったという意味で、反応の有無は言えません。"),
-    el("table", {}, el("tr", {}, ["話題", "噺の下地", nameA, nameB].map(t => el("th", {}, t))),
-      c.makura.map(x => el("tr", {}, el("td", {}, x.topic), el("td", {}, x.prepares ? "下地" : ""), cell(x.a), cell(x.b))))));
+    el("table", {}, el("tr", {}, ["話題", "噺の下地", compareName(c, mine), compareName(c, other)].map(t => el("th", {}, t))),
+      c.makura.map(x => el("tr", {}, el("td", {}, x.topic), el("td", {}, x.prepares ? "下地" : ""), cell(x[mine]), cell(x[other]))))));
 }
-function compareChoice(d) {
-  // 同じ話の高座を並べる。比べた組はどちらの高座の側で作ったかによらず開ける
-  const me = KOZAS.find(r => r.koza_id === d.koza.id && r.neta === d.neta);
+let shownPair = null;  // 比べている組。開いている高座は変えない
+function comparePairs(d) {
+  return [d.compare, ...(d.compares || [])].filter(Boolean);
+}
+function compareChoice(d, pairs) {
+  const me = KOZAS.find(r => r.koza_id === KOZA && r.neta === NETA);
   if (!me) return null;
-  const same = (a, b) => a?.neta === b.neta && a?.koza_id === b.koza_id;
   const others = KOZAS.filter(r => r.title === me.title && r !== me);
   if (!others.length) return null;
-  const note = el("p", { class: "status", role: "status" });
   const chips = others.map(r => {
-    const mine = same(me.compared, r), theirs = same(r.compared, me);
-    const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(mine),
-      onclick: () => { if (!mine) openKoza(r, note, "#compare"); } }, rowName(r) || r.koza_id, mine || theirs ? "" : "（まだ比べていません）");
-    chip.disabled = !mine && !theirs;
+    const pair = pairs.find(p => { const o = sideOf(p, otherKey(p)); return o.neta === r.neta && o.koza === r.koza_id; });
+    const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(!!pair && pair === shownPair),
+      onclick: () => { shownPair = pair; renderCompare(d); } }, rowName(r) || r.koza_id, pair ? "" : "（まだ比べていません）");
+    chip.disabled = !pair;
     return chip;
   });
-  return el("div", { class: "choice" }, el("div", { class: "small" }, `${rowName(me)} と比べる相手`), el("div", { class: "chips" }, chips), note);
+  return el("div", { class: "choice" }, el("div", { class: "small" }, `${rowName(me) || "この高座"} と比べる相手`), el("div", { class: "chips" }, chips));
 }
 function renderCompare(d) {
   const root = document.getElementById("compare");
-  const c = d.compare;
-  root.append(el("h2", {}, "比べる"), TOKEN ? compareChoice(d) : null);
+  const pairs = comparePairs(d);
+  shownPair = shownPair || pairs[0] || null;
+  const c = shownPair;
+  root.replaceChildren(el("h2", {}, "比べる"), compareChoice(d, pairs));
   if (!c) { root.append(el("p", {}, "2 本の比較はまだありません。netacho compare で作ります。")); return; }
-  const [nameA, nameB] = compareNames(c);
+  const mine = mineKey(c), other = otherKey(c);
   root.append(el("p", { class: "lead" }, "どの台詞が同じくだりかは Claude が読み、笑いと間は録音から測っています。笑いの大きさは比べていません。笑いを拾えていない所も、反応が無かったという意味ではありません。"));
-  root.append(el("p", {}, `${nameA} と ${nameB}。対応の付いた割合 ${Math.round(c.share * 100)}%`));
+  root.append(el("p", {}, `${compareName(c, mine)} と ${compareName(c, other)}。対応の付いた割合 ${Math.round(c.share * 100)}%`));
   if (!c.comparable) { root.append(el("p", { class: "notice" }, "2 本の対応が付かないので、比べていません。")); return; }
   const skipped = c.scenes.filter(s => !s.compared).map(s => s.title || s.scene_id);
   if (skipped.length) root.append(el("p", { class: "notice" }, `揃わず比べなかった場面：${skipped.join("、")}`));
-  if (c.practice) root.append(el("p", { class: "notice" }, "2 本目に笑いがほぼ無いので、稽古と見ています。本番で笑いの山があった所を軸に比べています。"));
+  if (c.practice) root.append(el("p", { class: "notice" }, "片方に笑いがほぼ無いので、稽古と見ています。本番で笑いの山があった所を軸に比べています。"));
   else if (!c.laughs_compared) root.append(el("p", { class: "notice" }, "片方の録音で笑いの山を拾えていないので、笑いは比べていません。言葉の違いだけを出しています。"));
-  root.append(el("h3", {}, nameA));
+  root.append(el("h3", {}, compareName(c, mine)));
   drawWave(root, d.reactions, { scenes: timed(d), height: 190 });
-  root.append(el("h3", {}, nameB));
-  if (c.other_reactions) drawWave(root, c.other_reactions, { side: "b", height: 160 });
-  else root.append(el("p", {}, "2 本目の波が見つかりません。"));
+  root.append(el("h3", {}, compareName(c, other)));
+  if (c.other_reactions) drawWave(root, c.other_reactions, { src: sideOf(c, other), height: 160 });
+  else root.append(el("p", {}, "もう 1 本の波が見つかりません。"));
   renderMakura(root, c);
   const spots = c.spots.filter(s => s.kind !== "makura");  // 枕は話題で見せる。問いになった所は問いの欄に出る
   const scenes = byId(d.scenes);
@@ -759,6 +770,7 @@ async function main() {
     if (!res.ok) throw new Error(String(res.status));
     const d = await res.json();
     KOZA = d.koza.id;
+    NETA = d.neta;
     KOZAS = d.kozas || [];
     const title = d.run?.seisho?.title || d.koza.neta;
     document.getElementById("title").textContent = title;
