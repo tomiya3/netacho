@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import wave
 from pathlib import Path
@@ -35,8 +36,14 @@ def running(tmp_path):
     srv.server_close()
 
 
+WRITES = {"/api/answer", "/api/decide", "/api/dismiss", "/api/edit"}
+
+
 def call(srv, path, body=None, *, headers=None, data=None):
+    """書き込みの本文には、画面と同じく開いている高座を添える。"""
     sent = {"Content-Type": "application/json", "X-Netacho-Token": srv.token} if headers is None else headers
+    if path in WRITES and isinstance(body, dict):
+        body = {"neta": srv.neta.neta, "koza": srv.koza_id, **body}
     payload = data if data is not None else (None if body is None else json.dumps(body).encode())
     req = urllib.request.Request(f"http://127.0.0.1:{srv.port}{path}", data=payload, headers=sent)
     try:
@@ -44,6 +51,71 @@ def call(srv, path, body=None, *, headers=None, data=None):
             return res.status, res.read()
     except urllib.error.HTTPError as e:
         return e.code, e.read()
+
+
+def second_koza(srv, neta="別の会", koza="2026-02-03-other-hall"):
+    src = srv.neta.base
+    shutil.copytree(src, src.parent / neta)
+    (src.parent / neta / "koza" / K).rename(src.parent / neta / "koza" / koza)
+    path = src.parent / neta / "koza" / koza / "koza.json"
+    meta = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**meta, "id": koza, "neta": neta}), encoding="utf-8")
+    return neta, koza
+
+
+def test_open_switches_the_koza_and_the_view(running):
+    neta, koza = second_koza(running)
+    status, _ = call(running, "/api/open", {"neta": neta, "koza": koza})
+    assert status == 200
+    assert running.koza_id == koza and running.neta.neta == neta
+    doc = json.loads((running.out / "view.json").read_text(encoding="utf-8"))
+    assert doc["koza"]["id"] == koza
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"neta": "../..", "koza": K},
+        {"neta": N, "koza": "../x"},
+        {"neta": N, "koza": "2099-01-01-none"},
+    ],
+)
+def test_open_refuses_what_is_not_a_koza_of_this_performer(running, body):
+    status, _ = call(running, "/api/open", body)
+    assert status == 400
+    assert running.koza_id == K
+
+
+def test_open_needs_the_token(running):
+    headers = {"Content-Type": "application/json"}
+    status, _ = call(running, "/api/open", {"neta": N, "koza": K}, headers=headers)
+    assert status == 403
+
+
+def test_koza_date_and_venue_can_be_fixed(running):
+    status, _ = call(running, "/api/koza", {"neta": N, "koza": K, "date": "2026-03-04", "venue": "会場 A"})
+    assert status == 200
+    meta = store.read(running.neta.koza_dir(K) / "koza.json", "koza")
+    assert (meta["id"], meta["date"], meta["venue"]) == (K, "2026-03-04", "会場 A")
+    doc = json.loads((running.out / "view.json").read_text(encoding="utf-8"))
+    assert doc["kozas"][0]["date"] == "2026-03-04"
+
+
+def test_koza_empty_date_means_unknown(running):
+    status, _ = call(running, "/api/koza", {"neta": N, "koza": K, "date": "", "venue": "会場 A"})
+    assert status == 200
+    assert store.read(running.neta.koza_dir(K) / "koza.json", "koza")["date"] == "0000-00-00"
+
+
+@pytest.mark.parametrize(
+    ("when", "venue"),
+    [("2026-13-40", "会場"), ("2026-02-03", "  "), ("きのう", "会場"), ("20260203", "会場")],
+)
+def test_koza_refuses_a_bad_date_or_an_empty_venue(running, when, venue):
+    before = (running.neta.koza_dir(K) / "koza.json").read_text(encoding="utf-8")
+    status, _ = call(running, "/api/koza", {"neta": N, "koza": K, "date": when, "venue": venue})
+    assert status == 400
+    assert (running.neta.koza_dir(K) / "koza.json").read_text(encoding="utf-8") == before
 
 
 def question_id(srv):
@@ -522,3 +594,169 @@ def test_clip_is_capped_so_the_whole_recording_is_not_handed_out(running):
 def test_bad_clip_ranges_are_not_found(running, query):
     put_wav(running)
     assert call(running, f"/clip?{query}&t={running.token}", headers={})[0] == 404
+
+
+def answered(srv):
+    add_question(srv)
+    status, _ = call(srv, "/api/answer", {"question": "q-0901", "speaker": "本人", "words": "前の言葉"})
+    assert status == 200
+
+
+def test_edit_changes_the_answer_and_the_kata_and_keeps_the_old_words(running):
+    answered(running)
+    status, _ = call(running, "/api/edit", {"question": "q-0901", "speaker": "本人", "words": "直した言葉"})
+    assert status == 200
+    q = next(x for x in store.read(running.neta.questions, "questions")["questions"] if x["id"] == "q-0901")
+    assert q["answer"]["words"] == "直した言葉"
+    items = store.read(running.neta.kata, "book")["items"]
+    item = next(i for i in items if i["source"].get("question_id") == "q-0901")
+    assert item["text"] == item["source"]["words"] == "直した言葉"
+    assert item["edited_by"] == "performer"
+    assert (item["history"][-1]["before"], item["history"][-1]["after"]) == ("前の言葉", "直した言葉")
+    doc = json.loads((running.out / "view.json").read_text(encoding="utf-8"))
+    assert "直した言葉" in json.dumps(doc["kata"], ensure_ascii=False)
+
+
+def test_edit_with_the_same_words_leaves_no_history(running):
+    answered(running)
+    before = store.read(running.neta.kata, "book")
+    status, _ = call(running, "/api/edit", {"question": "q-0901", "speaker": "本人", "words": "前の言葉"})
+    assert status == 200
+    assert store.read(running.neta.kata, "book") == before
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"question": "q-0901", "speaker": "本人", "words": "  "},
+        {"question": "q-0901", "speaker": "", "words": "言葉"},
+        {"question": "q-9999", "speaker": "本人", "words": "言葉"},
+    ],
+)
+def test_edit_refuses_empty_words_or_an_unknown_question(running, body):
+    answered(running)
+    status, _ = call(running, "/api/edit", body)
+    assert status == 400
+
+
+def test_edit_refuses_a_question_without_an_answer(running):
+    add_question(running)
+    status, _ = call(running, "/api/edit", {"question": "q-0901", "speaker": "本人", "words": "言葉"})
+    assert status == 400
+
+
+def test_edit_needs_the_token(running):
+    answered(running)
+    body = {"question": "q-0901", "speaker": "本人", "words": "言葉"}
+    status, _ = call(running, "/api/edit", body, headers={"Content-Type": "application/json"})
+    assert status == 403
+
+
+def test_viewer_lets_the_performer_fix_an_answer():
+    html = (Path(__file__).parents[1] / "viewer" / "index.html").read_text(encoding="utf-8")
+    assert "あとから直せます" in html and "あとから直せません" not in html
+    assert "/api/edit" in html
+
+
+def test_clip_plays_the_koza_the_screen_names_not_the_open_one(running):
+    neta, koza = second_koza(running)
+    for path, rate in ((running.neta.koza_dir(K), 8000), (running.neta.sibling(neta).koza_dir(koza), 16000)):
+        with wave.open(str(path / "audio.wav"), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(b"\0\0" * rate * 3)
+    query = urllib.parse.urlencode({"from": 0, "to": 1, "neta": neta, "koza": koza, "t": running.token})
+    status, data = call(running, f"/clip?{query}", headers={})
+    assert status == 200
+    with wave.open(io.BytesIO(data)) as w:
+        assert w.getframerate() == 16000
+
+
+def test_clip_does_not_leave_the_performer(running):
+    query = urllib.parse.urlencode({"from": 0, "to": 1, "neta": "../..", "koza": K, "t": running.token})
+    status, _ = call(running, f"/clip?{query}", headers={})
+    assert status == 404
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("/api/answer", {"question": "q-0901", "speaker": "本人", "words": "言葉"}),
+        ("/api/dismiss", {"question": "q-0901", "speaker": "本人", "reason": "理由"}),
+        ("/api/edit", {"question": "q-0901", "speaker": "本人", "words": "言葉"}),
+        (
+            "/api/decide",
+            {
+                "scene": "scene-01",
+                "position": "within",
+                "speaker": "本人",
+                "words": "言葉",
+                "card": "札",
+                "why": "理由",
+            },
+        ),
+    ],
+)
+def test_a_stale_tab_cannot_write_into_the_koza_opened_elsewhere(running, path, body):
+    add_question(running)
+    neta, koza = second_koza(running)
+    assert call(running, "/api/open", {"neta": neta, "koza": koza})[0] == 200
+    before = [p.read_bytes() for p in sorted(running.neta.base.parent.rglob("*.json"))]
+    status, data = call(running, path, {**body, "neta": N, "koza": K})
+    assert status == 400 and "別の高座" in data.decode()
+    assert [p.read_bytes() for p in sorted(running.neta.base.parent.rglob("*.json"))] == before
+
+
+def test_viewer_sends_which_koza_it_shows_with_every_write():
+    html = (Path(__file__).parents[1] / "viewer" / "index.html").read_text(encoding="utf-8")
+    assert "JSON.stringify({ neta: NETA, koza: KOZA, ...body })" in html
+
+
+def test_edit_keeps_a_reason_decided_separately(running):
+    answered(running)
+    kata = store.read(running.neta.kata, "book")
+    item = next(i for i in kata["items"] if i["source"].get("question_id") == "q-0901")
+    item["reason"] = "別に決めた理由"
+    store.write(running.neta.kata, kata, "book")
+    performer.edit_answer(running.neta, question="q-0901", speaker="本人", words="直した言葉")
+    items = store.read(running.neta.kata, "book")["items"]
+    assert next(i for i in items if i["id"] == item["id"])["reason"] == "別に決めた理由"
+
+
+def test_edit_retried_after_a_crash_does_not_double_the_history(running):
+    answered(running)
+    saved = running.neta.questions.read_bytes()
+    performer.edit_answer(running.neta, question="q-0901", speaker="本人", words="直した言葉")
+    running.neta.questions.write_bytes(saved)  # 型を書いた後、問いを書く前に落ちた
+    performer.edit_answer(running.neta, question="q-0901", speaker="本人", words="直した言葉")
+    items = store.read(running.neta.kata, "book")["items"]
+    item = next(i for i in items if i["source"].get("question_id") == "q-0901")
+    assert [h["after"] for h in item["history"]] == ["前の言葉", "直した言葉"]
+    q = next(x for x in store.read(running.neta.questions, "questions")["questions"] if x["id"] == "q-0901")
+    assert q["answer"]["words"] == "直した言葉"
+
+
+@pytest.mark.parametrize("path", sorted(WRITES))
+def test_write_without_the_koza_it_was_made_on_is_refused(running, path):
+    status, _ = call(running, path, data=json.dumps({"question": "q-0001", "words": "x"}).encode())
+    assert status == 400
+
+
+def test_edit_by_someone_else_changes_who_wrote_the_answer(running):
+    add_question(running)
+    call(running, "/api/answer", {"question": "q-0901", "speaker": "本人", "words": "前の言葉"})
+    body = {"question": "q-0901", "speaker": "代筆", "words": "後の言葉"}
+    assert call(running, "/api/edit", body)[0] == 200
+    kata = store.read(running.neta.kata, "book")
+    item = next(i for i in kata["items"] if i["source"].get("question_id") == "q-0901")
+    rows = store.read(running.neta.questions, "questions")["questions"]
+    said = next(q for q in rows if q["id"] == "q-0901")["answer"]
+    assert (item["source"]["speaker"], item["source"]["recorded_at"]) == ("代筆", said["recorded_at"])
+    assert item["history"][0]["by"] == "本人"
+    assert item["history"][-1]["before"] == "前の言葉"
+
+
+@pytest.mark.parametrize("venue", ["会場\nA", "長" * 101])
+def test_koza_refuses_a_venue_that_is_not_one_short_line(running, venue):
+    assert call(running, "/api/koza", {"neta": N, "koza": K, "date": "2026-03-04", "venue": venue})[0] == 400

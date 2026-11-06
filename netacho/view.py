@@ -211,6 +211,44 @@ def clean_review(review: dict | None, questions: dict | None, shown: dict | None
     return {**review, "issues": rows}
 
 
+def _run_title(kdir: Path) -> str | None:
+    """清書のときに渡した演目の題。形が古くても、高座を一覧から落とさないように検証しない。"""
+    try:
+        run = json.loads((kdir / "run.json").read_text(encoding="utf-8"))
+        return (run.get("seisho") or {}).get("title")
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+
+
+def koza_list(neta: store.Neta) -> list[dict]:
+    """この演者の高座の一覧。新しい順。作りかけの高座は読み飛ばす。"""
+    rows = []
+    for path in neta.base.parent.glob("*/koza/*/koza.json"):
+        kdir = path.parent
+        try:
+            other = neta.sibling(path.parents[2].name)
+            koza = store.read(path, "koza")
+            # 答えるたびに全部の高座を読むので、要らない検証をしない
+            scores = json.loads((kdir / "reactions.json").read_text(encoding="utf-8")).get("scores") or {}
+            title = _run_title(kdir)
+            questions = _optional(other.questions, "questions") or {"questions": []}
+            row = {
+                "neta": other.neta,
+                "koza_id": koza["id"],
+                "title": title or other.neta,
+                "date": koza["date"],
+                "venue": koza["venue"],
+                "seconds": scores.get("seconds"),
+                "open": sum(1 for q in questions["questions"] if "answer" not in q and "dismissed" not in q),
+            }
+        except (ValueError, OSError, AttributeError, KeyError, TypeError):  # 1 本の壊れで一覧を止めない
+            print(f"読み飛ばした：{kdir.name} の高座", file=sys.stderr)
+            continue
+        rows.append(row)
+    rows.sort(key=lambda r: r["koza_id"])
+    return sorted(rows, key=lambda r: r["date"], reverse=True)
+
+
 def laugh_lines(reactions: dict, transcript: dict | None, lines: dict) -> dict:
     """笑いごとの、直前の清書の台詞。清書の無い高座には出さない。
 
@@ -251,7 +289,27 @@ def compare_view(neta: store.Neta, kdir: Path) -> dict | None:
     if doc is None:
         return None
     other = neta.sibling(doc["other_neta"]).koza_dir(doc["koza_b"]) / "reactions.json"
-    return {**doc, "other_reactions": _optional(other, "reactions")}
+    return {
+        **doc,
+        "neta_a": neta.neta,
+        "neta_b": doc["other_neta"],
+        "other_reactions": _optional(other, "reactions"),
+    }
+
+
+def compares_from_others(neta: store.Neta, koza_id: str) -> list[dict]:
+    """別の高座の側で作った、この高座との比較。開いている高座を変えずに見られるように。"""
+    rows = []
+    for path in sorted(neta.base.parent.glob("*/koza/*/compare.json")):
+        try:
+            doc = store.read(path, "compare")
+            if doc["koza_b"] == koza_id and doc["other_neta"] == neta.neta:
+                owner = path.parents[2].name
+                other = _optional(path.parent / "reactions.json", "reactions")
+                rows.append({**doc, "neta_a": owner, "neta_b": neta.neta, "other_reactions": other})
+        except (ValueError, OSError, KeyError):
+            print(f"読み飛ばした：{path.parent.name} の比較", file=sys.stderr)
+    return rows
 
 
 def book_items(book: dict, lookup: dict, koza_id: str, transcript: dict, lines: dict) -> list[dict]:
@@ -283,6 +341,8 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "koza": store.read(kdir / "koza.json", "koza"),
         "reactions": reactions,
         "laugh_lines": laugh_lines(reactions, transcript, lines),
+        "neta": neta.neta,
+        "kozas": koza_list(neta),
         "candidates": clean_notes(_optional(kdir / "note_candidates.json", "note_candidates"), lines),
         "gaps": cleaned,
         "seisho": clean,
@@ -300,6 +360,7 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "questions": shown,
         "places": places,
         "compare": compare_view(neta, kdir),
+        "compares": compares_from_others(neta, koza_id),
         "run": _optional(kdir / "run.json", "run"),
     }
 
