@@ -161,12 +161,12 @@ def test_html_resets_the_player_when_the_clip_ends():
     assert "audio.onended = stop" in HTML
 
 
-def test_laugh_lines_use_the_line_before_the_laugh():
+def test_laugh_lines_join_clean_lines_before_the_laugh():
     transcript = {
         "segments": [
-            {"id": "seg-0001", "start": 1.0, "end": 2.0, "text": "前の行"},
-            {"id": "seg-0002", "start": 3.0, "end": 4.0, "text": "落ちの行"},
-            {"id": "seg-0003", "start": 5.0, "end": 6.0, "text": "後の行"},
+            {"id": "seg-0001", "start": 1.0, "end": 2.0, "text": "文字起こしの前"},
+            {"id": "seg-0002", "start": 3.0, "end": 4.0, "text": "文字起こしの落ち"},
+            {"id": "seg-0003", "start": 5.0, "end": 6.0, "text": "文字起こしの後"},
         ]
     }
     reactions = {
@@ -176,20 +176,35 @@ def test_laugh_lines_use_the_line_before_the_laugh():
             {"id": "r-3", "t0": 0.5, "kind": "laugh"},
         ]
     }
-    lines = {"seg-0002": {"text": "清書の落ち", "speaker": "男"}}
-    assert view.laugh_lines(reactions, transcript, lines) == {"r-1": {"text": "清書の落ち", "speaker": "男"}}
-    assert view.laugh_lines(reactions, None, lines) == {}
+    lines = {
+        "seg-0001": {"text": "清書の仕込み", "speaker": "女"},
+        "seg-0002": {"text": "清書の落ち", "speaker": "男"},
+    }
+    assert view.laugh_lines(reactions, transcript, lines) == {
+        "r-1": {"text": "清書の仕込み　清書の落ち", "speaker": "男"}
+    }
+
+
+def test_laugh_lines_never_show_the_raw_transcript():
+    """清書の無い高座、清書の無い区間の文字起こしを、受けた所の一覧に出さない。"""
+    transcript = {"segments": [{"id": "seg-0001", "start": 1.0, "end": 2.0, "text": "文字起こし"}]}
+    reactions = {"reactions": [{"id": "r-1", "t0": 3.0, "kind": "laugh"}]}
+    assert view.laugh_lines(reactions, transcript, {}) == {}
+    assert view.laugh_lines(reactions, None, {"seg-0001": {"text": "清書"}}) == {}
+    other = {"seg-0009": {"text": "別の区間の清書"}}
+    assert view.laugh_lines(reactions, transcript, other) == {}
 
 
 def test_laugh_lines_skip_a_short_backchannel():
     transcript = {
         "segments": [
-            {"id": "seg-0001", "start": 1.0, "end": 2.0, "text": "仕込みの台詞です"},
+            {"id": "seg-0001", "start": 1.0, "end": 2.0, "text": "仕込み"},
             {"id": "seg-0002", "start": 3.0, "end": 4.0, "text": "ん"},
         ]
     }
     reactions = {"reactions": [{"id": "r-1", "t0": 4.5, "kind": "laugh"}]}
-    assert view.laugh_lines(reactions, transcript, {})["r-1"]["text"] == "仕込みの台詞です"
+    lines = {"seg-0001": {"text": "仕込みの台詞です"}, "seg-0002": {"text": "ん"}}
+    assert view.laugh_lines(reactions, transcript, lines)["r-1"]["text"] == "仕込みの台詞です"
 
 
 def test_scene_times_come_from_this_koza(doc):
