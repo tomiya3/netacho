@@ -542,3 +542,8 @@ def test_koza_list_survives_an_odd_shape(tmp_path, name, text):
     (root / P / N / "koza" / K / name).write_text(text, encoding="utf-8")
     view.koza_list(store.Neta(P, N, root))
 
+
+def test_html_shows_one_row_for_laughs_after_the_same_line():
+    assert "if (seen.has(line)) return false;" in HTML
+    assert "const big = (scenes.length ? laughs.filter(" in HTML
+

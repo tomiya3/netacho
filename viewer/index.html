@@ -540,13 +540,21 @@ function renderWave(d) {
   const dot = () => { const s = svg("svg", { width: 18, height: 18 }); s.append(svg("circle", { cx: 9, cy: 9, r: 9, fill: "var(--ai)" })); return s; };
   root.append(el("div", { class: "keys" }, el("span", {}, tri("var(--ink)"), "大きな笑い"), el("span", {}, tri("var(--page)"), "中くらいの笑い"), el("span", {}, dot(), "弟子の問い（押すと問いへ）")));
   if (res) {
+    // 1 つの台詞に笑いが続いたら、いちばん大きい笑いの 1 行にする
+    const seen = new Set();
+    const laughs = res.laughs.filter(r => {
+      const line = d.laugh_lines?.[r.id]?.text;
+      if (seen.has(line)) return false;
+      if (line) seen.add(line);
+      return true;
+    });
     // 枕に笑いが集まる高座でも、噺の中の山が一覧に残るように、場面ごとに 3 つまで
     const perScene = {};
-    const big = (scenes.length ? res.laughs.filter(r => {
+    const big = (scenes.length ? laughs.filter(r => {
       const id = sceneAt(scenes, r.t0)?.id ?? "";
       perScene[id] = (perScene[id] || 0) + 1;
       return perScene[id] <= 3;
-    }) : res.laughs.slice(0, res.nBig)).sort((a, b) => a.t0 - b.t0);
+    }) : laughs.slice(0, res.nBig)).sort((a, b) => a.t0 - b.t0);
     if (big.length) root.append(el("h3", {}, "ここで受けた"), el("div", {}, big.map(r => el("div", { class: "peak" },
       playButton(clock(r.t0), r.t0 - 10, r.t1 + 4, HERE(), sceneAt(scenes, r.t0)?.title || "笑いの所") || el("b", {}, clock(r.t0)),
       el("div", {}, el("span", { class: "line" }, d.laugh_lines?.[r.id] ? `「${ja(d.laugh_lines[r.id].text)}」` : ""), el("span", { class: "where" }, sceneAt(scenes, r.t0)?.title || ""))))));
