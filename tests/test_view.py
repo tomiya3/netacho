@@ -1,5 +1,6 @@
 """視聴画面の書き出しのテスト。ダミーの一式を使う。"""
 
+import copy
 import json
 import os
 import re
@@ -584,11 +585,23 @@ def test_html_shows_one_row_for_laughs_after_the_same_line():
 
 def test_recheck_is_shown_in_the_clean_words():
     side = {"verdict": "written", "quote": "物星に屋根つけた", "reply": "「物星に屋根つけた」と書いてある"}
-    rows = view.clean_recheck({"rows": [{"question_id": "q-1", "before": None, "after": side}]}, LINES)
+    doc = {"rows": [{"question_id": "q-1", "before": None, "after": side, "cites_answer": False}]}
+    saved = copy.deepcopy(doc)
+    rows = view.clean_recheck(doc, LINES)
+    assert doc == saved
     assert rows["rows"][0]["before"] is None
     assert rows["rows"][0]["after"]["quote"] == "物干しに屋根付けた"
     assert rows["rows"][0]["after"]["reply"] == "「物干しに屋根付けた」と書いてある"
     assert view.clean_recheck(None, LINES) is None
+
+
+def test_recheck_keeps_the_words_of_the_performer_and_an_empty_quote():
+    said = {"verdict": "written", "quote": "物星に屋根つけた", "reply": "答えにある"}
+    empty = {"verdict": "not_written", "quote": "", "reply": "無い"}
+    doc = {"rows": [{"question_id": "q-1", "before": empty, "after": said, "cites_answer": True}]}
+    row = view.clean_recheck(doc, LINES)["rows"][0]
+    assert row["after"]["quote"] == "物星に屋根つけた"
+    assert row["before"]["quote"] == ""
 
 
 def test_html_shows_the_recheck_on_the_answered_question():

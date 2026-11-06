@@ -176,7 +176,13 @@ def clean_recheck(recheck: dict | None, lines: dict) -> dict | None:
             "reply": clean_quotes(row["reply"], lines),
         }
 
-    rows = [{**r, "before": side(r.get("before")), "after": side(r.get("after"))} for r in recheck["rows"]]
+    def row_of(r: dict) -> dict:
+        after = side(r["after"])
+        if after and r["cites_answer"]:  # 引用は演者の答えの言葉なので、字を変えない
+            after["quote"] = r["after"]["quote"]
+        return {**r, "before": side(r["before"]), "after": after}
+
+    rows = [row_of(r) for r in recheck["rows"]]
     return {**recheck, "rows": rows}
 
 
