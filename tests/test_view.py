@@ -530,3 +530,15 @@ def test_html_keeps_the_open_koza_on_the_left_of_a_compare():
 
 def test_html_names_the_koza_of_every_clip():
     assert "&neta=${encodeURIComponent(src.neta)}&koza=${encodeURIComponent(src.koza)}" in HTML
+
+
+@pytest.mark.parametrize(
+    ("name", "text"),
+    [("run.json", '{"seisho": "古い形"}'), ("reactions.json", "[]")],
+)
+def test_koza_list_survives_an_odd_shape(tmp_path, name, text):
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    (root / P / N / "koza" / K / name).write_text(text, encoding="utf-8")
+    view.koza_list(store.Neta(P, N, root))
+

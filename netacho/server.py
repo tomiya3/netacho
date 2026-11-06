@@ -16,7 +16,6 @@ import threading
 import wave
 import webbrowser
 from collections.abc import Callable
-from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
@@ -28,7 +27,6 @@ MAX_BODY = 64 * 1024
 POSITIONS = ("before", "within", "after")
 CLIP_BEFORE, CLIP_AFTER = 12.0, 6.0  # 笑いの前後に聞かせる長さ。秒
 CLIP_MAX = 90.0  # 切り抜きの上限。録音を丸ごと渡さないため。秒
-UNKNOWN_DATE = "0000-00-00"  # 公演日の分からない高座
 FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/index.html": ("index.html", "text/html; charset=utf-8"),
@@ -296,13 +294,7 @@ class Handler(BaseHTTPRequestHandler):
     def _koza(self, body: dict) -> Callable[[], None]:
         """公演日と会場を直す。フォルダの名前は変えない。"""
         neta, koza_id = _target(self.server, body)
-        when, venue = _text(body, "date") or UNKNOWN_DATE, _text(body, "venue").strip()
-        if when != UNKNOWN_DATE:
-            date.fromisoformat(when)  # 形が同じでも暦に無い日は受けない
-        if not venue:
-            raise performer.PerformerError("会場が空")
-        path = neta.koza_dir(koza_id) / "koza.json"
-        store.write(path, {**store.read(path, "koza"), "date": when, "venue": venue}, "koza")
+        performer.edit_koza(neta, koza_id, when=_text(body, "date"), venue=_text(body, "venue"))
         return lambda: None
 
     def _dismiss(self, body: dict) -> Callable[[], None]:

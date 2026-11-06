@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from . import merge, store
 from .schema import check_refs
@@ -178,6 +178,21 @@ def answer(neta: store.Neta, *, question: str, speaker: str, words: str, now: st
     return item
 
 
+UNKNOWN_DATE = "0000-00-00"  # 公演日が分からない高座。schema の形は保つ
+
+
+def edit_koza(neta: store.Neta, koza_id: str, *, when: str, venue: str) -> None:
+    """公演日と会場を直す。フォルダの名前は変えない。"""
+    when, venue = when or UNKNOWN_DATE, venue.strip()
+    if when != UNKNOWN_DATE:
+        date.fromisoformat(when)  # 形が同じでも暦に無い日は受けない
+    _required(venue=venue)
+    if "\n" in venue or len(venue) > 100:
+        raise PerformerError("会場は 1 行、100 字まで")
+    path = neta.koza_dir(koza_id) / "koza.json"
+    store.write(path, {**store.read(path, "koza"), "date": when, "venue": venue}, "koza")
+
+
 def edit_answer(neta: store.Neta, *, question: str, speaker: str, words: str, now: str | None = None) -> None:
     """演者が自分の答えを直す。前の言葉は型の履歴に残す。札の文は別の決定なので変えない。"""
     _required(speaker=speaker, words=words)
@@ -200,6 +215,7 @@ def edit_answer(neta: store.Neta, *, question: str, speaker: str, words: str, no
         if item.get("reason") == before:  # 別に決めた理由は変えない
             item["reason"] = words
         item["text"] = item["source"]["words"] = words
+        item["source"].update(speaker=speaker, recorded_at=at)  # 元の書き手は履歴の最初の行に残る
         item.setdefault("history", []).append({"at": at, "before": before, "after": words, "by": speaker})
     q["answer"] = {"speaker": speaker, "recorded_at": at, "words": words}
     check_refs(hanashi, kata, review=review, questions=questions)

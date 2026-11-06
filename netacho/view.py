@@ -216,7 +216,7 @@ def _run_title(kdir: Path) -> str | None:
     try:
         run = json.loads((kdir / "run.json").read_text(encoding="utf-8"))
         return (run.get("seisho") or {}).get("title")
-    except (OSError, ValueError):
+    except (OSError, ValueError, AttributeError, TypeError):
         return None
 
 
@@ -232,11 +232,7 @@ def koza_list(neta: store.Neta) -> list[dict]:
             scores = json.loads((kdir / "reactions.json").read_text(encoding="utf-8")).get("scores") or {}
             title = _run_title(kdir)
             questions = _optional(other.questions, "questions") or {"questions": []}
-        except (ValueError, OSError):
-            print(f"読み飛ばした：{kdir.name} の高座", file=sys.stderr)
-            continue
-        rows.append(
-            {
+            row = {
                 "neta": other.neta,
                 "koza_id": koza["id"],
                 "title": title or other.neta,
@@ -245,7 +241,10 @@ def koza_list(neta: store.Neta) -> list[dict]:
                 "seconds": scores.get("seconds"),
                 "open": sum(1 for q in questions["questions"] if "answer" not in q and "dismissed" not in q),
             }
-        )
+        except (ValueError, OSError, AttributeError, KeyError, TypeError):  # 1 本の壊れで一覧を止めない
+            print(f"読み飛ばした：{kdir.name} の高座", file=sys.stderr)
+            continue
+        rows.append(row)
     rows.sort(key=lambda r: r["koza_id"])
     return sorted(rows, key=lambda r: r["date"], reverse=True)
 

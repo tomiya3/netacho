@@ -741,3 +741,22 @@ def test_edit_retried_after_a_crash_does_not_double_the_history(running):
 def test_write_without_the_koza_it_was_made_on_is_refused(running, path):
     status, _ = call(running, path, data=json.dumps({"question": "q-0001", "words": "x"}).encode())
     assert status == 400
+
+
+def test_edit_by_someone_else_changes_who_wrote_the_answer(running):
+    add_question(running)
+    call(running, "/api/answer", {"question": "q-0901", "speaker": "本人", "words": "前の言葉"})
+    body = {"question": "q-0901", "speaker": "代筆", "words": "後の言葉"}
+    assert call(running, "/api/edit", body)[0] == 200
+    kata = store.read(running.neta.kata, "book")
+    item = next(i for i in kata["items"] if i["source"].get("question_id") == "q-0901")
+    rows = store.read(running.neta.questions, "questions")["questions"]
+    said = next(q for q in rows if q["id"] == "q-0901")["answer"]
+    assert (item["source"]["speaker"], item["source"]["recorded_at"]) == ("代筆", said["recorded_at"])
+    assert item["history"][0]["by"] == "本人"
+    assert item["history"][-1]["before"] == "前の言葉"
+
+
+@pytest.mark.parametrize("venue", ["会場\nA", "長" * 101])
+def test_koza_refuses_a_venue_that_is_not_one_short_line(running, venue):
+    assert call(running, "/api/koza", {"neta": N, "koza": K, "date": "2026-03-04", "venue": venue})[0] == 400
