@@ -1083,11 +1083,14 @@ def test_makura_dropped_by_the_check_leaves_only_the_tale(tmp_path):
     assert kinds and "makura" not in kinds
 
 
-def test_answered_makura_gives_its_slot_to_the_tale(tmp_path):
-    root, neta = with_makura_laugh(tmp_path)
-    run(root, client_of(makura_first(), aligner=MAKURA_AND_TALE), tmp_path)
+def test_answered_makura_gives_its_slot_to_the_tale(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline, "COMPARE_QUESTIONS", 2)
+    monkeypatch.setattr(compare, "SPOT_GAP", 1.0)
+    root, neta = with_makura_laugh(tmp_path, tale=(16, 28))
+    run(root, client_of(makura_first(last=True), aligner=MAKURA_AND_TALE), tmp_path)
+    assert asked_kinds(neta).count("makura") == 1 and len(asked_kinds(neta)) == 2
     qs = store.read(neta.questions, "questions")["questions"]
     performer.answer(neta, question=qs[-1]["id"], speaker="本人", words="今日の会に合わせました")
-    run(root, client_of(makura_first(), aligner=MAKURA_AND_TALE), tmp_path)
+    run(root, client_of(makura_first(last=True), aligner=MAKURA_AND_TALE), tmp_path)
     kinds = asked_kinds(neta)
-    assert kinds.count("makura") == 1 and len(kinds) >= 2  # 答えた枕は残り、増やさない
+    assert kinds.count("makura") == 1 and len(kinds) == 3  # 答えた枕は残り、枠は噺 2 件に回る
