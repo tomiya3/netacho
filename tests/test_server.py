@@ -46,6 +46,71 @@ def call(srv, path, body=None, *, headers=None, data=None):
         return e.code, e.read()
 
 
+def second_koza(srv, neta="別の会", koza="2026-02-03-other-hall"):
+    src = srv.neta.base
+    shutil.copytree(src, src.parent / neta)
+    (src.parent / neta / "koza" / K).rename(src.parent / neta / "koza" / koza)
+    path = src.parent / neta / "koza" / koza / "koza.json"
+    meta = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**meta, "id": koza, "neta": neta}), encoding="utf-8")
+    return neta, koza
+
+
+def test_open_switches_the_koza_and_the_view(running):
+    neta, koza = second_koza(running)
+    status, _ = call(running, "/api/open", {"neta": neta, "koza": koza})
+    assert status == 200
+    assert running.koza_id == koza and running.neta.neta == neta
+    doc = json.loads((running.out / "view.json").read_text(encoding="utf-8"))
+    assert doc["koza"]["id"] == koza
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"neta": "../..", "koza": K},
+        {"neta": N, "koza": "../x"},
+        {"neta": N, "koza": "2099-01-01-none"},
+    ],
+)
+def test_open_refuses_what_is_not_a_koza_of_this_performer(running, body):
+    status, _ = call(running, "/api/open", body)
+    assert status == 400
+    assert running.koza_id == K
+
+
+def test_open_needs_the_token(running):
+    headers = {"Content-Type": "application/json"}
+    status, _ = call(running, "/api/open", {"neta": N, "koza": K}, headers=headers)
+    assert status == 403
+
+
+def test_koza_date_and_venue_can_be_fixed(running):
+    status, _ = call(running, "/api/koza", {"neta": N, "koza": K, "date": "2026-03-04", "venue": "会場 A"})
+    assert status == 200
+    meta = store.read(running.neta.koza_dir(K) / "koza.json", "koza")
+    assert (meta["id"], meta["date"], meta["venue"]) == (K, "2026-03-04", "会場 A")
+    doc = json.loads((running.out / "view.json").read_text(encoding="utf-8"))
+    assert doc["kozas"][0]["date"] == "2026-03-04"
+
+
+def test_koza_empty_date_means_unknown(running):
+    status, _ = call(running, "/api/koza", {"neta": N, "koza": K, "date": "", "venue": "会場 A"})
+    assert status == 200
+    assert store.read(running.neta.koza_dir(K) / "koza.json", "koza")["date"] == "0000-00-00"
+
+
+@pytest.mark.parametrize(
+    ("when", "venue"),
+    [("2026-13-40", "会場"), ("2026-02-03", "  "), ("きのう", "会場")],
+)
+def test_koza_refuses_a_bad_date_or_an_empty_venue(running, when, venue):
+    before = (running.neta.koza_dir(K) / "koza.json").read_text(encoding="utf-8")
+    status, _ = call(running, "/api/koza", {"neta": N, "koza": K, "date": when, "venue": venue})
+    assert status == 400
+    assert (running.neta.koza_dir(K) / "koza.json").read_text(encoding="utf-8") == before
+
+
 def question_id(srv):
     return next(
         q["id"] for q in store.read(srv.neta.questions, "questions")["questions"] if "answer" not in q

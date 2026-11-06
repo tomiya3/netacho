@@ -16,6 +16,7 @@ import threading
 import wave
 import webbrowser
 from collections.abc import Callable
+from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
@@ -27,6 +28,7 @@ MAX_BODY = 64 * 1024
 POSITIONS = ("before", "within", "after")
 CLIP_BEFORE, CLIP_AFTER = 12.0, 6.0  # 笑いの前後に聞かせる長さ。秒
 CLIP_MAX = 90.0  # 切り抜きの上限。録音を丸ごと渡さないため。秒
+UNKNOWN_DATE = "0000-00-00"  # 公演日の分からない高座
 FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/index.html": ("index.html", "text/html; charset=utf-8"),
@@ -179,7 +181,13 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, data, kind)
 
     def do_POST(self) -> None:  # noqa: N802
-        actions = {"/api/answer": self._answer, "/api/dismiss": self._dismiss, "/api/decide": self._decide}
+        actions = {
+            "/api/answer": self._answer,
+            "/api/dismiss": self._dismiss,
+            "/api/decide": self._decide,
+            "/api/open": self._open,
+            "/api/koza": self._koza,
+        }
         action = actions.get(urlsplit(self.path).path)
         if action is None or not self._write_ok():
             self._json(403, {"error": "受け付けない"})
@@ -255,6 +263,25 @@ class Handler(BaseHTTPRequestHandler):
         )
         return lambda: pipeline.after_performer(neta, first_card=True)
 
+    def _open(self, body: dict) -> Callable[[], None]:
+        """別の高座を開く。読めると確かめてから切り替える。"""
+        neta, koza_id = _target(self.server, body)
+        view.payload(neta, koza_id)
+        self.server.neta, self.server.koza_id = neta, koza_id
+        return lambda: None
+
+    def _koza(self, body: dict) -> Callable[[], None]:
+        """公演日と会場を直す。フォルダの名前は変えない。"""
+        neta, koza_id = _target(self.server, body)
+        when, venue = _text(body, "date") or UNKNOWN_DATE, _text(body, "venue").strip()
+        if when != UNKNOWN_DATE:
+            date.fromisoformat(when)  # 形が同じでも暦に無い日は受けない
+        if not venue:
+            raise performer.PerformerError("会場が空")
+        path = neta.koza_dir(koza_id) / "koza.json"
+        store.write(path, {**store.read(path, "koza"), "date": when, "venue": venue}, "koza")
+        return lambda: None
+
     def _dismiss(self, body: dict) -> Callable[[], None]:
         neta = self.server.neta
         performer.dismiss(
@@ -264,6 +291,15 @@ class Handler(BaseHTTPRequestHandler):
             reason=_text(body, "reason"),
         )
         return lambda: pipeline.after_performer(neta)
+
+
+def _target(server: AnswerServer, body: dict) -> tuple[store.Neta, str]:
+    """画面が指した高座。同じ演者の物だけ。名前の検査は store がする。"""
+    neta = server.neta.sibling(_text(body, "neta"))
+    koza_id = _text(body, "koza")
+    if not (neta.koza_dir(koza_id) / "koza.json").is_file():
+        raise performer.PerformerError("高座が無い")
+    return neta, koza_id
 
 
 def serve(neta: store.Neta, koza_id: str, *, port: int, out: Path = view.OUT, browser: bool = True) -> None:

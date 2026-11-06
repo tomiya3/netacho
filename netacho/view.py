@@ -173,6 +173,38 @@ def clean_review(review: dict | None, questions: dict | None, shown: dict | None
     return {**review, "issues": rows}
 
 
+def koza_list(neta: store.Neta) -> list[dict]:
+    """この演者の高座の一覧。新しい順。作りかけの高座は読み飛ばす。"""
+    rows = []
+    for path in neta.base.parent.glob("*/koza/*/koza.json"):
+        kdir, other = path.parent, neta.sibling(path.parents[2].name)
+        try:
+            koza = store.read(path, "koza")
+            scores = store.read(kdir / "reactions.json", "reactions").get("scores") or {}
+            run = _optional(kdir / "run.json", "run") or {}
+            questions = _optional(other.questions, "questions") or {"questions": []}
+            compared = _optional(kdir / "compare.json", "compare")
+        except (ValueError, OSError):
+            print(f"読み飛ばした：{kdir.name} の高座", file=sys.stderr)
+            continue
+        rows.append(
+            {
+                "neta": other.neta,
+                "koza_id": koza["id"],
+                "title": (run.get("seisho") or {}).get("title") or other.neta,
+                "date": koza["date"],
+                "venue": koza["venue"],
+                "seconds": scores.get("seconds"),
+                "open": sum(1 for q in questions["questions"] if "answer" not in q and "dismissed" not in q),
+                "compared": {"neta": compared["other_neta"], "koza_id": compared["koza_b"]}
+                if compared and compared.get("other_neta")
+                else None,
+            }
+        )
+    rows.sort(key=lambda r: r["koza_id"])
+    return sorted(rows, key=lambda r: r["date"], reverse=True)
+
+
 def laugh_lines(reactions: dict, transcript: dict | None, lines: dict) -> dict:
     """笑いごとの、直前の台詞。清書があれば清書で。波の下の一覧で「ここで受けた」を見せる。"""
     if not transcript:
@@ -237,6 +269,8 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "koza": store.read(kdir / "koza.json", "koza"),
         "reactions": reactions,
         "laugh_lines": laugh_lines(reactions, transcript, lines),
+        "neta": neta.neta,
+        "kozas": koza_list(neta),
         "candidates": _optional(kdir / "note_candidates.json", "note_candidates"),
         "gaps": cleaned,
         "seisho": clean,

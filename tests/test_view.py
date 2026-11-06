@@ -154,7 +154,7 @@ def test_html_plays_only_items_of_this_koza():
 def test_html_asks_who_writes_before_saving():
     """代筆が「本人」で残らないように、書く人に既定を置かない。"""
     assert 'localStorage.getItem("netacho-speaker") || "";' in HTML
-    assert "if (!body.speaker)" in HTML
+    assert "\"speaker\" in body && !body.speaker" in HTML
 
 
 def test_html_resets_the_player_when_the_clip_ends():
@@ -190,6 +190,35 @@ def test_laugh_lines_skip_a_short_backchannel():
     }
     reactions = {"reactions": [{"id": "r-1", "t0": 4.5, "kind": "laugh"}]}
     assert view.laugh_lines(reactions, transcript, {})["r-1"]["text"] == "仕込みの台詞です"
+
+
+def _second_koza(root, neta="別の会", koza="2026-02-03-other-hall", when="2026-02-03"):
+    """同じ演者の別の高座を、ダミーから作る。"""
+    src = root / P / N
+    dst = root / P / neta
+    shutil.copytree(src, dst)
+    (dst / "koza" / K).rename(dst / "koza" / koza)
+    path = dst / "koza" / koza / "koza.json"
+    meta = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**meta, "id": koza, "date": when, "neta": neta}), encoding="utf-8")
+    return store.Neta(P, neta, root)
+
+
+def test_koza_list_is_newest_first_and_skips_broken(tmp_path):
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    _second_koza(root)
+    broken = root / P / "作りかけ" / "koza" / "2026-03-01-x"
+    broken.mkdir(parents=True)
+    (broken / "koza.json").write_text("{}", encoding="utf-8")
+    rows = view.koza_list(store.Neta(P, N, root))
+    assert [r["koza_id"] for r in rows] == ["2026-02-03-other-hall", K]
+    assert rows[0]["neta"] == "別の会" and rows[0]["seconds"]
+
+
+def test_payload_lists_the_kozas(doc):
+    assert doc["neta"] == N
+    assert [r["koza_id"] for r in doc["kozas"]] == [K]
 
 
 def test_scene_times_come_from_this_koza(doc):

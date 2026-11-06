@@ -96,6 +96,12 @@ h3 { font: 700 21px/1.5 var(--mincho); margin: 30px 0 8px; }
 .decided { display: flex; gap: 16px; align-items: flex-start; background: var(--me-bg); border-radius: 6px; padding: 14px 18px; margin-top: 10px; }
 .seal { flex: 0 0 auto; width: 52px; height: 52px; background: var(--me); color: #fff; border-radius: 50%; display: grid; place-items: center; font: 700 24px/1 var(--mincho); transform: rotate(-6deg); }
 .decided .words { font: 600 21px/1.7 var(--mincho); margin: 0; }
+.koza-row { padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.koza-row .answer[hidden] { display: none; }
+.koza-open { font: 600 19px/1.6 var(--mincho); }
+button.koza-open { border: 1px solid var(--ink); border-radius: 6px; background: none; min-height: 52px; padding: 6px 18px; }
+.choice { margin: 8px 0 20px; }
+.chip:disabled { opacity: .55; cursor: default; }
 .group { font: 700 22px/1.5 var(--mincho); margin: 40px 0 0; padding-bottom: 4px; border-bottom: 1px solid var(--ink); }
 .progress { font: 700 20px var(--mincho); margin: 0 0 8px; }
 
@@ -169,6 +175,7 @@ details.more > summary { cursor: pointer; color: var(--ink-2); min-height: 44px;
 <nav role="tablist" id="tabs"></nav>
 <main>
   <div class="wrap">
+    <section id="list" hidden></section>
     <section id="deshi" hidden></section>
     <section id="wave" hidden></section>
     <section id="compare" hidden></section>
@@ -182,7 +189,7 @@ details.more > summary { cursor: pointer; color: var(--ink-2); min-height: 44px;
 <div class="player" id="player" role="status"></div>
 <script>
 "use strict";
-const TABS = [["deshi", "弟子の問い"], ["wave", "高座の波"], ["compare", "比べる"], ["kata", "帳面"], ["cards", "札"], ["seisho", "清書"], ["numbers", "数字"]];
+const TABS = [["list", "高座帳"], ["deshi", "弟子の問い"], ["wave", "高座の波"], ["compare", "比べる"], ["kata", "帳面"], ["cards", "札"], ["seisho", "清書"], ["numbers", "数字"]];
 const SPOT = { kept: "2 本とも同じ言葉", moved: "来る所がずれた", ma: "一言の前の間が違う", one_side: "片方の録音でだけ拾えた", words: "笑いの所で言葉が違う", added: "2 本目に無い言葉で笑いの山", changed: "言葉が違う", makura: "枕の笑い" };
 const SVG = "http://www.w3.org/2000/svg";
 const POSITION = { before: "場面の前", after: "場面の後" };  // 場面の中が既定なので書かない
@@ -219,6 +226,7 @@ const kanji = n => n <= 10 ? KANJI[n] : String(n);
 const who = (k, text) => el("span", { class: "who " + k }, text || LABEL[k]);
 const writer = () => localStorage.getItem("netacho-speaker") || "";  // 代筆が「本人」で残らないよう、既定を置かない
 const kozaName = id => id.replace(/^0000-00-00-?/, "") || id;
+let KOZAS = [];
 let KOZA = null;  // 型と噺は演目全体の物。別の高座の項目の時刻で、この高座の録音を鳴らさない
 const here = i => i?.source?.koza_id === KOZA;
 const dateOf = date => date === "0000-00-00" ? "日付なし" : date;
@@ -262,7 +270,7 @@ function playButton(label, from, to, side = "a", title = label) {
 
 async function send(path, body, note, tab = "#deshi") {
   note.textContent = "";
-  if (!body.speaker) { note.textContent = "右上の「書く人」を先に選んでください。"; return false; }
+  if ("speaker" in body && !body.speaker) { note.textContent = "右上の「書く人」を先に選んでください。"; return false; }
   try {
     const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Netacho-Token": TOKEN }, body: JSON.stringify(body) });
     const doc = await res.json().catch(() => ({}));
@@ -279,8 +287,10 @@ const timed = d => d.scenes.filter(s => s.t0 !== undefined);
 const sceneAt = (scenes, t) => scenes.find(s => t >= s.t0 && t < s.t1);
 
 /* ---------- 比べた所 ---------- */
+const rowName = r => [r.date === "0000-00-00" ? "" : r.date, r.venue].filter(Boolean).join(" ");
 function compareNames(c) {
-  return c.practice ? ["本番", "稽古"] : [kozaName(c.koza_a), kozaName(c.koza_b)];
+  const name = id => { const r = KOZAS.find(x => x.koza_id === id); return r ? rowName(r) : kozaName(id); };
+  return c.practice ? ["本番", "稽古"] : [name(c.koza_a), name(c.koza_b)];
 }
 function spotBody(s, c) {
   const [nameA, nameB] = compareNames(c);
@@ -290,6 +300,39 @@ function spotBody(s, c) {
   const right = s.b ? side(nameB, s.b, s.laugh_b, "b")
     : s.kind === "makura" ? null : el("div", {}, el("div", { class: "label" }, nameB), el("p", { class: "small" }, "この言葉はありません。"));
   return el("div", { class: "two" }, left, right);
+}
+
+/* ---------- 高座帳 ---------- */
+function openKoza(row, note, tab) {
+  return send("/api/open", { neta: row.neta, koza: row.koza_id }, note, tab);
+}
+function kozaEdit(row, note) {
+  const when = el("input", { type: "date", "aria-label": "公演日" });
+  when.value = row.date === "0000-00-00" ? "" : row.date;
+  const venue = el("input", { type: "text", "aria-label": "会場" });
+  venue.value = row.venue;
+  const box = el("div", { class: "answer", hidden: "" }, el("label", {}, "公演日", when), el("label", {}, "会場", venue),
+    el("div", {}, el("button", { type: "button", class: "btn", onclick: () => send("/api/koza", { neta: row.neta, koza: row.koza_id, date: when.value, venue: venue.value }, note, "#list") }, "直す")));
+  const toggle = el("button", { type: "button", class: "quiet", onclick: () => { box.hidden = !box.hidden; } }, "日付と会場を直す");
+  return [toggle, box];
+}
+function renderList(d) {
+  const root = document.getElementById("list");
+  root.append(el("h2", {}, "高座帳"), el("p", { class: "lead" }, "演った高座の一覧です。開いて振り返ります。"));
+  const note = el("p", { class: "status", role: "status" });
+  const titles = [...new Set(KOZAS.map(r => r.title))];
+  for (const title of titles) {
+    root.append(el("div", { class: "group" }, title));
+    for (const r of KOZAS.filter(x => x.title === title)) {
+      const here = r.koza_id === d.koza.id && r.neta === d.neta;
+      const label = [dateOf(r.date), r.venue, r.seconds ? clock(r.seconds) : ""].filter(Boolean).join("　");
+      const open = TOKEN && !here ? el("button", { type: "button", class: "koza-open", onclick: () => openKoza(r, note, "#deshi") }, label)
+        : el("span", { class: "koza-open" }, label, here ? "（開いています）" : "");
+      const [toggle, box] = TOKEN ? kozaEdit(r, note) : [null, null];
+      root.append(el("div", { class: "koza-row" }, el("div", { class: "row" }, open, r.open ? el("span", { class: "small" }, `問い ${r.open}`) : null, toggle), box));
+    }
+  }
+  root.append(note);
 }
 
 /* ---------- 弟子の問い ---------- */
@@ -509,10 +552,27 @@ function renderMakura(root, c) {
     el("table", {}, el("tr", {}, ["話題", "噺の下地", nameA, nameB].map(t => el("th", {}, t))),
       c.makura.map(x => el("tr", {}, el("td", {}, x.topic), el("td", {}, x.prepares ? "下地" : ""), cell(x.a), cell(x.b))))));
 }
+function compareChoice(d) {
+  // 同じ話の高座を並べる。比べた組はどちらの高座の側で作ったかによらず開ける
+  const me = KOZAS.find(r => r.koza_id === d.koza.id && r.neta === d.neta);
+  if (!me) return null;
+  const same = (a, b) => a?.neta === b.neta && a?.koza_id === b.koza_id;
+  const others = KOZAS.filter(r => r.title === me.title && r !== me);
+  if (!others.length) return null;
+  const note = el("p", { class: "status", role: "status" });
+  const chips = others.map(r => {
+    const mine = same(me.compared, r), theirs = same(r.compared, me);
+    const chip = el("button", { type: "button", class: "chip", "aria-pressed": String(mine),
+      onclick: () => { if (!mine) openKoza(r, note, "#compare"); } }, rowName(r) || r.koza_id, mine || theirs ? "" : "（まだ比べていません）");
+    chip.disabled = !mine && !theirs;
+    return chip;
+  });
+  return el("div", { class: "choice" }, el("div", { class: "small" }, `${rowName(me)} と比べる相手`), el("div", { class: "chips" }, chips), note);
+}
 function renderCompare(d) {
   const root = document.getElementById("compare");
   const c = d.compare;
-  root.append(el("h2", {}, "比べる"));
+  root.append(el("h2", {}, "比べる"), TOKEN ? compareChoice(d) : null);
   if (!c) { root.append(el("p", {}, "2 本の比較はまだありません。netacho compare で作ります。")); return; }
   const [nameA, nameB] = compareNames(c);
   root.append(el("p", { class: "lead" }, "どの台詞が同じくだりかは Claude が読み、笑いと間は録音から測っています。笑いの大きさは比べていません。笑いを拾えていない所も、反応が無かったという意味ではありません。"));
@@ -684,6 +744,7 @@ async function main() {
     if (!res.ok) throw new Error(String(res.status));
     const d = await res.json();
     KOZA = d.koza.id;
+    KOZAS = d.kozas || [];
     const title = d.run?.seisho?.title || d.koza.neta;
     document.getElementById("title").textContent = title;
     document.title = `根多帳：${title}`;
@@ -692,7 +753,7 @@ async function main() {
     renderWriter();
     const open = (d.questions?.questions || []).filter(q => !q.answer && !q.dismissed).length;
     if (open) document.getElementById("tab-deshi").append(el("span", { class: "count", "aria-label": `残り ${open} 問` }, String(open)));
-    renderDeshi(d); renderWave(d); renderCompare(d); renderKata(d); renderCards(d); renderSeisho(d); renderNumbers(d);
+    renderList(d); renderDeshi(d); renderWave(d); renderCompare(d); renderKata(d); renderCards(d); renderSeisho(d); renderNumbers(d);
     select(TABS.some(([k]) => "#" + k === location.hash) ? location.hash.slice(1) : open ? "deshi" : "wave");
   } catch (e) {
     document.getElementById("error").append(el("p", { class: "notice" },
