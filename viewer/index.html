@@ -7,98 +7,201 @@
 <style>
 :root {
   color-scheme: light;
-  --surface: #fcfcfb; --panel: #f3f2ee; --line: #dddcd6;
-  --text: #0b0b0b; --text-2: #52514e;
-  --laugh: #2a78d6; --applause: #eb6834;
-  --claude: #6250d6; --performer: #eda100; --script: #1baf7a;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --surface: #1a1a19; --panel: #262624; --line: #3b3a37;
-    --text: #f0efec; --text-2: #c3c2b7;
-    --laugh: #3987e5; --applause: #d95926;
-    --claude: #9085e9; --performer: #c98500; --script: #199e70;
-  }
+  --paper: #efe8d8; --page: #fbf8f0; --rule: #e0d6c1; --rule-2: #cdbf9f;
+  --ink: #1f1b18; --ink-2: #544a47; --ink-3: #7a7068;
+  --ai: #3f4b8f; --me: #b7282e; --me-bg: #f8ece6; --copy: #595857;
+  --mincho: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", serif;
+  --gothic: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--surface); color: var(--text);
-  font: 15px/1.7 "Hiragino Sans", "Yu Gothic", system-ui, sans-serif; }
-header { padding: 20px 28px 0; }
-h1 { font-size: 22px; margin: 0; letter-spacing: .04em; }
-.sub { color: var(--text-2); font-size: 13px; }
-.legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0 0; font-size: 13px; }
-nav { display: flex; gap: 4px; padding: 14px 28px 0; border-bottom: 1px solid var(--line); }
-nav button { all: unset; cursor: pointer; padding: 8px 14px; color: var(--text-2); border-bottom: 2px solid transparent; }
-nav button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
-nav button:focus-visible { outline: 2px solid var(--laugh); outline-offset: 2px; }
-main { padding: 20px 28px 48px; max-width: 1100px; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 18px/1.75 var(--gothic); }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, textarea:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid var(--ai); outline-offset: 2px; }
+
+/* 題と高座 */
+header { display: flex; align-items: center; gap: 28px; padding: 22px 36px 14px; }
+.daisen { background: var(--page); border: 1px solid var(--rule-2); outline: 3px double var(--rule-2); outline-offset: 3px; padding: 6px 24px 8px; text-align: center; min-width: 210px; }
+.daisen small { display: block; font: 600 13px/1.4 var(--mincho); color: var(--ink-3); letter-spacing: .5em; }
+.daisen b { display: block; font: 700 32px/1.25 var(--mincho); letter-spacing: .12em; }
+.koza { color: var(--ink-2); font-size: 16px; }
+.writer { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 15px; color: var(--ink-2); }
+.writer button { border: 1px solid var(--rule-2); background: var(--page); border-radius: 6px; padding: 4px 12px; min-height: 44px; }
+.writer button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--page); }
+
+/* 見出しのタブ */
+nav { display: flex; gap: 26px; padding: 0 36px; border-bottom: 1px solid var(--rule-2); }
+nav button { border: 0; border-bottom: 3px solid transparent; background: none; padding: 8px 2px; min-height: 52px; font: 700 19px var(--mincho); color: var(--ink-2); }
+nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--me); }
+nav .last { margin-left: auto; font: 400 15px var(--gothic); }
+nav .count { color: var(--me); margin-left: 6px; }
+main { background: var(--page); min-height: 80vh; padding: 28px 36px 120px; }
 section[hidden] { display: none; }
-h2 { font-size: 16px; margin: 24px 0 8px; }
-.tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); white-space: nowrap; }
-.tag::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--c); }
-.tag.claude, .card.claude { --c: var(--claude); }
-.tag.performer, .card.performer { --c: var(--performer); }
-.tag.script, .card.script { --c: var(--script); }
-.card { background: var(--panel); border-left: 4px solid var(--c, var(--line)); border-radius: 4px;
-  padding: 10px 14px; margin: 8px 0; }
-.card .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
-.card p { margin: 4px 0; }
-.quote { color: var(--text-2); font-size: 13px; }
-.notice { background: var(--panel); border-radius: 4px; padding: 8px 14px; margin: 8px 0; font-size: 14px; }
-.big { font-size: 20px; font-weight: 600; }
-.chart { position: relative; }
+.wrap { max-width: 1120px; margin: 0 auto; }
+h2 { font: 700 26px/1.4 var(--mincho); margin: 0 0 4px; }
+h3 { font: 700 21px/1.5 var(--mincho); margin: 30px 0 8px; }
+.lead { color: var(--ink-2); margin: 0 0 20px; }
+.small { font-size: 15px; color: var(--ink-3); }
+.notice { color: var(--ink-2); font-size: 16px; margin: 8px 0; }
+.status { color: var(--me); font-weight: 600; margin: 0; min-height: 1em; }
+
+/* 3 区分：色、線、印の 3 つで見分ける */
+.who { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; line-height: 1; white-space: nowrap; }
+.who::before { display: grid; place-items: center; width: 20px; height: 20px; font: 700 12px/1 var(--mincho); }
+.who.ai { color: var(--ai); } .who.ai::before { content: "案"; border: 1.5px dashed var(--ai); border-radius: 2px; }
+.who.me { color: var(--me); } .who.me::before { content: "決"; color: #fff; background: var(--me); border-radius: 50%; }
+.who.copy { color: var(--copy); } .who.copy::before { content: "写"; color: #fff; background: var(--copy); border-radius: 2px; }
+.legend { display: flex; gap: 20px; flex-wrap: wrap; margin: 0 0 18px; }
+
+.card { padding: 2px 0 2px 20px; margin: 26px 0; border-left: 3px solid var(--rule-2); }
+.card.ai { border-left: 3px dashed var(--ai); }
+.card.me { border-left: 3px solid var(--me); }
+.card.copy { border-left: 3px solid var(--copy); }
+.card.dropped { opacity: .6; }
+.card-head { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 15px; color: var(--ink-3); }
+.card-head .who { margin-left: auto; }
+.ask { font: 600 22px/1.7 var(--mincho); margin: 4px 0 12px; }
+.card p { margin-top: 4px; }
+
+/* 聞く */
+.plays { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0 12px; }
+.play { min-height: 52px; padding: 6px 20px; border-radius: 6px; border: 1.5px solid var(--ink); background: none; font-weight: 600; }
+.play::before { content: "▶"; margin-right: 10px; }
+.play.on { background: var(--ink); color: var(--page); }
+.lines { font: 18px/1.9 var(--mincho); margin: 4px 0 12px; }
+.lines .row { display: flex; gap: 14px; }
+.lines .sp { flex: 0 0 7em; color: var(--ink-3); font-size: 14px; text-align: right; padding-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lines .hit { background: linear-gradient(transparent 62%, #efdfae 62%); }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 6px 0 12px; }
+.two .label { font-size: 15px; color: var(--ink-3); }
+.two .q { font: 19px/1.7 var(--mincho); margin: 2px 0 6px; }
+
+/* 答える */
+.answer { display: grid; gap: 10px; margin-top: 10px; max-width: 860px; }
+.answer textarea, .answer input[type=text] { font: 20px/1.7 var(--mincho); padding: 12px 16px; width: 100%; border: 1.5px solid var(--rule-2); border-radius: 6px; background: #fff; color: var(--ink); }
+.answer textarea { min-height: 112px; resize: vertical; }
+.answer p { margin: 0; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.btn { min-height: 52px; padding: 8px 28px; border-radius: 6px; border: 1.5px solid var(--me); background: var(--me); color: #fff; font-weight: 700; }
+.btn:disabled { opacity: .5; cursor: default; }
+.quiet { border: 0; background: none; color: var(--ink-3); text-decoration: underline; font-size: 16px; min-height: 44px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--rule-2); background: none; border-radius: 6px; padding: 6px 14px; min-height: 44px; font-size: 16px; }
+.chip[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--page); }
+.dropbox { display: grid; gap: 10px; padding: 12px 0; }
+.dropbox[hidden] { display: none; }
+.form { gap: 18px; }
+.form label { font-weight: 600; display: grid; gap: 6px; }
+
+/* 演者の決定 */
+.decided { display: flex; gap: 16px; align-items: flex-start; background: var(--me-bg); border-radius: 6px; padding: 14px 18px; margin-top: 10px; }
+.seal { flex: 0 0 auto; width: 52px; height: 52px; background: var(--me); color: #fff; border-radius: 50%; display: grid; place-items: center; font: 700 24px/1 var(--mincho); transform: rotate(-6deg); }
+.decided .words { font: 600 21px/1.7 var(--mincho); margin: 0; }
+.group { font: 700 22px/1.5 var(--mincho); margin: 40px 0 0; padding-bottom: 4px; border-bottom: 1px solid var(--ink); }
+.progress { font: 700 20px var(--mincho); margin: 0 0 8px; }
+
+/* 波 */
+.chart { position: relative; margin: 8px 0; }
 .chart svg { display: block; width: 100%; height: auto; touch-action: none; }
-.axis { fill: var(--text-2); font-size: 11px; }
-.grid { stroke: var(--line); stroke-width: 1; }
-.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line);
-  border-radius: 4px; padding: 4px 8px; font-size: 12px; white-space: nowrap; display: none; }
-table { border-collapse: collapse; font-size: 13px; }
-th, td { border-bottom: 1px solid var(--line); padding: 4px 12px 4px 0; text-align: left; }
-.held { opacity: .6; }
-.answer { display: grid; gap: 8px; margin-top: 12px; max-width: 720px; }
-.answer input, .answer textarea, .answer select { font: inherit; padding: 10px; width: 100%; box-sizing: border-box; }
-.answer button { font: inherit; padding: 8px 16px; margin-right: 8px; }
-.script-line { margin: 10px 0 0; }
-#seisho .quote { margin: 0; }
-details { margin-top: 12px; color: var(--text-2); font-size: 13px; }
+.chart.can svg { cursor: pointer; }
+.axis { fill: var(--ink-3); font: 13px var(--gothic); }
+.band-t { fill: var(--ink); font: 700 14px var(--mincho); }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: #fff; border-radius: 4px; padding: 6px 10px; font-size: 14px; white-space: nowrap; display: none; }
+.keys { display: flex; gap: 22px; flex-wrap: wrap; font-size: 15px; color: var(--ink-2); align-items: center; }
+.keys svg { vertical-align: middle; margin-right: 6px; }
+.peaks { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px 24px; }
+.peak { display: flex; gap: 12px; align-items: center; }
+
+/* 帳面 */
+.book { display: grid; grid-template-columns: 1fr auto; align-items: start; }
+.index { display: flex; flex-direction: column; gap: 6px; }
+.index button { writing-mode: vertical-rl; font: 700 17px/1.2 var(--mincho); letter-spacing: .1em; border: 1px solid var(--rule-2); border-left: 0; border-radius: 0 6px 6px 0; background: var(--paper); padding: 14px 10px; min-height: 110px; max-height: 300px; width: 56px; color: var(--ink-2); text-align: start; }
+.index button[aria-selected="true"] { background: #fff; color: var(--ink); }
+.spread { background: #fff; border: 1px solid var(--rule-2); padding: 22px 26px; min-height: 480px; display: grid; grid-template-columns: 1fr 1fr; gap: 0 36px; }
+.spread h3 { margin-top: 0; }
+.entry { padding: 4px 0 4px 14px; border-left: 3px dashed var(--ai); margin: 0 0 16px; }
+.entry.me { border-left: 3px solid var(--me); }
+.entry.held { opacity: .55; }
+.entry .kind { font: 700 14px var(--mincho); color: var(--ink-2); margin-right: 8px; }
+.entry p { margin: 0; font: 18px/1.8 var(--mincho); }
+.entry .sub { font: 15px/1.6 var(--gothic); color: var(--ink-3); margin-top: 2px; }
+.entry summary { cursor: pointer; font-size: 15px; color: var(--ink-3); }
+
+/* 札 */
+.tanzaku-row { display: flex; flex-direction: row-reverse; justify-content: flex-end; gap: 22px; flex-wrap: wrap; margin: 10px 0 30px; }
+.tz { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.tanzaku { writing-mode: vertical-rl; min-width: 150px; height: 500px; background: #fff; border: 1px solid var(--rule-2); padding: 30px 16px 70px; position: relative; display: flex; gap: 12px; }
+.tanzaku .where { font: 600 14px/1.5 var(--mincho); color: var(--ink-3); max-block-size: 9em; }
+.tanzaku .text { font: 700 23px/1.6 var(--mincho); letter-spacing: .04em; }
+.tanzaku .seal { position: absolute; bottom: 14px; left: 50%; margin-left: -22px; width: 44px; height: 44px; font-size: 20px; writing-mode: horizontal-tb; }
+.tz .why { max-width: 170px; font-size: 15px; color: var(--ink-2); text-align: center; line-height: 1.5; }
+
+/* 清書 */
+.vbook { writing-mode: vertical-rl; width: 100%; height: 620px; overflow-x: auto; background: #fff; border: 1px solid var(--rule-2); padding: 28px 30px; font: 20px/2.05 var(--mincho); letter-spacing: .04em; }
+.vbook p { margin: 0 0 0 4px; }
+.vbook .sp { font: 600 14px var(--gothic); color: var(--ink-3); margin-bottom: .6em; display: inline-block; }
+.vbook .mk { font: 14px var(--gothic); color: var(--ink-3); }
+.vbook h4 { font: 700 22px var(--mincho); margin: 0 0 0 28px; padding: 0 0 0 10px; border-right: 3px solid var(--ink); }
+.tcy { text-combine-upright: all; }
+
+/* 数字 */
+table { border-collapse: collapse; font-size: 15px; }
+th, td { border-bottom: 1px solid var(--rule); padding: 6px 18px 6px 0; text-align: left; }
+.big { font: 700 21px/1.6 var(--mincho); margin: 6px 0; }
+details.more { margin: 18px 0; }
+details.more > summary { cursor: pointer; color: var(--ink-2); min-height: 44px; display: flex; align-items: center; }
+
+/* 再生の帯は 1 本 */
+.player { position: fixed; left: 0; right: 0; bottom: 0; background: var(--ink); color: #fff; display: none; align-items: center; gap: 16px; padding: 12px 36px; z-index: 5; font-size: 17px; }
+.player.show { display: flex; }
+.player .bar { flex: 1; height: 6px; background: rgba(255,255,255,.25); }
+.player .bar i { display: block; height: 100%; width: 0; background: #fff; }
+.player button { background: #fff; color: var(--ink); border: 0; border-radius: 6px; min-height: 44px; padding: 4px 18px; font-weight: 700; }
 </style>
 </head>
 <body>
 <header>
-  <h1 id="title">根多帳</h1>
-  <div class="sub" id="sub"></div>
-  <div class="legend">
-    <span class="tag claude">Claude の候補</span>
-    <span class="tag performer">演者の決定</span>
-    <span class="tag script">スクリプトの転記</span>
-  </div>
+  <div class="daisen"><small>根多帳</small><b id="title">根多帳</b></div>
+  <div class="koza" id="sub"></div>
+  <div class="writer" id="writer"></div>
 </header>
 <nav role="tablist" id="tabs"></nav>
 <main>
-  <section id="wave"></section>
-  <section id="compare"></section>
-  <section id="kata" hidden></section>
-  <section id="cards" hidden></section>
-  <section id="deshi" hidden></section>
-  <section id="seisho" hidden></section>
-  <div id="error"></div>
+  <div class="wrap">
+    <section id="deshi" hidden></section>
+    <section id="wave" hidden></section>
+    <section id="compare" hidden></section>
+    <section id="kata" hidden></section>
+    <section id="cards" hidden></section>
+    <section id="seisho" hidden></section>
+    <section id="numbers" hidden></section>
+    <div id="error"></div>
+  </div>
 </main>
+<div class="player" id="player" role="status"></div>
 <script>
 "use strict";
-const TABS = [["wave", "反応の波と候補"], ["compare", "2 本の比べ"], ["kata", "型"], ["cards", "札"], ["deshi", "弟子役の指摘と質問"], ["seisho", "清書"]];
+const TABS = [["deshi", "弟子の問い"], ["wave", "高座の波"], ["compare", "比べる"], ["kata", "帳面"], ["cards", "札"], ["seisho", "清書"], ["numbers", "数字"]];
 const SPOT = { kept: "2 本とも同じ言葉", moved: "来る所がずれた", ma: "一言の前の間が違う", one_side: "片方の録音でだけ拾えた", words: "笑いの所で言葉が違う", added: "2 本目に無い言葉で笑いの山", changed: "言葉が違う", makura: "枕の笑い" };
 const SVG = "http://www.w3.org/2000/svg";
-const POSITION = { before: "場面の前", within: "場面の中", after: "場面の後" };
 const WHY = { no_candidate: "回収の後に反応候補が見つからない", low_rank: "回収の後の反応候補が小さい方" };
 const ISSUE = { missing_step: "型が無くて演れない", unclear_scene: "どの場面か追えない", no_makura: "枕で何を説明するか不明",
   no_sage: "サゲの運びが無い", ask_performer: "本人に聞くしかない" };
 const REACT = { laugh: "笑い", applause: "拍手", reaction: "手で付けた" };
+const LABEL = { ai: "Claude の候補", me: "演者の決定", copy: "スクリプトの転記" };
+const REASONS = ["笑いの取り違え（声や物音）", "問いが的外れ", "答えるほどの事ではない"];
+const WRITERS = ["本人", "作者（代筆）"];
+const ROLE = { writer: "構成作家役", checker: "照合役", deshi: "弟子役", noter: "ノート役", scribe: "速記役", aligner: "対応づけ役", asker: "聞き役" };
+const KANJI = ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+const TOKEN = new URLSearchParams(location.search).get("t");
 
 function el(tag, attrs = {}, ...kids) {
   const e = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) k === "class" ? (e.className = v) : e.setAttribute(k, v);
-  for (const k of kids) if (k !== null && k !== undefined) e.append(k);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k !== null && k !== undefined) e.append(k);
   return e;
 }
 function svg(tag, attrs = {}, text) {
@@ -108,161 +211,48 @@ function svg(tag, attrs = {}, text) {
   return e;
 }
 const clock = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
-const tag = (who, label) => el("span", { class: "tag " + who }, label);
-function card(who, label, head, ...body) {
-  return el("div", { class: "card " + who }, el("div", { class: "meta" }, tag(who, label), head), ...body);
-}
-function itemWho(i) { return i.edited_by === "performer" ? ["performer", "演者の決定"] : ["claude", "Claude の候補"]; }
+const byId = list => Object.fromEntries(list.map(x => [x.id, x]));
+const kanji = n => n <= 10 ? KANJI[n] : String(n);
+const who = (k, text) => el("span", { class: "who " + k }, text || LABEL[k]);
+const writer = () => localStorage.getItem("netacho-speaker") || WRITERS[0];
+const kozaName = id => id.replace(/^0000-00-00-?/, "") || id;
+const dateOf = date => date === "0000-00-00" ? "日付なし" : date;
 
-function drawWave(root, d) {
-  const s = d.reactions.scores;
-  if (!s || !s.laugh.length) { root.append(el("div", { class: "notice" }, "スコアがありません。")); return; }
-  const W = 1040, H = 280, L = 40, R = 24, T = 28, B = 26;
-  const end = (s.laugh.length - 1) * s.stride + s.window;
-  // 笑いは最大でも約 0.3 で、拍手と同じ高さで描くと潰れる。種類ごとに、この高座の最大を 1 とする
-  // 下限は検出の下限と同じ。山の無い高座で、雑音を天井まで伸ばさない
-  const top = { laugh: Math.max(...s.laugh, 0.08), applause: Math.max(...s.applause, 0.3) };
-  const x = t => L + (W - L - R) * t / end, y = v => T + (H - T - B) * (1 - v);
-  const center = i => i * s.stride + s.window / 2;
-  const box = el("div", { class: "chart" });
-  const g = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "笑いと拍手のスコアの推移" });
-  for (const v of [0, .25, .5, .75, 1]) {
-    g.append(svg("line", { class: "grid", x1: L, x2: W - R, y1: y(v), y2: y(v) }));
-    g.append(svg("text", { class: "axis", x: L - 6, y: y(v) + 4, "text-anchor": "end" }, v));
-  }
-  const step = end > 1200 ? 300 : end > 300 ? 60 : 10;
-  for (let t = 0; t <= end; t += step) g.append(svg("text", { class: "axis", x: x(t), y: H - 8, "text-anchor": "middle" }, clock(t)));
-  for (const r of d.reactions.reactions) {
-    const v = r.method === "manual" ? "--text-2" : r.kind === "applause" ? "--applause" : "--laugh";
-    g.append(svg("rect", { x: x(r.t0), width: Math.max(x(r.t1) - x(r.t0), 2), y: T, height: H - T - B,
-      fill: `var(${v})`, opacity: .12 }));
-  }
-  for (const [key, v] of [["laugh", "--laugh"], ["applause", "--applause"]]) {
-    const pts = s[key].map((p, i) => `${x(center(i)).toFixed(1)},${y(p / top[key]).toFixed(1)}`).join(" ");
-    g.append(svg("polyline", { points: pts, fill: "none", stroke: `var(${v})`, "stroke-width": 2, "stroke-linejoin": "round" }));
-  }
-  for (const m of (d.gaps?.surprises || [])) {
-    g.append(svg("circle", { cx: x((m.t0 + m.t1) / 2), cy: T - 9, r: 5, fill: "none", stroke: "var(--claude)", "stroke-width": 2 }));
-  }
-  for (const c of (d.candidates?.candidates || [])) {
-    g.append(svg("path", { d: `M${x(c.payoff_t) - 6} ${T - 14} h12 l-6 10 z`, fill: "var(--claude)" }));
-    g.append(svg("line", { x1: x(c.payoff_t), x2: x(c.payoff_t), y1: T - 4, y2: H - B, stroke: "var(--claude)", "stroke-dasharray": "3 3" }));
-  }
-  const cross = svg("line", { y1: T, y2: H - B, stroke: "var(--text-2)", visibility: "hidden" });
-  g.append(cross);
-  const tip = el("div", { class: "tip" });
-  box.append(g, tip);
-  g.addEventListener("pointermove", ev => {
-    const rect = g.getBoundingClientRect();
-    const px = (ev.clientX - rect.left) * W / rect.width;
-    const t = (px - L) / (W - L - R) * end;
-    const i = Math.max(0, Math.min(s.laugh.length - 1, Math.round((t - s.window / 2) / s.stride)));
-    cross.setAttribute("x1", x(center(i))); cross.setAttribute("x2", x(center(i))); cross.setAttribute("visibility", "visible");
-    tip.textContent = `${clock(center(i))}  笑い ${s.laugh[i].toFixed(2)}  拍手 ${s.applause[i].toFixed(2)}`;
-    tip.style.display = "block";
-    tip.style.left = Math.min(ev.clientX - rect.left + 12, rect.width - 190) + "px";
-    tip.style.top = "6px";
-  });
-  g.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; });
-  root.append(box);
-  root.append(el("div", { class: "legend" },
-    el("span", { class: "tag", style: "--c: var(--laugh)" }, `笑い（${top.laugh.toFixed(2)} を 1 とする）`),
-    el("span", { class: "tag", style: "--c: var(--applause)" }, `拍手（${top.applause.toFixed(2)} を 1 とする）`),
-    el("span", { class: "tag claude" }, "反応候補が少ない回収（破線）"),
-    el("span", { class: "tag claude" }, "文字からは読めなかった笑い（丸）")));
+/* どの画面の「聞く」も、下の帯 1 本で鳴らす */
+const audio = new Audio();
+let playing = null;
+function stop() {
+  audio.pause();
+  document.getElementById("player").classList.remove("show");
+  playing?.classList.remove("on");
+  playing = null;
 }
-
-function renderWave(d) {
-  const root = document.getElementById("wave");
-  const rows = d.reactions.reactions;
-  if (rows.some(r => r.method === "manual")) root.append(el("div", { class: "notice" }, "この高座の反応は手で付けたものです（灰色の帯）。"));
-  root.append(el("div", { class: "notice" }, "反応の候補は機械的に拾ったものです。候補が無い所も、反応が無かったという意味ではありません。"));
-  drawWave(root, d);
-  for (const n of (d.candidates?.notices || [])) root.append(el("div", { class: "notice" }, n));
-  const g = d.gaps;
-  if (g) {
-    root.append(el("h2", {}, "笑いどころの予測と実際"));
-    if (!g.judged) root.append(el("p", {}, "自動で拾った笑いが無いので、比べていません。"));
-    else {
-      root.append(el("p", { class: "big" }, `笑い ${g.laughs_total} か所のうち ${g.laughs_hit} か所が予測の窓に入った`));
-      if (g.humps_total === 0) root.append(el("p", {}, "笑いの山は 0 個でした。"));
-      else if (g.humps_total != null) root.append(el("p", { class: "big" }, `笑いの山 ${g.humps_total} 個のうち ${g.humps_hit} 個（${Math.round(g.humps_hit / g.humps_total * 100)}%）${g.humps_expected != null ? `。同じ長さの窓を音声全体に置くと、見込みは ${Math.round(g.humps_expected * 100)}%` : ""}`));
-      root.append(el("p", {}, `項目ごとの内訳：的中 ${g.hits.length}${g.weak ? `  弱い山 ${g.weak.length}` : ""}  空振り ${g.misses.length}  予測なしで反応あり ${g.surprise_total}。1 つの笑いに項目が重なることがあります。`));
-      if (!g.weak) root.append(el("p", {}, "前の版の数え方です。空振りに弱い山を含みます。note をやり直すと分かれます。"));
-      if (g.humps_total == null && g.peak_rate != null && g.baseline_rate != null) root.append(el("p", {}, `予測の窓 ${g.peak_n} 件のうち笑いの山がある割合 ${Math.round(g.peak_rate * 100)}%（同じ長さの窓を音声全体に置くと ${Math.round(g.baseline_rate * 100)}%）`));
-      root.append(el("p", { class: "quote" }, `Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。笑い ${g.laughs_total} か所のうち ${g.laughs_hit} か所が予測の窓に入り、窓は音声の ${Math.round(g.window_share * 100)}% を覆っています。空振りは、検出できなかっただけのこともあります。`));
-      for (const s of g.surprises) {
-        const fixed = s.question_source !== "claude";
-        root.append(card(fixed ? "script" : "claude", fixed ? "スクリプトの決まった文" : "Claude の問い", `${clock(s.t0)}  文字からは読めなかった所`,
-          el("p", {}, s.question || ""), el("p", { class: "quote" }, `前の台詞：「${s.before_quote}」`)));
-      }
-    }
-  }
-  root.append(el("h2", {}, "ノート"));
-  const items = Object.fromEntries([...d.hanashi, ...d.kata].map(i => [i.id, i]));
-  const cands = d.candidates?.candidates || [];
-  if (!cands.length) root.append(el("p", {}, "今回は候補を選びませんでした。反応が十分だったという意味ではありません。"));
-  for (const c of cands) {
-    const it = items[c.item_id];
-    const body = [el("p", {}, c.note || "（ノートはまだありません）")];
-    if (it) {
-      body.push(el("p", { class: "quote" }, `【${it.kind}】${it.text}`));
-      if (it.source?.quote) body.push(el("p", { class: "quote" }, `仕込み：「${it.source.quote}」`));
-      if (it.payoff?.quote) body.push(el("p", { class: "quote" }, `回収：「${it.payoff.quote}」`));
-    }
-    // 候補を選ぶのはスクリプト。文はノート役か、スクリプトの決まった文
-    const fixed = c.note_source !== "claude";
-    root.append(card(fixed ? "script" : "claude", c.note ? (fixed ? "スクリプトの決まった文" : "Claude の文") : "ノートなし",
-      `候補はスクリプトが選択  ${c.id}  ${clock(c.payoff_t)}  ${WHY[c.why] || ""}`, ...body));
-  }
-  const table = el("table", {}, el("tr", {}, ...["順位", "時刻", "種類"].map(h => el("th", {}, h))));
-  for (const r of rows) table.append(el("tr", {},
-    el("td", {}, r.strength_rank ?? "-"), el("td", {}, `${clock(r.t0)} - ${clock(r.t1)}`), el("td", {}, REACT[r.kind] || r.kind)));
-  root.append(el("details", {}, el("summary", {}, `反応の候補の一覧（${rows.length} 件）`), table));
+function play(button, label, from, to, side = "a") {
+  const wasOn = button && playing === button;
+  stop();
+  if (wasOn) return;
+  const bar = document.getElementById("player");
+  playing = button;
+  button?.classList.add("on");
+  from = Math.max(0, from);
+  audio.src = `/clip?from=${from.toFixed(1)}&to=${to.toFixed(1)}&side=${side}&t=${encodeURIComponent(TOKEN || "")}`;
+  const fill = el("i");
+  const text = el("span", {}, `${label}　${clock(from)} から`);
+  bar.replaceChildren(text, el("div", { class: "bar" }, fill), el("button", { type: "button", onclick: stop }, "止める"));
+  bar.classList.add("show");
+  audio.ontimeupdate = () => {
+    fill.style.width = `${Math.min(100, audio.currentTime / (to - from) * 100)}%`;
+    window.dispatchEvent(new CustomEvent("playhead", { detail: { t: from + audio.currentTime, side } }));
+  };
+  audio.onerror = () => { text.textContent = "録音が見つかりません。"; };
+  audio.play().catch(() => {});
 }
-
-function itemCard(i) {
-  const [who, label] = itemWho(i);
-  const body = [el("p", {}, i.text + (i.basis === "knowledge" ? "（暫定）" : ""))];
-  if (i.source.words) body.push(el("p", { class: "quote" }, `演者の言葉：「${i.source.words}」`));
-  if (i.reason) body.push(el("p", { class: "quote" }, `理由：${i.reason}`));
-  const idLeft = i.held_reason === "internal_id";
-  if (i.source.quote) body.push(el("p", { class: "quote" }, `${i.held && !idLeft ? "引用（照合で支えられなかった）" : "根拠"}${i.source.quote_raw ? "（清書）" : ""}：「${i.source.quote}」`));
-  if (i.source.quote_raw) body.push(el("p", { class: "quote" }, `文字起こし：「${i.source.quote_raw}」`));
-  const c = card(who, idLeft ? "保留（文に内部の番号が残っている）" : i.held ? "保留（引用で言えない）" : label, `${i.id}  ${i.kind}`, ...body);
-  if (i.held) c.classList.add("held");
-  return c;
+function playButton(label, from, to, side = "a") {
+  if (!TOKEN) return null;  // 切り抜きはトークンのある画面にだけ渡す
+  const b = el("button", { type: "button", class: "play" }, label);
+  b.addEventListener("click", () => play(b, label, from, to, side));
+  return b;
 }
-
-function renderKata(d) {
-  const root = document.getElementById("kata");
-  for (const [name, list] of [["型", d.kata], ["噺", d.hanashi]]) {
-    root.append(el("h2", {}, name));
-    for (const s of d.scenes) {
-      const rows = list.filter(i => i.scene_id === s.id);
-      if (!rows.length) continue;
-      root.append(el("h3", {}, s.title), ...rows.map(itemCard));
-    }
-    const rest = list.filter(i => !d.scenes.some(s => s.id === i.scene_id));
-    if (rest.length) root.append(el("h3", {}, "場面の分からない項目"), ...rest.map(itemCard));
-  }
-}
-
-function renderCards(d) {
-  const root = document.getElementById("cards");
-  root.append(el("div", { class: "notice" }, "札は演者の決定をスクリプトが写しただけです。LLM の呼び出しは 0 回です。"));
-  const cards = d.guide?.cards || [];
-  if (!d.guide) root.append(el("p", {}, "札はまだありません。netacho guide で作ります。"));
-  else if (!cards.length) root.append(el("p", {}, "札に出す項目はまだありません。"));
-  if (TOKEN) root.append(el("h2", {}, "札に出す"), decideForm(d));
-  for (const c of cards) {
-    root.append(card("script", "スクリプトの転記", `${c.order}. ${c.copied_fields.scene_title}（${POSITION[c.copied_fields.position] || ""}）`,
-      el("p", { class: "big" }, c.text),
-      el("div", { class: "meta" }, tag("performer", "演者の決定"), `理由：${c.copied_fields.reason}`)));
-  }
-}
-
-const TOKEN = new URLSearchParams(location.search).get("t");
 
 async function send(path, body, note, tab = "#deshi") {
   note.textContent = "";
@@ -277,169 +267,424 @@ async function send(path, body, note, tab = "#deshi") {
   } catch (e) { note.textContent = `保存できませんでした：${e.message}`; return false; }
 }
 
-function spotAudio(from, to, side) {
-  const player = el("audio", { controls: "", preload: "none", src: `/clip?from=${from}&to=${to}&side=${side}&t=${encodeURIComponent(TOKEN)}` });
-  const why = el("p", { class: "quote", role: "status" });
-  player.addEventListener("error", () => { why.textContent = "録音が見つかりません。"; });
-  return [player, why];
-}
+/* ---------- 場面の時刻 ---------- */
+const timed = d => d.scenes.filter(s => s.t0 !== undefined);
+const sceneAt = (scenes, t) => scenes.find(s => t >= s.t0 && t < s.t1);
 
+/* ---------- 比べた所 ---------- */
+function compareNames(c) {
+  return c.practice ? ["本番", "稽古"] : [kozaName(c.koza_a), kozaName(c.koza_b)];
+}
 function spotBody(s, c) {
-  const body = [];
-  const side = (label, row, laugh, key) => {
-    body.push(el("p", { class: "quote" }, `${label}（${clock(row.t)}）「${row.quote}」`));
-    if (TOKEN) body.push(...spotAudio(Math.max(row.t - 8, 0), Math.max(row.end, laugh ?? 0) + 6, key));
-  };
-  side(c.koza_a, s.a, s.laugh_a, "a");
-  if (s.b) side(c.koza_b, s.b, s.laugh_b, "b");
-  else if (s.kind !== "makura") body.push(el("p", { class: "quote" }, `${c.koza_b} には無い言葉です。`));
-  return body;
+  const [nameA, nameB] = compareNames(c);
+  const side = (name, row, laugh, key) => el("div", {}, el("div", { class: "label" }, `${name}（${clock(row.t)}）`),
+    el("p", { class: "q" }, `「${row.quote}」`), playButton(`${name}を聞く`, row.t - 8, Math.max(row.end, laugh ?? 0) + 6, key));
+  const left = side(nameA, s.a, s.laugh_a, "a");
+  const right = s.b ? side(nameB, s.b, s.laugh_b, "b")
+    : s.kind === "makura" ? null : el("div", {}, el("div", { class: "label" }, nameB), el("p", { class: "small" }, "この言葉はありません。"));
+  return el("div", { class: "two" }, left, right);
 }
 
-function renderMakura(root, c) {
-  if (!c.makura?.length) return;
-  root.append(el("h2", {}, "枕の話題"));
-  root.append(el("div", { class: "notice" }, "枕は会ごとに変わるので、台詞ではなく話題で比べています。話題と「噺の下地」は Claude の読みで、位置と検出した笑いの山の数は録音からの実測です。山 0 は検出できなかったという意味で、反応の有無は言えません。"));
-  const cell = row => el("td", {}, !row ? "なし" : `${clock(row.t)}〜${clock(row.end)}${row.humps === null ? "" : `（検出した山 ${row.humps}）`}`);
-  const head = el("tr", {}, ...["話題", "噺の下地", c.koza_a, c.koza_b].map(t => el("th", {}, t)));
-  const rows = c.makura.map(x => el("tr", {}, el("td", {}, x.topic), el("td", {}, x.prepares ? "下地" : ""), cell(x.a), cell(x.b)));
-  root.append(el("table", {}, head, ...rows));
-}
-
-function renderCompare(d) {
-  const root = document.getElementById("compare");
-  const c = d.compare;
-  if (!c) { root.append(el("p", {}, "2 本の比較はまだありません。netacho compare で作ります。")); return; }
-  root.append(el("div", { class: "notice" }, "どの台詞が同じくだりかは Claude が読み、笑いと間は録音から測っています。録音の条件が違うので、笑いの大きさは比べていません。笑いを拾えていない所も、反応が無かったという意味ではありません。"));
-  root.append(el("p", {}, `${c.koza_a} と ${c.koza_b}。対応の付いた割合 ${Math.round(c.share * 100)}%`));
-  if (!c.comparable) { root.append(el("div", { class: "notice" }, "2 本の対応が付かないので、比べていません。")); return; }
-  const skipped = c.scenes.filter(s => !s.compared).map(s => s.title || s.scene_id);
-  if (skipped.length) root.append(el("div", { class: "notice" }, `揃わず比べなかった場面：${skipped.join("、")}`));
-  if (c.practice) root.append(el("div", { class: "notice" }, "2 本目に笑いがほぼ無いので、稽古と見ています。本番で笑いの山があった所を軸に、言葉と間を比べています。"));
-  else if (!c.laughs_compared) root.append(el("div", { class: "notice" }, "片方の録音で笑いの山を拾えていないので、笑いは比べていません。言葉の違いだけを出しています。"));
-  root.append(el("h2", {}, c.koza_a));
-  drawWave(root, d);
-  root.append(el("h2", {}, c.koza_b));
-  if (c.other_reactions) drawWave(root, { reactions: c.other_reactions });
-  else root.append(el("p", {}, "2 本目の波が見つかりません。"));
-  renderMakura(root, c);
-  root.append(el("h2", {}, "比べた所"));
-  const spots = c.spots.filter(s => s.kind !== "makura"); // 枕は話題で見せる。問いになった所は問いの欄に出る
-  if (!spots.length) root.append(el("p", {}, "比べた所はありません。"));
-  for (const s of spots) root.append(card("script", "スクリプトの比較", SPOT[s.kind] || s.kind, ...spotBody(s, c)));
-}
-
-function decideForm(d) {
-  const scene = el("select", { "aria-label": "場面" }, ...d.scenes.map(s => el("option", { value: s.id }, s.title)));
-  const speaker = el("input", { type: "text", "aria-label": "答える人", placeholder: "決める人" });
-  speaker.value = sessionStorage.getItem("netacho-speaker") || "";
-  const words = el("textarea", { rows: "3", "aria-label": "言葉", placeholder: "演者の言葉（このまま型に残ります）" });
-  const text = el("input", { type: "text", "aria-label": "札の文", placeholder: "札の文（このまま札に写します）" });
-  const why = el("input", { type: "text", "aria-label": "理由", placeholder: "理由" });
-  const note = el("p", { class: "quote", role: "status" });
-  const ok = el("button", { type: "button" }, "札に出す");
-  ok.addEventListener("click", async () => {
-    ok.disabled = true;  // 2 度押しで「同じ札がある」と出さない。保存できたら押し直さない
-    sessionStorage.setItem("netacho-speaker", speaker.value);
-    const saved = await send("/api/decide", { scene: scene.value, position: "within", speaker: speaker.value, words: words.value, card: text.value, why: why.value }, note, "#cards");
-    if (!saved) ok.disabled = false;
-  });
-  return el("div", { class: "answer" }, scene, speaker, words, text, why, el("div", {}, ok), note);
+/* ---------- 弟子の問い ---------- */
+function entries(d) {
+  const items = byId([...d.hanashi, ...d.kata]);
+  const issues = byId(d.review?.issues || []);
+  const spots = byId(d.compare?.spots || []);
+  const order = Object.fromEntries(d.scenes.map(s => [s.id, s.order]));
+  return (d.questions?.questions || []).map(q => {
+    const spot = q.spot_id ? spots[q.spot_id] : null;
+    const place = d.places?.[q.id] || null;
+    const anchor = issues[q.issue_id]?.anchor?.item_id;
+    const item = anchor ? items[anchor] : null;
+    const t = spot ? spot.a.t : place ? place.t0 : item?.source?.t0 ?? null;
+    return { q, spot, place, item, t, order: order[q.scene_id] ?? 99 };
+  }).sort((a, b) => a.order - b.order || (a.t ?? 0) - (b.t ?? 0));
 }
 
 function answerForm(q) {
-  const speaker = el("input", { type: "text", "aria-label": "答える人", placeholder: "答える人" });
-  speaker.value = sessionStorage.getItem("netacho-speaker") || "";
-  const words = el("textarea", { rows: "4", "aria-label": "答え", placeholder: "答え（このまま型に残ります）" });
-  const note = el("p", { class: "quote", role: "status" });
-  const who = () => { sessionStorage.setItem("netacho-speaker", speaker.value); return speaker.value; };
-  const ok = el("button", { type: "button" }, "答える");
-  ok.addEventListener("click", () => send("/api/answer", { question: q.id, speaker: who(), words: words.value }, note));
-  const drop = el("button", { type: "button" }, "この問いを捨てる");
-  drop.addEventListener("click", () => {
-    const reason = window.prompt("この問いを捨てます。元に戻せません。捨てる理由を書いてください。", "");
-    if (reason !== null) send("/api/dismiss", { question: q.id, speaker: who(), reason }, note);
+  const words = el("textarea", { "aria-label": "答え", placeholder: "話すように書いてください" });
+  const note = el("p", { class: "status", role: "status" });
+  const ok = el("button", { type: "button", class: "btn" }, "答える");
+  ok.addEventListener("click", async () => {
+    ok.disabled = true;
+    if (!await send("/api/answer", { question: q.id, speaker: writer(), words: words.value }, note)) ok.disabled = false;
   });
-  return el("div", { class: "answer" }, speaker, words, el("div", {}, ok, drop), note);
+  const reason = el("input", { type: "text", "aria-label": "捨てる理由", placeholder: "理由（選ぶか、書く）" });
+  const chips = REASONS.map(r => el("button", { type: "button", class: "chip", "aria-pressed": "false", onclick: e => {
+    chips.forEach(c => c.setAttribute("aria-pressed", String(c === e.currentTarget))); reason.value = r; } }, r));
+  const drop = el("button", { type: "button", class: "btn" }, "この問いを捨てる");
+  drop.addEventListener("click", () => send("/api/dismiss", { question: q.id, speaker: writer(), reason: reason.value }, note));
+  const box = el("div", { class: "dropbox", hidden: "" }, el("div", {}, "捨てた問いは元に戻せません。"), el("div", { class: "chips" }, chips), reason, el("div", {}, drop));
+  const open = el("button", { type: "button", class: "quiet", onclick: () => { box.hidden = !box.hidden; } }, "的外れなので捨てる");
+  return el("div", { class: "answer" }, words, el("p", { class: "small" }, "書いたまま型に残ります。あとから直せません。"), el("div", { class: "row" }, ok, open), box, note);
+}
+
+function askCard(e, d) {
+  const { q, spot, place, item } = e;
+  const text = q.text.replace(/^\d+:\d+(?:\.\d+)? の(?:笑いの所|比較)[^：]*：/, "");
+  const body = [el("p", { class: "ask" }, text)];
+  if (spot) body.push(spotBody(spot, d.compare));
+  else if (place) {
+    body.push(el("div", { class: "plays" }, playButton("この所を聞く", place.t0 - 12, place.t0 + 6)));
+    const marks = place.lines.map(l => l.text.length >= 3 && q.text.includes(l.text.replace(/[。、]$/, "")));
+    if (place.lines.length) body.push(el("div", { class: "lines" }, place.lines.map((l, i) => el("div", { class: "row" },
+      el("span", { class: "sp" }, l.speaker && l.speaker !== place.lines[i - 1]?.speaker ? l.speaker : ""),
+      el("div", {}, el("span", { class: marks[i] ? "hit" : "" }, l.text))))));
+    if (!place.clean && place.lines.length) body.push(el("p", { class: "small" }, "清書の無い行は文字起こしのままです。"));
+  } else if (item?.source?.t0 !== undefined) {
+    body.push(el("div", { class: "plays" }, playButton("この所を聞く", item.source.t0 - 4, (item.source.t1 ?? item.source.t0) + 6)));
+  }
+  if (q.answer) body.push(el("div", { class: "decided" }, el("div", { class: "seal" }, "決"),
+    el("div", {}, el("p", { class: "words" }, `「${q.answer.words}」`), el("div", { class: "small" }, who("me"), `　${q.answer.speaker}`))));
+  if (q.dismissed) body.push(el("p", { class: "small" }, `捨てた問い：「${q.dismissed.reason}」（${q.dismissed.speaker}）`));
+  if (TOKEN && !q.answer && !q.dismissed) body.push(answerForm(q));
+  return el("article", { class: `card ai${q.dismissed ? " dropped" : ""}`, id: "q-" + q.id },
+    el("div", { class: "card-head" }, e.t !== null ? el("span", {}, `${clock(e.t)} の所`) : null, who("ai")), ...body);
 }
 
 function renderDeshi(d) {
   const root = document.getElementById("deshi");
-  const stat = d.run?.deshi;
-  if (stat) root.append(el("div", { class: "notice" },
-    `指摘の数：1 周目 ${stat.round1}` + (stat.round2 === null ? "" : ` → 2 周目 ${stat.round2}`)));
-  const titles = Object.fromEntries(d.scenes.map(s => [s.id, s.title]));
-  const issues = d.review?.issues || [];
-  root.append(el("h2", {}, "演者への質問"));
-  const questions = d.questions?.questions || [];
-  if (!questions.length) root.append(el("p", {}, "質問はありません。"));
-  for (const q of questions) {
-    const body = [el("p", {}, q.text)];
-    const place = d.places?.[q.id];
-    if (place) {
-      if (TOKEN) {
-        const player = el("audio", { controls: "", preload: "none", src: `/clip?at=${place.t0}&t=${encodeURIComponent(TOKEN)}` });
-        const why = el("p", { class: "quote", role: "status" });
-        player.addEventListener("error", () => { why.textContent = "録音が見つかりません。"; });
-        body.push(el("p", {}, `この所を聞く（${clock(place.t0)} の笑いの少し前から）`), player, why);
-      }
-      if (!place.lines.length) body.push(el("p", { class: "quote" }, "この前後に文字起こしはありません。"));
-      else body.push(el("p", { class: "quote" }, place.clean ? "前後の台詞（清書）：" : "前後の台詞（清書の無い行は文字起こしのまま）："));
-      for (const l of place.lines) body.push(el("p", { class: "script-line" }, (l.speaker ? `${l.speaker}（推定）：` : "") + l.text));
+  const list = entries(d);
+  const left = list.filter(e => !e.q.answer && !e.q.dismissed).length;
+  root.append(el("h2", {}, "弟子の問い"), el("p", { class: "lead" }, "帳面に書けなかった所を、弟子の立場で聞いています。"));
+  if (!list.length) root.append(el("p", {}, "問いはありません。"));
+  else root.append(el("p", { class: "progress" }, left ? `残り ${left} 問（全 ${list.length} 問）` : `全 ${list.length} 問、済みました`));
+  const scenes = byId(d.scenes);
+  let scene = null;
+  for (const e of list) {
+    if (e.q.scene_id !== scene) {
+      scene = e.q.scene_id;
+      const s = scenes[scene];
+      root.append(el("div", { class: "group" }, s ? `${kanji(s.order)}　${s.title}` : "場面の分からない問い"));
     }
-    if (q.answer) body.push(el("div", { class: "meta" }, tag("performer", "演者の決定"), `「${q.answer.words}」`));
-    const spot = (d.compare?.spots || []).find(s => s.id === q.spot_id);
-    if (spot) body.push(...spotBody(spot, d.compare));
-    if (q.dismissed) body.push(el("div", { class: "meta" }, tag("performer", "演者が捨てた"), `「${q.dismissed.reason}」`));
-    if (TOKEN && !q.answer && !q.dismissed) body.push(answerForm(q));
-    root.append(card("claude", "Claude の候補", `${q.id}  ${titles[q.scene_id] || ""}`, ...body));
+    root.append(askCard(e, d));
   }
-  root.append(el("h2", {}, "弟子役の指摘"));
-  if (!issues.length) root.append(el("p", {}, "指摘はありません。"));
-  for (const i of issues) {
-    const where = i.anchor.scene_id ? titles[i.anchor.scene_id] : i.anchor.item_id;
-    root.append(card("claude", "Claude の候補", `${where}  ${ISSUE[i.kind] || i.kind}  ${i.round} 周目  ${i.resolved ? "解決" : "未解決"}`,
-      el("p", {}, i.attempt), el("p", { class: "quote" }, i.what_is_missing)));
+  const issues = (d.review?.issues || []).filter(i => i.kind !== "ask_performer");
+  if (issues.length) {
+    const items = byId([...d.hanashi, ...d.kata]);
+    root.append(el("details", { class: "more" }, el("summary", {}, `弟子役の指摘（構成作家役が直す分）${issues.length} 件`),
+      issues.map(i => el("div", { class: "card ai" }, el("div", { class: "card-head" },
+        el("span", {}, scenes[i.anchor.scene_id]?.title || scenes[items[i.anchor.item_id]?.scene_id]?.title || ""),
+        el("span", {}, `${ISSUE[i.kind] || i.kind}・${i.round} 周目・${i.resolved ? "解決" : "未解決"}`), who("ai")),
+        el("p", {}, i.attempt), el("p", { class: "small" }, i.what_is_missing)))));
   }
 }
 
+/* ---------- 高座の波 ---------- */
+function drawWave(root, reactions, opts = {}) {
+  const { scenes = [], marks = [], side = "a", height = 300 } = opts;
+  const s = reactions?.scores;
+  if (!s || !s.laugh.length) { root.append(el("p", { class: "notice" }, "スコアがありません。")); return null; }
+  const W = 1120, H = height, L = 10, R = 10, BAND = scenes.length ? 30 : 0, MARK = marks.length ? 58 : 14, T = BAND + MARK + 6, B = 26;
+  const end = s.seconds || (s.laugh.length - 1) * s.stride + s.window;
+  const x = t => L + (W - L - R) * t / end;
+  const top = Math.max(...s.laugh, 0.08);  // 検出の下限より小さい山を、天井まで伸ばさない
+  const y = v => T + (H - T - B) * (1 - Math.min(v / top, 1));
+  const g = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": TOKEN ? "高座の笑いの波。押した所から聞けます" : "高座の笑いの波" });
+  scenes.forEach((sc, i) => {
+    g.append(svg("rect", { x: x(sc.t0), y: 0, width: Math.max(x(sc.t1) - x(sc.t0) - 2, 1), height: BAND, fill: i % 2 ? "#e6dcc6" : "#f0e9da" }));
+    const w = x(sc.t1) - x(sc.t0), full = `${kanji(sc.order)} ${sc.title}`, short = `${kanji(sc.order)} ${sc.title.split("・")[0]}`;
+    g.append(svg("text", { class: "band-t", x: x(sc.t0) + 8, y: 20 }, w > full.length * 15 + 10 ? full : w > short.length * 15 + 10 ? short : w > 24 ? kanji(sc.order) : ""));
+  });
+  // 細かいとげを潰さないよう、横 3px ごとに最大を取る
+  const bins = Math.floor((W - L - R) / 3), per = end / bins, pts = [];
+  for (let b = 0; b <= bins; b++) {
+    const i0 = Math.max(0, Math.floor((b * per - s.window / 2) / s.stride));
+    const i1 = Math.min(s.laugh.length - 1, Math.ceil(((b + 1) * per - s.window / 2) / s.stride));
+    let m = 0;
+    for (let i = i0; i <= i1; i++) m = Math.max(m, s.laugh[i] || 0);
+    pts.push(`${x(b * per).toFixed(1)},${y(m).toFixed(1)}`);
+  }
+  g.append(svg("polygon", { points: `${x(0)},${y(0)} ${pts.join(" ")} ${x(end)},${y(0)}`, fill: "var(--ink)", opacity: .12 }));
+  g.append(svg("polyline", { points: pts.join(" "), fill: "none", stroke: "var(--ink-2)", "stroke-width": 1.5, "stroke-linejoin": "round" }));
+  g.append(svg("line", { x1: L, x2: W - R, y1: y(0), y2: y(0), stroke: "var(--rule-2)" }));
+  // 大きな笑いと中くらいの笑い。同じ高座の中の順位で、高座どうしでは比べない
+  const laughs = reactions.reactions.filter(r => r.kind === "laugh" && r.method !== "manual").sort((a, b) => a.strength_rank - b.strength_rank);
+  const nBig = Math.max(3, Math.round(laughs.length * 0.15));
+  const peakOf = r => {
+    let m = 0;
+    for (let i = Math.floor(r.t0 / s.stride); i <= Math.ceil(r.t1 / s.stride); i++) m = Math.max(m, s.laugh[i] || 0);
+    return m;
+  };
+  laughs.forEach((r, i) => {
+    const big = i < nBig, k = big ? 8 : 4, cx = x((r.t0 + r.t1) / 2), cy = y(peakOf(r)) - 5;
+    g.append(svg("path", { d: `M${cx - k} ${cy} L${cx + k} ${cy} L${cx} ${cy - k * 1.5} Z`, fill: big ? "var(--ink)" : "var(--page)", stroke: "var(--ink)", "stroke-width": big ? 0 : 1.2 }));
+  });
+  for (const r of reactions.reactions.filter(r => r.method === "manual"))
+    g.append(svg("rect", { x: x(r.t0), width: Math.max(x(r.t1) - x(r.t0), 3), y: T, height: H - T - B, fill: "var(--ink-3)", opacity: .25 }));
+  let lastX = -99, lower = false;  // 近い印は 2 段に分けて、押せるようにする
+  for (const m of [...marks].sort((a, b) => a.t - b.t)) {
+    const cx = x(m.t), color = m.done ? "var(--me)" : "var(--ai)";
+    lower = cx - lastX < 26 && !lower;
+    lastX = cx;
+    const cy = BAND + (lower ? 41 : 16);
+    g.append(svg("line", { x1: cx, x2: cx, y1: cy + 12, y2: H - B, stroke: color, "stroke-dasharray": m.note ? "3 4" : "0", opacity: .45 }));
+    if (m.note) { g.append(svg("rect", { x: cx - 8, y: cy - 8, width: 16, height: 16, fill: "var(--page)", stroke: "var(--ai)", "stroke-width": 1.5, "stroke-dasharray": "3 2" })); continue; }
+    const c = svg("g", { style: "cursor:pointer" });
+    c.append(svg("circle", { cx, cy, r: 12, fill: color }), svg("text", { x: cx, y: cy + 5, "text-anchor": "middle", fill: "#fff", style: "font: 700 13px var(--mincho)" }, m.done ? "答" : "問"));
+    c.addEventListener("click", ev => { ev.stopPropagation(); select("deshi"); document.getElementById("q-" + m.id)?.scrollIntoView({ block: "start" }); });
+    g.append(c);
+  }
+  const step = end > 1200 ? 300 : end > 300 ? 60 : 10;
+  for (let t = 0; t <= end; t += step) g.append(svg("text", { class: "axis", x: x(t), y: H - 8, "text-anchor": t ? "middle" : "start" }, clock(t)));
+  const cross = svg("line", { y1: BAND, y2: H - B, stroke: "var(--ink-2)", visibility: "hidden" });
+  const head = svg("line", { y1: BAND, y2: H - B, stroke: "var(--me)", "stroke-width": 2, visibility: "hidden" });
+  g.append(cross, head);
+  const box = el("div", { class: "chart" + (TOKEN ? " can" : "") }), tip = el("div", { class: "tip" });
+  box.append(g, tip);
+  const timeAt = ev => {
+    const r = g.getBoundingClientRect();
+    return Math.max(0, Math.min(end, ((ev.clientX - r.left) * W / r.width - L) / (W - L - R) * end));
+  };
+  g.addEventListener("pointermove", ev => {
+    const t = timeAt(ev), r = g.getBoundingClientRect();
+    cross.setAttribute("x1", x(t)); cross.setAttribute("x2", x(t)); cross.setAttribute("visibility", "visible");
+    tip.textContent = `${clock(t)}　${sceneAt(scenes, t)?.title || ""}${TOKEN ? "　押すとここから聞けます" : ""}`;
+    tip.style.display = "block"; tip.style.left = Math.max(0, Math.min(ev.clientX - r.left + 14, r.width - 340)) + "px"; tip.style.top = "36px";
+  });
+  g.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; });
+  g.addEventListener("click", ev => { if (TOKEN) { const t = timeAt(ev); play(null, sceneAt(scenes, t)?.title || "高座", t - 3, t + 20, side); } });
+  window.addEventListener("playhead", ev => {
+    if (ev.detail.side !== side) return;
+    head.setAttribute("x1", x(ev.detail.t)); head.setAttribute("x2", x(ev.detail.t)); head.setAttribute("visibility", "visible");
+  });
+  root.append(box);
+  return { laughs, nBig };
+}
+
+function renderWave(d) {
+  const root = document.getElementById("wave");
+  const scenes = timed(d);
+  const marks = entries(d).filter(e => e.t !== null).map(e => ({ t: e.t, id: e.q.id, done: !!e.q.answer }))
+    .concat((d.candidates?.candidates || []).map(c => ({ t: c.payoff_t, note: true })));
+  root.append(el("h2", {}, "高座の波"), el("p", { class: "lead" }, `山が高いほど、この高座の中で大きな笑いです。${TOKEN ? "波を押すと、その所から聞けます。" : ""}`));
+  if (d.reactions.reactions.some(r => r.method === "manual")) root.append(el("p", { class: "notice" }, "この高座の反応は手で付けたものです（灰色の帯）。"));
+  const res = drawWave(root, d.reactions, { scenes, marks });
+  const tri = fill => { const s = svg("svg", { width: 16, height: 14 }); s.append(svg("path", { d: "M1 13 L15 13 L8 2 Z", fill, stroke: "var(--ink)", "stroke-width": 1.2 })); return s; };
+  const dot = () => { const s = svg("svg", { width: 18, height: 18 }); s.append(svg("circle", { cx: 9, cy: 9, r: 9, fill: "var(--ai)" })); return s; };
+  root.append(el("div", { class: "keys" }, el("span", {}, tri("var(--ink)"), "大きな笑い"), el("span", {}, tri("var(--page)"), "中くらいの笑い"), el("span", {}, dot(), "弟子の問い（押すと問いへ）")));
+  root.append(el("p", { class: "small" }, "笑いは録音から機械で拾ったものです。山の無い所も、反応が無かったという意味ではありません。"));
+  if (res) {
+    // 枕に笑いが集まる高座でも、噺の中の山が一覧に残るように、場面ごとに 3 つまで
+    const perScene = {};
+    const big = res.laughs.filter(r => {
+      const id = sceneAt(scenes, r.t0)?.id ?? "";
+      perScene[id] = (perScene[id] || 0) + 1;
+      return perScene[id] <= 3;
+    }).sort((a, b) => a.t0 - b.t0);
+    if (big.length) root.append(el("h3", {}, "大きな笑い"), el("div", { class: "peaks" }, big.map(r => el("div", { class: "peak" },
+      playButton(clock(r.t0), r.t0 - 10, r.t1 + 4) || el("b", {}, clock(r.t0)), el("span", {}, sceneAt(scenes, r.t0)?.title || "")))));
+  }
+  for (const n of (d.candidates?.notices || [])) root.append(el("p", { class: "notice" }, n));
+  const items = byId([...d.hanashi, ...d.kata]);
+  const cands = d.candidates?.candidates || [];
+  root.append(el("h3", {}, "仕込みのわりに反応候補が小さい所"));
+  if (!cands.length) root.append(el("p", {}, "今回は候補を選びませんでした。反応が十分だったという意味ではありません。"));
+  for (const c of cands) {
+    const it = items[c.item_id], fixed = c.note_source !== "claude";
+    root.append(el("div", { class: `card ${fixed ? "copy" : "ai"}` },
+      el("div", { class: "card-head" }, el("span", {}, `${clock(c.payoff_t)}　${WHY[c.why] || ""}`), who(fixed ? "copy" : "ai", fixed ? "スクリプトの決まった文" : "Claude の候補")),
+      el("p", {}, c.note || "（ノートはまだありません）"),
+      it ? el("p", { class: "small" }, `${it.kind}：${it.text}`) : null,
+      el("div", { class: "plays" }, playButton("この所を聞く", c.window[0], c.window[1] + 4))));
+  }
+}
+
+/* ---------- 比べる ---------- */
+function renderMakura(root, c) {
+  if (!c.makura?.length) return;
+  const [nameA, nameB] = compareNames(c);
+  const cell = row => el("td", {}, !row ? "なし" : `${clock(row.t)}〜${clock(row.end)}${row.humps === null ? "" : `（検出した山 ${row.humps}）`}`);
+  root.append(el("details", { class: "more" }, el("summary", {}, `枕の話題（${c.makura.length} 件）`),
+    el("p", { class: "small" }, "枕は会ごとに変わるので、話題で比べています。話題と下地は Claude の読みで、位置と山の数は録音からの実測です。山 0 は検出できなかったという意味で、反応の有無は言えません。"),
+    el("table", {}, el("tr", {}, ["話題", "噺の下地", nameA, nameB].map(t => el("th", {}, t))),
+      c.makura.map(x => el("tr", {}, el("td", {}, x.topic), el("td", {}, x.prepares ? "下地" : ""), cell(x.a), cell(x.b))))));
+}
+function renderCompare(d) {
+  const root = document.getElementById("compare");
+  const c = d.compare;
+  root.append(el("h2", {}, "比べる"));
+  if (!c) { root.append(el("p", {}, "2 本の比較はまだありません。netacho compare で作ります。")); return; }
+  const [nameA, nameB] = compareNames(c);
+  root.append(el("p", { class: "lead" }, "どの台詞が同じくだりかは Claude が読み、笑いと間は録音から測っています。笑いの大きさは比べていません。笑いを拾えていない所も、反応が無かったという意味ではありません。"));
+  if (!c.comparable) { root.append(el("p", { class: "notice" }, `${nameA} と ${nameB} は対応が付かないので、比べていません。`)); return; }
+  const skipped = c.scenes.filter(s => !s.compared).map(s => s.title || s.scene_id);
+  if (skipped.length) root.append(el("p", { class: "notice" }, `揃わず比べなかった場面：${skipped.join("、")}`));
+  if (c.practice) root.append(el("p", { class: "notice" }, "2 本目に笑いがほぼ無いので、稽古と見ています。本番で笑いの山があった所を軸に比べています。"));
+  else if (!c.laughs_compared) root.append(el("p", { class: "notice" }, "片方の録音で笑いの山を拾えていないので、笑いは比べていません。言葉の違いだけを出しています。"));
+  root.append(el("h3", {}, nameA));
+  drawWave(root, d.reactions, { scenes: timed(d), height: 190 });
+  root.append(el("h3", {}, nameB));
+  if (c.other_reactions) drawWave(root, c.other_reactions, { side: "b", height: 160 });
+  else root.append(el("p", {}, "2 本目の波が見つかりません。"));
+  renderMakura(root, c);
+  const spots = c.spots.filter(s => s.kind !== "makura");  // 枕は話題で見せる。問いになった所は問いの欄に出る
+  const scenes = byId(d.scenes);
+  const row = s => el("div", { class: "card copy" }, el("div", { class: "card-head" }, el("span", {}, `${scenes[s.scene_id]?.title || ""}　${SPOT[s.kind] || s.kind}`), who("copy", "スクリプトの比較")), spotBody(s, c));
+  const diff = spots.filter(s => s.kind !== "kept"), kept = spots.filter(s => s.kind === "kept");
+  root.append(el("h3", {}, "違いのあった所"));
+  if (!diff.length) root.append(el("p", {}, "違いのあった所はありません。"));
+  root.append(...diff.map(row));
+  if (kept.length) root.append(el("details", { class: "more" }, el("summary", {}, `同じ言葉の所（${kept.length} か所）`), kept.map(row)));
+}
+
+/* ---------- 帳面 ---------- */
+let bookScene = null;
+function entryRow(i) {
+  const mine = i.edited_by === "performer";
+  const idLeft = i.held_reason === "internal_id";
+  const body = [el("p", {}, el("span", { class: "kind" }, i.kind === "staging" ? "演出" : i.kind), i.text, i.basis === "knowledge" ? "（暫定）" : "")];
+  if (i.held) body.push(el("div", { class: "sub" }, idLeft ? "保留（文に内部の番号が残っている）" : "保留（引用で言えない）"));
+  if (mine) {
+    if (i.source?.words && i.source.words !== i.text) body.push(el("div", { class: "sub" }, `演者の言葉：「${i.source.words}」`));
+    if (i.reason) body.push(el("div", { class: "sub" }, `理由：${i.reason}`));
+    body.push(el("div", { class: "sub" }, who("me"), `　${i.source?.speaker || ""}`));
+  } else if (i.source?.quote) {
+    body.push(el("details", {}, el("summary", {}, i.held && !idLeft ? "引用（照合で支えられなかった）" : "根拠の台詞"), el("p", {}, `「${i.source.quote}」`),
+      i.payoff?.quote ? el("p", {}, `回収：「${i.payoff.quote}」`) : null,
+      el("div", { class: "plays" }, playButton("この所を聞く", i.source.t0 - 2, (i.payoff?.t1 ?? i.source.t1 ?? i.source.t0) + 4))));
+  }
+  return el("div", { class: `entry${mine ? " me" : ""}${i.held ? " held" : ""}` }, body);
+}
+function renderKata(d) {
+  const root = document.getElementById("kata");
+  root.replaceChildren(el("h2", {}, "帳面"), el("p", { class: "lead" }, "左が噺（誰が演っても同じ筋）、右が型（この演者の演り方）です。"),
+    el("div", { class: "legend" }, who("ai"), who("me"), who("copy")));
+  const all = [...d.hanashi, ...d.kata];
+  bookScene = bookScene || d.kata.find(i => i.edited_by === "performer")?.scene_id || d.scenes[0]?.id;
+  const index = el("div", { class: "index", role: "tablist" }, d.scenes.map(s => el("button", { type: "button", role: "tab", "aria-selected": String(s.id === bookScene),
+    onclick: () => { bookScene = s.id; renderKata(d); } }, `${kanji(s.order)}　${s.title}`)));
+  const start = i => i.source?.t0 ?? 0;
+  const of = list => list.filter(i => i.scene_id === bookScene);
+  const kata = of(d.kata).sort((a, b) => (b.edited_by === "performer") - (a.edited_by === "performer") || start(a) - start(b));
+  const hanashi = of(d.hanashi).sort((a, b) => start(a) - start(b));
+  root.append(el("div", { class: "book" }, el("div", { class: "spread" },
+    el("div", {}, el("h3", {}, "噺"), hanashi.length ? hanashi.map(entryRow) : el("p", { class: "small" }, "この場面の噺の行はまだありません。")),
+    el("div", {}, el("h3", {}, "型"), kata.length ? kata.map(entryRow) : el("p", { class: "small" }, "この場面の型の行はまだありません。"))), index));
+  const rest = all.filter(i => !d.scenes.some(s => s.id === i.scene_id));
+  if (rest.length) root.append(el("details", { class: "more" }, el("summary", {}, `場面の分からない項目（${rest.length} 行）`), rest.map(entryRow)));
+}
+
+/* ---------- 札 ---------- */
+function decideForm(d) {
+  let scene = d.scenes[0]?.id;
+  const chips = d.scenes.map(s => el("button", { type: "button", class: "chip", "aria-pressed": String(s.id === scene), onclick: e => {
+    scene = s.id; chips.forEach(c => c.setAttribute("aria-pressed", String(c === e.currentTarget))); } }, `${kanji(s.order)} ${s.title}`));
+  const text = el("input", { type: "text", "aria-label": "札の文", placeholder: "札に書く短い一行" });
+  const why = el("input", { type: "text", "aria-label": "理由", placeholder: "一言で" });
+  const words = el("textarea", { "aria-label": "言葉", placeholder: "札の文より詳しく残したいときだけ" });
+  const note = el("p", { class: "status", role: "status" });
+  const ok = el("button", { type: "button", class: "btn" }, "札に出す");
+  ok.addEventListener("click", async () => {
+    ok.disabled = true;  // 2 度押しで「同じ札がある」と出さない。保存できたら押し直さない
+    const saved = await send("/api/decide", { scene, position: "within", speaker: writer(), words: words.value || text.value, card: text.value, why: why.value }, note, "#cards");
+    if (!saved) ok.disabled = false;
+  });
+  return el("div", { class: "answer form" }, el("div", { class: "chips" }, chips),
+    el("label", {}, "札の文", text), el("label", {}, "理由", why), el("label", {}, "型に残す言葉", words), el("div", {}, ok), note);
+}
+function renderCards(d) {
+  const root = document.getElementById("cards");
+  root.append(el("h2", {}, "札"), el("p", { class: "lead" }, "次の高座の前に見る札です。演者が決めた事だけを、場面の順に並べます。"),
+    el("p", {}, who("copy"), "　演者の決定をスクリプトが写しただけです。LLM の呼び出しは 0 回です。"));
+  const cards = d.guide?.cards || [];
+  if (!cards.length) root.append(el("p", {}, "札はまだありません。"));
+  else root.append(el("div", { class: "tanzaku-row" }, cards.map(c => el("div", { class: "tz" },
+    el("div", { class: "tanzaku" }, el("span", { class: "where" }, c.copied_fields.scene_title), el("span", { class: "text" }, c.text), el("span", { class: "seal", title: LABEL.me }, "決")),
+    el("div", { class: "why" }, c.copied_fields.reason)))));
+  if (TOKEN) root.append(el("h2", {}, "札に出す"), decideForm(d));
+}
+
+/* ---------- 清書 ---------- */
+function upright(text) {  // 縦書きで 1〜2 桁の数字を立てる
+  return text.split(/(?<!\d)(\d{1,2})(?!\d)/).map((part, i) => i % 2 ? el("span", { class: "tcy" }, part) : part);
+}
 function renderSeisho(d) {
   const root = document.getElementById("seisho");
+  root.append(el("h2", {}, "清書"));
   if (!d.seisho) { root.append(el("p", {}, "清書はまだありません。netacho seisho で作ります。")); return; }
-  root.append(el("div", { class: "notice" }, "Claude が文脈から聞き違いを直し、話者を付けた読み物です。話者と直した語は推定で、下に原文を添えています。"));
+  root.append(el("p", { class: "lead" }, "Claude が読み物に整えました。話者と直した語は推定です。右から読みます。"));
+  const seg = id => +id.split("-")[1];
+  const heads = Object.fromEntries(d.scenes.map(s => [seg(s.segs[0]), s]));
+  const book = el("div", { class: "vbook", tabindex: "0" });
+  let last = null;
   for (const l of d.seisho.lines) {
-    const who = l.speaker ? `${l.speaker}（推定）：` : "";
-    root.append(el("p", { class: "script-line" }, who + l.text + (l.marks || []).join("")));
-    if (l.changed) root.append(el("p", { class: "quote" }, `　${l.heavy ? "大きく直した。原文" : "原文"}：${l.raw}`));
-    if (l.proposal) root.append(el("p", { class: "quote" }, `　長さが大きく変わるので原文のまま。案：${l.proposal}`));
+    const head = heads[seg(l.seg_id)];
+    if (head) { book.append(el("h4", {}, `${kanji(head.order)}　${head.title}`)); last = null; }
+    const changed = l.speaker && l.speaker !== last;
+    last = l.speaker || last;
+    book.append(el("p", {}, changed ? el("span", { class: "sp" }, l.speaker) : null, upright(l.text), (l.marks || []).map(m => el("span", { class: "mk" }, m))));
   }
+  root.append(book);
 }
 
+/* ---------- 数字 ---------- */
+function renderNumbers(d) {
+  const root = document.getElementById("numbers");
+  root.append(el("h2", {}, "数字"), el("p", { class: "lead" }, "作者と審査の方へ。値はこの高座の実測です。"));
+  const g = d.gaps, r = d.run;
+  if (g) {
+    root.append(el("h3", {}, "笑いどころの予測と実際"));
+    if (!g.judged) root.append(el("p", {}, "自動で拾った笑いが無いので、比べていません。"));
+    else {
+      root.append(el("p", { class: "big" }, `笑い ${g.laughs_total} か所のうち ${g.laughs_hit} か所が予測の窓に入った`));
+      if (g.humps_total === 0) root.append(el("p", {}, "笑いの山は 0 個でした。"));
+      else if (g.humps_total != null) root.append(el("p", { class: "big" }, `笑いの山 ${g.humps_total} 個のうち ${g.humps_hit} 個（${Math.round(g.humps_hit / g.humps_total * 100)}%）${g.humps_expected != null ? `。同じ長さの窓を音声全体に置くと、見込みは ${Math.round(g.humps_expected * 100)}%` : ""}`));
+      root.append(el("p", {}, `項目ごとの内訳：的中 ${g.hits.length}${g.weak ? `  弱い山 ${g.weak.length}` : ""}  空振り ${g.misses.length}  予測なしで反応あり ${g.surprise_total}。1 つの笑いに項目が重なることがあります。`));
+      if (!g.weak) root.append(el("p", {}, "前の版の数え方です。空振りに弱い山を含みます。note をやり直すと分かれます。"));
+      if (g.humps_total == null && g.peak_rate != null && g.baseline_rate != null) root.append(el("p", {}, `予測の窓 ${g.peak_n} 件のうち笑いの山がある割合 ${Math.round(g.peak_rate * 100)}%（同じ長さの窓を音声全体に置くと ${Math.round(g.baseline_rate * 100)}%）`));
+      root.append(el("p", { class: "small" }, `Claude は反応を見ずに、文字起こしだけで笑いどころを予測しました。窓は音声の ${Math.round(g.window_share * 100)}% を覆っています。空振りは、検出できなかっただけのこともあります。一席だけの観察です。`));
+    }
+  }
+  if (r?.checker) root.append(el("p", {}, `照合：言える ${r.checker.supported}、一部だけ ${r.checker.weak}、言えない ${r.checker.unsupported}`));
+  if (r?.deshi) root.append(el("p", {}, `弟子役の指摘：1 周目 ${r.deshi.round1}${r.deshi.round2 === null ? "" : ` → 2 周目 ${r.deshi.round2}`}`));
+  if (r?.total_cost_usd != null) root.append(el("p", {}, `この高座の Claude の費用：$${r.total_cost_usd.toFixed(2)}`));
+  if (r?.roles) root.append(el("h3", {}, "Claude の役"), el("table", {}, el("tr", {}, ["役", "モデル", "呼んだ回数", "費用", "時間"].map(h => el("th", {}, h))),
+    r.roles.map(x => el("tr", {}, el("td", {}, ROLE[x.name] || x.name), el("td", {}, x.model), el("td", {}, x.calls), el("td", {}, `$${x.cost_usd.toFixed(2)}`), el("td", {}, `${Math.round(x.seconds)} 秒`)))));
+  const rows = d.reactions.reactions;
+  root.append(el("details", { class: "more" }, el("summary", {}, `反応の候補の一覧（${rows.length} 件）`),
+    el("table", {}, el("tr", {}, ["順位", "時刻", "種類"].map(h => el("th", {}, h))),
+      rows.map(x => el("tr", {}, el("td", {}, x.strength_rank ?? "-"), el("td", {}, `${clock(x.t0)} - ${clock(x.t1)}`), el("td", {}, REACT[x.kind] || x.kind))))));
+}
+
+/* ---------- 枠 ---------- */
 function select(id) {
   for (const [key] of TABS) {
     document.getElementById(key).hidden = key !== id;
-    document.getElementById("tab-" + key).setAttribute("aria-selected", key === id);
+    document.getElementById("tab-" + key).setAttribute("aria-selected", String(key === id));
   }
+  window.scrollTo(0, 0);
+}
+function renderWriter() {
+  const box = document.getElementById("writer");
+  if (!TOKEN) { box.replaceChildren(); return; }
+  box.replaceChildren(el("span", {}, "書く人"), ...WRITERS.map(w => el("button", { type: "button", "aria-pressed": String(w === writer()),
+    onclick: () => { localStorage.setItem("netacho-speaker", w); renderWriter(); } }, w)));
 }
 
 async function main() {
   const tabs = document.getElementById("tabs");
   for (const [key, label] of TABS) {
-    const b = el("button", { id: "tab-" + key, role: "tab", "aria-selected": "false" }, label);
-    b.addEventListener("click", () => { select(key); history.replaceState(null, "", "#" + key); });
-    tabs.append(b);
+    tabs.append(el("button", { id: "tab-" + key, role: "tab", "aria-selected": "false", class: key === "numbers" ? "last" : "",
+      onclick: () => { select(key); history.replaceState(null, "", location.search + "#" + key); } }, label));
   }
   const run = new URLSearchParams(location.search).get("run") || ".";
   try {
     const res = await fetch(`${run}/view.json`);
     if (!res.ok) throw new Error(String(res.status));
     const d = await res.json();
-    document.getElementById("title").textContent = `根多帳：${d.koza.neta}`;
-    document.getElementById("sub").textContent = `${d.koza.id}  ${d.koza.performer_id}`;
-    renderWave(d); renderCompare(d); renderKata(d); renderCards(d); renderDeshi(d); renderSeisho(d);
-    select(TABS.some(([k]) => "#" + k === location.hash) ? location.hash.slice(1) : "wave");
+    const title = d.run?.seisho?.title || d.koza.neta;
+    document.getElementById("title").textContent = title;
+    document.title = `根多帳：${title}`;
+    const seconds = d.reactions?.scores?.seconds;
+    document.getElementById("sub").textContent = [dateOf(d.koza.date), d.koza.venue, seconds ? clock(seconds) : ""].filter(Boolean).join("　");
+    renderWriter();
+    const open = (d.questions?.questions || []).filter(q => !q.answer && !q.dismissed).length;
+    if (open) document.getElementById("tab-deshi").append(el("span", { class: "count", "aria-label": `残り ${open} 問` }, String(open)));
+    renderDeshi(d); renderWave(d); renderCompare(d); renderKata(d); renderCards(d); renderSeisho(d); renderNumbers(d);
+    select(TABS.some(([k]) => "#" + k === location.hash) ? location.hash.slice(1) : open ? "deshi" : "wave");
   } catch (e) {
-    document.getElementById("error").append(el("div", { class: "notice" },
+    document.getElementById("error").append(el("p", { class: "notice" },
       `読み込めません（${e.message}）。netacho view で書き出してから開きます。`));
   }
 }

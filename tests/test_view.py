@@ -126,11 +126,50 @@ def test_cli_parser_knows_view():
 
 
 def test_html_has_four_screens_and_three_labels():
-    for word in ("反応の波と候補", "型", "札", "弟子役の指摘と質問"):
+    for word in ("高座の波", "帳面", "札", "弟子の問い"):
         assert word in HTML
     for word in ("Claude の候補", "演者の決定", "スクリプトの転記"):
         assert word in HTML
     assert "手で付けた" in HTML
+
+
+def test_html_shows_only_the_clean_copy():
+    """清書のある所に、原文と文字起こしを並べない。"""
+    assert "quote_raw" not in HTML and "l.raw" not in HTML and "l.proposal" not in HTML
+
+
+def test_html_keeps_tab_ids_for_the_screen_recording():
+    """動画の撮影はタブの id と「答える」のボタンを押す。"""
+    for key in ("deshi", "wave", "compare", "kata", "cards", "seisho"):
+        assert f'<section id="{key}"' in HTML and f'["{key}", ' in HTML
+    assert '"答える"' in HTML
+
+
+def test_scene_times_come_from_this_koza(doc):
+    timed = [s for s in doc["scenes"] if "t0" in s]
+    assert timed
+    assert all(s["t0"] < s["t1"] for s in timed)
+
+
+def test_scene_times_leave_scenes_of_other_koza_alone():
+    scenes = [{"id": "scene-01"}, {"id": "scene-02"}]
+    transcript = {
+        "segments": [
+            {"id": "seg-0001", "start": 1.0, "end": 2.0},
+            {"id": "seg-0002", "start": 2.0, "end": 5.0},
+        ]
+    }
+    timeline = {
+        "segments": [
+            {"seg_id": "seg-0001", "scene_id": "scene-01"},
+            {"seg_id": "seg-0002", "scene_id": "scene-01"},
+        ]
+    }
+    assert view.scene_times(scenes, transcript, timeline) == [
+        {"id": "scene-01", "t0": 1.0, "t1": 5.0},
+        {"id": "scene-02"},
+    ]
+    assert view.scene_times(scenes, None, timeline) == scenes
 
 
 def test_html_does_not_say_no_reaction():

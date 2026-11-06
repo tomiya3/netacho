@@ -172,6 +172,20 @@ def clean_review(review: dict | None, questions: dict | None, shown: dict | None
     return {**review, "issues": rows}
 
 
+def scene_times(scenes: list[dict], transcript: dict | None, timeline: dict | None) -> list[dict]:
+    """場面に、この高座の中の時刻を付ける。波の帯に使う。この高座に無い場面は時刻なしのまま。"""
+    if not transcript or not timeline:
+        return scenes
+    spans = {seg["id"]: (seg["start"], seg["end"]) for seg in transcript["segments"]}
+    found: dict[str, list[float]] = {}
+    for row in timeline["segments"]:
+        span = spans.get(row["seg_id"])
+        if span is not None and row["scene_id"] is not None:
+            found.setdefault(row["scene_id"], []).extend(span)
+    timed = {key: {"t0": min(values), "t1": max(values)} for key, values in found.items()}
+    return [{**s, **timed.get(s["id"], {})} for s in scenes]
+
+
 def compare_view(neta: store.Neta, kdir: Path) -> dict | None:
     """2 本の比較と、2 本目の波。2 本目が消えていても比較は見せる。"""
     doc = _optional(kdir / "compare.json", "compare")
@@ -205,7 +219,11 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "gaps": cleaned,
         "seisho": clean,
         "note": note.read_text(encoding="utf-8") if note.exists() else None,
-        "scenes": sorted(hanashi["scenes"], key=lambda s: s["order"]),
+        "scenes": scene_times(
+            sorted(hanashi["scenes"], key=lambda s: s["order"]),
+            transcript,
+            _optional(kdir / "timeline.json", "timeline"),
+        ),
         "characters": hanashi["characters"],
         "hanashi": clean_items(_with_scene(hanashi["items"], lookup), koza_id, transcript or empty, lines),
         "kata": clean_items(_with_scene(kata["items"], lookup), koza_id, transcript or empty, lines),
