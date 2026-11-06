@@ -95,6 +95,8 @@ h3 { font: 700 21px/1.5 var(--mincho); margin: 30px 0 8px; }
 /* 演者の決定 */
 .decided { display: flex; gap: 16px; align-items: flex-start; background: var(--me-bg); border-radius: 6px; padding: 14px 18px; margin-top: 10px; }
 .seal { flex: 0 0 auto; width: 52px; height: 52px; background: var(--me); color: #fff; border-radius: 50%; display: grid; place-items: center; font: 700 24px/1 var(--mincho); transform: rotate(-6deg); }
+.decided .grow { flex: 1; }
+.decided .answer[hidden] { display: none; }
 .decided .words { font: 600 21px/1.7 var(--mincho); margin: 0; }
 .koza-row { padding: 8px 0; border-bottom: 1px solid var(--rule); }
 .koza-row .answer[hidden] { display: none; }
@@ -367,7 +369,18 @@ function answerForm(q) {
   drop.addEventListener("click", () => send("/api/dismiss", { question: q.id, speaker: writer(), reason: reason.value }, note));
   const box = el("div", { class: "dropbox", hidden: "" }, el("div", {}, "捨てた問いは元に戻せません。"), el("div", { class: "chips" }, chips), reason, el("div", {}, drop));
   const open = el("button", { type: "button", class: "quiet", onclick: () => { box.hidden = !box.hidden; } }, "的外れなので捨てる");
-  return el("div", { class: "answer" }, words, el("p", { class: "small" }, "書いたまま型に残ります。あとから直せません。"), el("div", { class: "row" }, ok, open), box, note);
+  return el("div", { class: "answer" }, words, el("p", { class: "small" }, "書いたまま型に残ります。あとから直せます。"), el("div", { class: "row" }, ok, open), box, note);
+}
+
+function editForm(q) {
+  const words = el("textarea", { "aria-label": "答えを直す" });
+  words.value = q.answer.words;
+  const note = el("p", { class: "status", role: "status" });
+  const ok = el("button", { type: "button", class: "btn" }, "直して残す");
+  ok.addEventListener("click", () => send("/api/edit", { question: q.id, speaker: writer(), words: words.value }, note, "#deshi"));
+  const box = el("div", { class: "answer", hidden: "" }, words, el("div", {}, ok), note);
+  const open = el("button", { type: "button", class: "quiet", onclick: () => { box.hidden = !box.hidden; } }, "直す");
+  return el("div", {}, open, box);
 }
 
 function askCard(e, d) {
@@ -387,7 +400,7 @@ function askCard(e, d) {
     body.push(el("div", { class: "plays" }, playButton("この所を聞く", item.source.t0 - 4, (item.source.t1 ?? item.source.t0) + 6)));
   }
   if (q.answer) body.push(el("div", { class: "decided" }, el("div", { class: "seal" }, "決"),
-    el("div", {}, el("p", { class: "words" }, `「${q.answer.words}」`), el("div", { class: "small" }, who("me"), `　${q.answer.speaker}`))));
+    el("div", { class: "grow" }, el("p", { class: "words" }, `「${q.answer.words}」`), el("div", { class: "small" }, who("me"), `　${q.answer.speaker}`), TOKEN ? editForm(q) : null)));
   if (q.dismissed) body.push(el("p", { class: "small" }, who("me", "演者が捨てた"), `　「${q.dismissed.reason}」（${q.dismissed.speaker}）`));
   if (TOKEN && !q.answer && !q.dismissed) body.push(answerForm(q));
   return el("article", { class: `card ${fixed ? "copy" : "ai"}${q.dismissed ? " dropped" : ""}`, id: "q-" + q.id },

@@ -587,3 +587,65 @@ def test_clip_is_capped_so_the_whole_recording_is_not_handed_out(running):
 def test_bad_clip_ranges_are_not_found(running, query):
     put_wav(running)
     assert call(running, f"/clip?{query}&t={running.token}", headers={})[0] == 404
+
+
+def answered(srv):
+    add_question(srv)
+    status, _ = call(srv, "/api/answer", {"question": "q-0901", "speaker": "本人", "words": "前の言葉"})
+    assert status == 200
+
+
+def test_edit_changes_the_answer_and_the_kata_and_keeps_the_old_words(running):
+    answered(running)
+    status, _ = call(running, "/api/edit", {"question": "q-0901", "speaker": "本人", "words": "直した言葉"})
+    assert status == 200
+    q = next(x for x in store.read(running.neta.questions, "questions")["questions"] if x["id"] == "q-0901")
+    assert q["answer"]["words"] == "直した言葉"
+    items = store.read(running.neta.kata, "book")["items"]
+    item = next(i for i in items if i["source"].get("question_id") == "q-0901")
+    assert item["text"] == item["source"]["words"] == "直した言葉"
+    assert item["edited_by"] == "performer"
+    assert (item["history"][-1]["before"], item["history"][-1]["after"]) == ("前の言葉", "直した言葉")
+    doc = json.loads((running.out / "view.json").read_text(encoding="utf-8"))
+    assert "直した言葉" in json.dumps(doc["kata"], ensure_ascii=False)
+
+
+def test_edit_with_the_same_words_leaves_no_history(running):
+    answered(running)
+    before = store.read(running.neta.kata, "book")
+    status, _ = call(running, "/api/edit", {"question": "q-0901", "speaker": "本人", "words": "前の言葉"})
+    assert status == 200
+    assert store.read(running.neta.kata, "book") == before
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"question": "q-0901", "speaker": "本人", "words": "  "},
+        {"question": "q-0901", "speaker": "", "words": "言葉"},
+        {"question": "q-9999", "speaker": "本人", "words": "言葉"},
+    ],
+)
+def test_edit_refuses_empty_words_or_an_unknown_question(running, body):
+    answered(running)
+    status, _ = call(running, "/api/edit", body)
+    assert status == 400
+
+
+def test_edit_refuses_a_question_without_an_answer(running):
+    add_question(running)
+    status, _ = call(running, "/api/edit", {"question": "q-0901", "speaker": "本人", "words": "言葉"})
+    assert status == 400
+
+
+def test_edit_needs_the_token(running):
+    answered(running)
+    body = {"question": "q-0901", "speaker": "本人", "words": "言葉"}
+    status, _ = call(running, "/api/edit", body, headers={"Content-Type": "application/json"})
+    assert status == 403
+
+
+def test_viewer_lets_the_performer_fix_an_answer():
+    html = (Path(__file__).parents[1] / "viewer" / "index.html").read_text(encoding="utf-8")
+    assert "あとから直せます" in html and "あとから直せません" not in html
+    assert "/api/edit" in html

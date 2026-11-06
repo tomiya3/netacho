@@ -185,6 +185,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/answer": self._answer,
             "/api/dismiss": self._dismiss,
             "/api/decide": self._decide,
+            "/api/edit": self._edit,
             "/api/open": self._open,
             "/api/koza": self._koza,
         }
@@ -240,6 +241,16 @@ class Handler(BaseHTTPRequestHandler):
     def _answer(self, body: dict) -> Callable[[], None]:
         neta = self.server.neta
         performer.answer(
+            neta,
+            question=_text(body, "question"),
+            speaker=_text(body, "speaker"),
+            words=_text(body, "words"),
+        )
+        return lambda: pipeline.after_performer(neta)
+
+    def _edit(self, body: dict) -> Callable[[], None]:
+        neta = self.server.neta
+        performer.edit_answer(
             neta,
             question=_text(body, "question"),
             speaker=_text(body, "speaker"),
