@@ -418,7 +418,7 @@ def test_makura_gets_one_question_at_most(tmp_path):
                 "a_seg": pick["lines_a"][-1]["seg_id"],
                 "b_seg": None,
                 "relation": "none",
-                "text": f"どこでも使う話ですか{'？' * n}",
+                "text": f"近況の話で受けていました。なんでこの話題にしたんですか{'？' * n}",
             }
             for n in (1, 2)
         ]
@@ -976,3 +976,121 @@ def test_compare_is_written_for_the_screen(tmp_path):
 def test_screen_without_a_comparison_is_fine(tmp_path):
     root, neta = two_books(tmp_path)
     assert view.payload(neta, K1)["compare"] is None
+
+
+def test_makura_keeps_its_slot_after_the_tale_questions():
+    """聞き役が枕を後ろに並べても、噺の問いが枠を埋めない。"""
+    kinds = {f"t{n}": {"kind": "words"} for n in range(6)} | {
+        "m1": {"kind": "makura"},
+        "m2": {"kind": "makura"},
+    }
+    picks = [{"spot_id": x} for x in ("t0", "t1", "t2", "t3", "t4", "t5", "m1", "m2")]
+    order = [r["spot_id"] for r in pipeline.keep_makura_slot(picks, kinds)]
+    room = pipeline.COMPARE_QUESTIONS - pipeline.COMPARE_MAKURA
+    assert order[: room + 1] == ["t0", "t1", "t2", "t3", "m1"]
+    assert order[room + 1 :] == ["m2", "t4", "t5"]  # 枕が落ちれば、次の枕、残りの噺の順に埋まる
+
+
+def test_makura_slot_keeps_the_order_without_makura():
+    kinds = {f"t{n}": {"kind": "kept"} for n in range(3)}
+    picks = [{"spot_id": x} for x in ("t0", "t1", "t2", "unknown")]
+    assert pipeline.keep_makura_slot(picks, kinds) == picks  # 無い所は後で数えて落とす
+
+
+MAKURA_AND_TALE = {
+    "schema_version": 1,
+    "makura": {
+        "a_last": "seg-0004",
+        "b_last": "seg-0004",
+        "topics": [
+            {
+                "topic": "近況",
+                "prepares": False,
+                "a_first": "seg-0001",
+                "a_last": "seg-0004",
+                "b_first": "seg-0001",
+                "b_last": "seg-0004",
+            }
+        ],
+    },
+    "passages": [dict(ALIGN["passages"][0], a_first="seg-0005", b_first="seg-0005")],
+}
+
+
+def makura_first(bad_makura=False, last=False):
+    """聞き役の返事の代わり。枕を先に並べる。`last` なら後ろに並べる。"""
+
+    def reply(kw):
+        rows = sorted(json.loads(text_of(kw)), key=lambda r: (r["kind"] == "makura") == last)
+        questions = []
+        for r in rows:
+            makura = r["kind"] == "makura"
+            text = "近況の話で受けていました。なんでこの話題にしたんですか？"
+            questions.append(
+                {
+                    "spot_id": r["spot_id"],
+                    "a_seg": r["lines_a"][-1]["seg_id"],
+                    "b_seg": None if makura else r["lines_b"][-1]["seg_id"],
+                    "relation": "none" if makura else "same",
+                    # 客の字を入れて、枕の問いだけ確かめで落とす
+                    "text": ("客の話です。" + text) if makura and bad_makura else text,
+                }
+            )
+        return json.dumps({"schema_version": 1, "questions": questions}, ensure_ascii=False)
+
+    return reply
+
+
+def with_makura_laugh(tmp_path, tale=(28,)):
+    root, neta = two_books(tmp_path)
+    for kdir in (neta.koza_dir(K1), neta.koza_dir(K2)):
+        doc = store.read(kdir / "reactions.json", "reactions")
+        doc["scores"]["laugh"][8] = 0.0
+        doc["scores"]["laugh"][1] = 0.2  # 枕の笑い
+        for i in tale:
+            doc["scores"]["laugh"][i] = 0.2  # 噺の笑い
+        store.write(kdir / "reactions.json", doc, "reactions")
+    return root, neta
+
+
+def asked_kinds(neta):
+    spots = {s["id"]: s for s in store.read(neta.koza_dir(K1) / "compare.json", "compare")["spots"]}
+    qs = store.read(neta.questions, "questions")["questions"]
+    return [spots[q["spot_id"]]["kind"] for q in qs if "spot_id" in q]
+
+
+def test_makura_question_comes_last_even_if_the_role_puts_it_first(tmp_path):
+    root, neta = with_makura_laugh(tmp_path)
+    run(root, client_of(makura_first(), aligner=MAKURA_AND_TALE), tmp_path)
+    kinds = asked_kinds(neta)
+    assert kinds[-1] == "makura" and kinds.count("makura") == 1 and len(kinds) >= 2
+
+
+def test_tale_questions_do_not_take_the_makura_slot(tmp_path, monkeypatch):
+    """噺の問いだけで枠が埋まる状況でも、聞き役が後ろに並べた枕が 1 枠入る。"""
+    monkeypatch.setattr(pipeline, "COMPARE_QUESTIONS", 2)
+    monkeypatch.setattr(compare, "SPOT_GAP", 1.0)
+    root, neta = with_makura_laugh(tmp_path, tale=(16, 28))
+    run(root, client_of(makura_first(last=True), aligner=MAKURA_AND_TALE), tmp_path)
+    kinds = asked_kinds(neta)
+    assert len(kinds) == 2 and kinds[0] != "makura" and kinds[1] == "makura"
+
+
+def test_makura_dropped_by_the_check_leaves_only_the_tale(tmp_path):
+    root, neta = with_makura_laugh(tmp_path)
+    run(root, client_of(makura_first(bad_makura=True), aligner=MAKURA_AND_TALE), tmp_path)
+    kinds = asked_kinds(neta)
+    assert kinds and "makura" not in kinds
+
+
+def test_answered_makura_gives_its_slot_to_the_tale(tmp_path, monkeypatch):
+    monkeypatch.setattr(pipeline, "COMPARE_QUESTIONS", 2)
+    monkeypatch.setattr(compare, "SPOT_GAP", 1.0)
+    root, neta = with_makura_laugh(tmp_path, tale=(16, 28))
+    run(root, client_of(makura_first(last=True), aligner=MAKURA_AND_TALE), tmp_path)
+    assert asked_kinds(neta).count("makura") == 1 and len(asked_kinds(neta)) == 2
+    qs = store.read(neta.questions, "questions")["questions"]
+    performer.answer(neta, question=qs[-1]["id"], speaker="本人", words="今日の会に合わせました")
+    run(root, client_of(makura_first(last=True), aligner=MAKURA_AND_TALE), tmp_path)
+    kinds = asked_kinds(neta)
+    assert kinds.count("makura") == 1 and len(kinds) == 3  # 答えた枕は残り、枠は噺 2 件に回る
