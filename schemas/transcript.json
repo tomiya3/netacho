@@ -82,13 +82,19 @@
                   "type": "string"
                 },
                 "p": {
-                  "type": "number"
+                  "type": [
+                    "number",
+                    "null"
+                  ]
                 }
               }
             }
           },
           "no_speech_prob": {
-            "type": "number"
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "pause_after": {
             "type": [

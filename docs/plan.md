@@ -68,6 +68,8 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 | ノート役 | `roles/noter.md` | claude-sonnet-5-5 | medium | 4000 | スクリプトが選んだ候補を、演者向けの短い文にする |
 | 弟子役 | `roles/deshi.md` | claude-opus-5-5 | high | 8000 | 噺・型だけを読み、演れない所と本人に聞くべき所を挙げる |
 | 速記役 | `roles/scribe.md` | claude-opus-5-5 | high | 32000 | 文字起こしの聞き違いを直し、話者を付けて清書する |
+| 対応づけ役 | `roles/aligner.md` | claude-opus-5-5 | high | 32000 | 同じ演目の 2 本の、どの台詞が同じくだりかを読む |
+| 聞き役 | `roles/asker.md` | claude-opus-5-5 | high | 16000 | 笑いの所から聞く所を選び、弟子の口調で問う |
 
 ### 見せる物の境界（この構成の要点）
 
@@ -165,7 +167,7 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 
 - `ffmpeg -vn -ac 1 -ar 16000` で 16kHz モノラル wav に。`--from` `--to` で抜粋を切り出す
 - 文字起こしは Apple の GPU で動く `mlx-whisper`（`mlx-community/whisper-large-v3-turbo`）。使えない環境（CI の Linux など）では faster-whisper の `medium`、`device="cpu"`、`compute_type="int8"`。どちらも `language="ja"`、`condition_on_previous_text=False`、`word_timestamps=True`。実行ごとに結果は少し変わる
-- MLX が使えなければ faster-whisper の `medium` に落ちる。どちらの方式でも空の行は除く。`--terms`（`initial_prompt`）が効くのは最初の窓（約 30 秒）だけ。`condition_on_previous_text=False` では次の窓で捨てられる。語の直しは清書が担う
+- MLX が使えなければ faster-whisper の `medium` に落ちる。どちらの方式でも空の行は除く。`pause_after` は空の行の手前までで測るので、笑いの長さは間に入らない。笑いの直後の間も `pause_after` には残らない。`--terms`（`initial_prompt`）が効くのは最初の窓（約 30 秒）だけ。`condition_on_previous_text=False` では次の窓で捨てられる。語の直しは清書が担う
 - VAD はどちらの場合も faster-whisper 同梱の Silero を別に回し、両方残す。Whisper の区間に `seg-0001` と振り、次の区間との隙間を `pause_after` に入れる
 - 演目の語を `initial_prompt` に入れられるようにする
 
@@ -213,10 +215,11 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 - もう 1 本に無いくだりの笑いは、くだりの最初の 1 件だけを問う。同じくだりで何度も聞かないため
 - 本番を 1 本目に指定する。スコアの無い高座は稽古と呼ばず、笑いを比べない
 - 種類：同じ言葉（`kept`）、来る所がずれた（`moved`）、間が違う（`ma`）、笑いの所で言葉が違う（`words`）、もう 1 本に無い言葉で笑い（`added`）、片方の録音でだけ拾えた（`one_side`）、笑いの無い所で言葉が違う（`changed`、画面だけ）
-- 窓は 5 秒、刻みは 2 秒なので、比べられるのは「どのくだりのどの辺りか」まで
-- スクリプトは笑いのあった所を全部渡す（上限 60 件）。聞き役が全部読んで、聞く価値の高い順に選ぶ。行全体が似ていても語の差を見る。問いは 5 件で止める。候補を計算で絞ると、会場に合わせた一言のような一番良い所を捨てたため
+- 窓は 5 秒、刻みは 2 秒なので、比べられるのは「どのくだりのどの辺りか」まで。テンポの差が積もらないよう、くだりの長さの比で写してから比べる。30 秒より遠い山とは組まない
+- スクリプトは笑いのあった所を全部渡す（上限 60 件。超えたら時刻の順に等しい間隔で間引き、切った数を `run.json` に残す）。聞き役が全部読んで、聞く価値の高い順に選ぶ。行全体が似ていても語の差を見る。問いは 5 件で止める。候補を計算で絞ると、会場に合わせた一言のような一番良い所を捨てたため
 - 聞き役は前後の台詞を読んで、笑いの元の行と、もう 1 本の同じ行を決める
 - 行はスクリプトが見せた中の物だけを認める。間のことを聞くときは、その 2 行の前の VAD の無音で差を確かめる
+- 比較は 1 つの高座に 1 つ（`compare.json`）。別の組で比べ直すと、前の組の問いの文は残るが、録音と台詞の所は引けなくなる
 - 検査に落ちた問いは出さない。場所の合わない問いを決まった文で埋めるより、少ないほうがよい。答えも捨てもしていない問いは、やり直しで作り直す
 
 ### マージ
@@ -266,7 +269,8 @@ reactions: reactions[{id,t0,t1,kind(laugh|applause|reaction),strength_rank(null�
 note_candidates: candidates[{id,item_id,payoff_t,window,reaction_ids,why(no_candidate|low_rank)}]
 gaps: judged, hits[], weak[], misses[], surprises[{id,reaction_id,t0,t1,scene_id,before_quote,question?}], peak_rate, baseline_rate, humps_total, humps_hit, humps_expected
 review: issues[{id,role,kind,anchor{scene_id|item_id},attempt,what_is_missing,round,resolved}]
-questions: questions[{id,issue_id,scene_id,text,answer?,dismissed?}]
+questions: questions[{id,issue_id,scene_id,text,answer?,dismissed?,spot_id?}]
+compare: koza_a, koza_b, other_neta, share, comparable, laughs_compared, practice, humps_a, humps_b, passages, dropped, scenes[], spots[{id,kind,scene_id,a,b?,laugh_a?,laugh_b?,ma_a?,ma_b?,span_a,span_b?}], counts
 guide: cards[{order,scene_id,item_id,text,copied_fields,llm_fields}]
 drafts/writer: scenes, characters, items（source.segs と payoff だけ。時刻・引用は書かない）
 drafts/checker: verdicts[{item_id,verdict,reason}]
@@ -284,7 +288,7 @@ netacho/                        repo
   netacho/  cli.py runner.py schema.py budget.py merge.py evidence.py
             reactions.py candidates.py guide.py render.py
             preprocess/{audio,speech}.py
-  roles/    common.md writer.md checker.md noter.md deshi.md
+  roles/    common.md writer.md checker.md noter.md deshi.md scribe.md aligner.md asker.md
   schemas/  *.json
   viewer/   index.html
   tests/    fixtures/dummy_koza/, test_*.py

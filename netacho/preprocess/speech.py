@@ -63,20 +63,28 @@ def _prompt(terms: list[str] | None) -> str | None:
     return "、".join(terms) + "。" if terms else None
 
 
-def _row(start: float, end: float, text: str, no_speech: float, words: list[dict]) -> dict:
+def _row(start: float, end: float, text: str, no_speech: float | None, words: list[dict]) -> dict:
     return {
         "start": round(float(start), 3),
         "end": round(float(end), 3),
         "text": text.strip(),
-        "no_speech_prob": round(float(no_speech), 3),
+        "no_speech_prob": None if no_speech is None else round(float(no_speech), 3),  # 無ければ無いと残す
         "words": words,
         "source": "asr",
     }
 
 
 def _numbered(rows: list[dict]) -> list[dict]:
-    """空の行を除いて番号を振る。方式によって ID の振り方を変えない。"""
-    return number_segments([r for r in rows if r["text"]])
+    """空の行を除いて番号を振る。方式によって ID の振り方を変えない。
+
+    `pause_after` は除く前の隣の行までで測る。空の行は笑いや拍手のことがあり、間に吸収させない。
+    """
+    following = {id(r): rows[n + 1]["start"] for n, r in enumerate(rows[:-1])}
+    kept = number_segments([r for r in rows if r["text"]])
+    for r in kept:
+        if id(r) in following:
+            r["pause_after"] = round(max(0.0, following[id(r)] - r["end"]), 3)
+    return kept
 
 
 def _transcribe_mlx(audio: np.ndarray, terms: list[str] | None, model: str) -> dict:
@@ -98,11 +106,11 @@ def _transcribe_mlx(audio: np.ndarray, terms: list[str] | None, model: str) -> d
                 "start": round(float(w["start"]), 3),
                 "end": round(float(w["end"]), 3),
                 "word": w["word"],
-                "p": round(float(w["probability"]), 2),
+                "p": round(float(w["probability"]), 2) if "probability" in w else None,
             }
             for w in s.get("words") or []
         ]
-        out.append(_row(s["start"], s["end"], s["text"], s.get("no_speech_prob") or 0.0, words))
+        out.append(_row(s["start"], s["end"], s["text"], s.get("no_speech_prob"), words))
     model_id = f"{model}@{MLX_REVISION}"
     return {"model": model_id, "language": result.get("language") or "ja", "segments": _numbered(out)}
 
@@ -134,10 +142,11 @@ def transcribe(audio: np.ndarray, *, terms: list[str] | None = None, model_size:
     if model == MLX_MODEL:
         try:
             return _transcribe_mlx(audio, terms, model)
-        except (ImportError, OSError, RuntimeError):  # GPU の無い Mac の VM など。止めずに CPU へ
+        except (ImportError, RuntimeError) as e:  # GPU の無い Mac の VM など。止めずに CPU へ
             if model_size is not None:
                 raise
-            print("MLX が使えないので faster-whisper で文字起こしする", file=sys.stderr)
+            # モデルを取れない失敗（OSError）はここで拾わない。黙って質を落とさない
+            print(f"MLX が使えないので faster-whisper に落とす（{type(e).__name__}）", file=sys.stderr)
             return _transcribe_cpu(audio, terms, DEFAULT_MODEL)
     return _transcribe_cpu(audio, terms, model)
 

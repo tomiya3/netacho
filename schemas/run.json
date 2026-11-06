@@ -387,7 +387,11 @@
       ],
       "properties": {
         "share": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "対応の付いた割合。対応づけが落ちたら null"
         },
         "spots": {
           "type": "integer",
@@ -409,6 +413,11 @@
           "type": "integer",
           "minimum": 0,
           "description": "聞き役が聞かないと決めた所の数"
+        },
+        "cut": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "上限を超えて聞き役に見せなかった所の数"
         }
       },
       "description": "2 本の比較の実測"

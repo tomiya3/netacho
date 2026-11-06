@@ -52,8 +52,8 @@ def test_mlx_result_has_the_same_shape(monkeypatch):
     first, second = doc["segments"]
     assert first["id"] == "seg-0001" and first["text"] == "一席お付き合いを"
     assert first["words"] == [{"start": 0.0, "end": 2.5, "word": "一席", "p": 0.91}]
-    assert first["pause_after"] == 0.5 and second["pause_after"] is None
-    assert second["words"] == [] and second["no_speech_prob"] == 0.0
+    assert first["pause_after"] == 0.0 and second["pause_after"] is None  # 空の行の手前までの間
+    assert second["words"] == [] and second["no_speech_prob"] is None  # 測っていない値を入れない
     assert type(first["start"]) is float  # numpy の型を JSON に残さない
     assert calls[0]["initial_prompt"] == "傘、骨。" and calls[0]["path_or_hf_repo"] == "/tmp/モデル"
     assert calls[0]["language"] == "ja" and calls[0]["condition_on_previous_text"] is False
@@ -90,22 +90,62 @@ def test_empty_lines_are_dropped_on_the_cpu_path_too():
     assert [s["id"] for s in speech._numbered(rows)] == ["seg-0001"]
 
 
+def test_a_laugh_in_an_empty_line_is_not_a_pause():
+    rows = [
+        speech._row(0.0, 1.0, "言葉", 0.0, []),
+        speech._row(1.2, 5.0, "", 0.0, []),  # 笑いの区間
+        speech._row(5.0, 6.0, "次の言葉", 0.0, []),
+    ]
+    assert speech._numbered(rows)[0]["pause_after"] == 0.2
+
+
+def test_failing_to_get_the_model_is_not_hidden(monkeypatch):
+    """モデルを取れないのに、黙って別の質に落とさない。"""
+
+    def broken(audio, terms, model):
+        raise OSError("取れない")
+
+    monkeypatch.setattr(speech, "default_model", lambda: speech.MLX_MODEL)
+    monkeypatch.setattr(speech, "_transcribe_mlx", broken)
+    with pytest.raises(OSError):
+        speech.transcribe(AUDIO)
+
+
 def test_mlx_failure_falls_back_to_cpu_when_nothing_was_asked_for(monkeypatch, capsys):
     def broken(audio, terms, model):
-        raise OSError("GPU が無い")
+        raise RuntimeError("GPU が無い")
 
     seen = []
     monkeypatch.setattr(speech, "default_model", lambda: speech.MLX_MODEL)
     monkeypatch.setattr(speech, "_transcribe_mlx", broken)
     monkeypatch.setattr(speech, "_transcribe_cpu", lambda audio, terms, model: seen.append(model) or {})
     speech.transcribe(AUDIO)
-    assert seen == [speech.DEFAULT_MODEL] and "faster-whisper" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert seen == [speech.DEFAULT_MODEL] and "faster-whisper" in err and "RuntimeError" in err
 
 
 def test_a_requested_model_does_not_fall_back(monkeypatch):
     def broken(audio, terms, model):
-        raise OSError("GPU が無い")
+        raise RuntimeError("GPU が無い")
 
     monkeypatch.setattr(speech, "_transcribe_mlx", broken)
-    with pytest.raises(OSError):
+    with pytest.raises(RuntimeError):
         speech.transcribe(AUDIO, model_size=speech.MLX_MODEL)
+
+
+def test_words_without_a_probability_stay_in_shape(monkeypatch):
+    def transcribe(audio, **kw):
+        return {
+            "segments": [
+                {
+                    "start": 0.0,
+                    "end": 1.0,
+                    "text": "一言",
+                    "words": [{"start": 0.0, "end": 1.0, "word": "一言"}],
+                }
+            ]
+        }
+
+    monkeypatch.setitem(sys.modules, "mlx_whisper", SimpleNamespace(transcribe=transcribe))
+    doc = speech.transcribe(AUDIO, model_size=speech.MLX_MODEL)
+    assert doc["segments"][0]["words"][0]["p"] is None
