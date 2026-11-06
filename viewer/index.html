@@ -347,6 +347,20 @@ function decideForm(d) {
   return el("div", { class: "answer" }, scene, speaker, words, text, why, el("div", {}, ok), note);
 }
 
+function recheckLine(label, side) {
+  if (!side) return el("p", { class: "quote" }, `${label}：判定なし（検査で落としたか、返らなかった）`);
+  const written = side.verdict === "written";
+  return el("p", { class: "quote" }, `${label}：${written ? "書いてある" : "書いていない"}。${side.reply}${written ? `（引用「${side.quote}」）` : ""}`);
+}
+
+function recheckBody(row) {
+  return [
+    el("div", { class: "meta" }, tag("claude", "Claude の候補"), "帳面だけを読んで、この問いに答えられるか"),
+    recheckLine("答えの前", row.before),
+    recheckLine("答えの後", row.after),
+  ];
+}
+
 function answerForm(q) {
   const speaker = el("input", { type: "text", "aria-label": "答える人", placeholder: "答える人" });
   speaker.value = sessionStorage.getItem("netacho-speaker") || "";
@@ -388,6 +402,8 @@ function renderDeshi(d) {
       for (const l of place.lines) body.push(el("p", { class: "script-line" }, (l.speaker ? `${l.speaker}（推定）：` : "") + l.text));
     }
     if (q.answer) body.push(el("div", { class: "meta" }, tag("performer", "演者の決定"), `「${q.answer.words}」`));
+    const check = (d.recheck?.rows || []).find(r => r.question_id === q.id);
+    if (check) body.push(...recheckBody(check));
     const spot = (d.compare?.spots || []).find(s => s.id === q.spot_id);
     if (spot) body.push(...spotBody(spot, d.compare));
     if (q.dismissed) body.push(el("div", { class: "meta" }, tag("performer", "演者が捨てた"), `「${q.dismissed.reason}」`));

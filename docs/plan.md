@@ -71,6 +71,7 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 | 速記役 | `roles/scribe.md` | claude-opus-5-5 | high | 32000 | 文字起こしの聞き違いを直し、話者を付けて清書する |
 | 対応づけ役 | `roles/aligner.md` | claude-opus-5-5 | high | 32000 | 同じ演目の 2 本の、どの台詞が同じくだりかを読む |
 | 聞き役 | `roles/asker.md` | claude-opus-5-5 | high | 16000 | 笑いの所から聞く所を選び、弟子の口調で問う |
+| 読み直し役 | `roles/rechecker.md` | claude-opus-5-5 | high | 8000 | 答えた問いに、帳面だけで答えられるかを読む |
 
 ### 見せる物の境界（この構成の要点）
 
@@ -84,10 +85,12 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 | 速記役 | transcript、演目の題、人物、語の表、演者から聞いた語 | 反応、型 | `drafts/scribe.json` |
 | 対応づけ役 | 演目の題と、2 本の清書 | 反応、録音、型 | `drafts/aligner.json` |
 | 聞き役 | 笑いのあった所の種類と、2 本の前後の台詞、実測の間 | 録音、スコア、型の全文 | `drafts/asker.json` |
+| 読み直し役 | 噺・型の `.md` と同じ形の帳面、答えた問いの文。どちらが答えの前の帳面かは知らない | transcript、音声、反応、札 | `drafts/recheck-before.json`、`drafts/recheck-after.json` |
 
 - 構成作家役に反応を見せないのは、結果から型を逆算させないため
 - 照合役に演目名を見せないのは、演目の知識で補って通してしまうのを防ぐため
 - 弟子役に録音を見せないのは、書かれていない物を補わせないため。読めない所が、そのまま伝承の抜けになる
+- 読み直し役には、答えの項目を外した帳面と全部入りの帳面を別の呼び出しで渡す。引用が帳面に無い判定はスクリプトが落として数え、落とした所は「書いていない」と扱わない。答えの前後の結果は `review/recheck.json`、数は run.json
 - 役は `drafts/` にしか書けない。`hanashi.json` と `kata.json` に書くのはスクリプトだけ
 
 ### 流れ
@@ -306,7 +309,7 @@ $NETACHO_DATA/（既定 ~/netacho-data/）
   forbidden-words.txt            repo に入れてはいけない語
   <performer-a>/<演目>/
     hanashi.json/.md  kata.json/.md
-    drafts/  review/deshi.json  questions.json  guide/guide.json
+    drafts/  review/deshi.json  review/recheck.json  questions.json  guide/guide.json
     koza/<日付-会場>/
       koza.json transcript.json reactions.json timeline.json
       note_candidates.json note.md sokki.md run.json
@@ -323,6 +326,7 @@ netacho mark    --koza KOZA --tsv FILE                             # 手で付�
 netacho decide  --performer ID --neta 演目 --speaker S --words W --card T --why Y --scene ID [--candidate C --koza KOZA] [--position before|within|after]
 netacho answer  --performer ID --neta 演目 --question Q --speaker S --words W
 netacho reread  --performer ID --neta 演目 --koza KOZA             # 演者の判断が入った型を弟子役に読み直させる
+netacho recheck --performer ID --neta 演目 --koza KOZA [--reuse]   # 答えた問いを、答えの前後の帳面で読ませる
 netacho seisho  --performer ID --neta 演目 --koza KOZA [--title 題] [--terms 語,語]  # 語の表、清書（語の表役、速記役）
 netacho guide   --performer ID --neta 演目                         # LLM 0 回
 netacho view    --performer ID --neta 演目 --koza KOZA             # out/view/ へ書き出す

@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "recheck",
+  "description": "同じ問いを答えの前後で読ませた結果。null は判定が検査に落ちたか、返らなかった所",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "rows"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "question_id",
+          "before",
+          "after",
+          "cites_answer"
+        ],
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "before": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "required": [
+              "verdict",
+              "quote",
+              "reply"
+            ],
+            "properties": {
+              "verdict": {
+                "enum": [
+                  "written",
+                  "not_written"
+                ]
+              },
+              "quote": {
+                "type": "string"
+              },
+              "reply": {
+                "type": "string"
+              }
+            }
+          },
+          "after": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "required": [
+              "verdict",
+              "quote",
+              "reply"
+            ],
+            "properties": {
+              "verdict": {
+                "enum": [
+                  "written",
+                  "not_written"
+                ]
+              },
+              "quote": {
+                "type": "string"
+              },
+              "reply": {
+                "type": "string"
+              }
+            }
+          },
+          "cites_answer": {
+            "type": "boolean",
+            "description": "後の引用が、この問いへの演者の答えから取られている。スクリプトが判定する"
+          }
+        }
+      }
+    }
+  }
+}

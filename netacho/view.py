@@ -212,6 +212,7 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "guide": _optional(neta.guide, "guide"),
         "review": clean_review(_optional(neta.review, "review"), questions, shown),
         "questions": shown,
+        "recheck": _optional(neta.recheck, "recheck"),
         "places": places,
         "compare": compare_view(neta, kdir),
         "run": _optional(kdir / "run.json", "run"),

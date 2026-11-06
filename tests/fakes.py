@@ -30,6 +30,7 @@ ROLE_MARKS = {
     "速記役": "scribe",
     "聞き役": "asker",
     "対応づけ役": "aligner",
+    "読み直し役": "rechecker",
 }
 
 

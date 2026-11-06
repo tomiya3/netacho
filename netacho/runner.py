@@ -32,6 +32,7 @@ ROLES = {
     "scribe": (OPUS, "high", 32000),
     "aligner": (OPUS, "high", 32000),
     "asker": (OPUS, "high", 16000),
+    "rechecker": (OPUS, "high", 8000),
 }
 
 

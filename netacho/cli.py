@@ -399,6 +399,21 @@ def cmd_reread(args: argparse.Namespace) -> None:
     print(f"弟子役の指摘 {len(current)} 件")
 
 
+def cmd_recheck(args: argparse.Namespace) -> None:
+    from . import pipeline, runner
+
+    client = runner.make_client()
+    result = pipeline.recheck_answers(args.performer, args.neta, args.koza, client=client, reuse=args.reuse)
+    if result is None:
+        print("答えた問いはまだありません")
+        return
+    print(
+        f"答えた問い {result['questions']}、書いてあると読めた数 "
+        f"前 {result['before_written']} → 後 {result['after_written']}、"
+        f"答えで埋まった問い {result['filled']}、検査で落とした判定 {result['dropped']}"
+    )
+
+
 def _who(parser: argparse.ArgumentParser) -> None:
     """演者の前で打つコマンドは、演者と演目を環境変数でも渡せる。"""
     for flag, env in (("--performer", "NETACHO_PERFORMER"), ("--neta", "NETACHO_NETA")):
@@ -546,6 +561,12 @@ def build_parser() -> argparse.ArgumentParser:
     reread.add_argument("--koza", required=True)
     reread.add_argument("--reuse", action="store_true")
     reread.set_defaults(func=cmd_reread)
+
+    check = sub.add_parser("recheck", help="答えた問いを、答えの前後の帳面で読ませる")
+    _who(check)
+    check.add_argument("--koza", required=True)
+    check.add_argument("--reuse", action="store_true")
+    check.set_defaults(func=cmd_recheck)
     return p
 
 

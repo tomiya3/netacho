@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "rows": [
+    {
+      "question_id": "q-0001",
+      "before": {
+        "verdict": "not_written",
+        "quote": "",
+        "reply": "なぜそうするのかが書いていない"
+      },
+      "after": {
+        "verdict": "written",
+        "quote": "行列のところは間を詰めて次へ行く",
+        "reply": "帳面の言葉で答えられる"
+      },
+      "cites_answer": true
+    }
+  ]
+}

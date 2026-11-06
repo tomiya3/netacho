@@ -431,6 +431,41 @@
         }
       },
       "description": "2 本の比較の実測"
+    },
+    "recheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questions",
+        "before_written",
+        "after_written",
+        "filled",
+        "dropped"
+      ],
+      "description": "答えの前後の読み直し。数は直近の実行の物",
+      "properties": {
+        "questions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "before_written": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "after_written": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "filled": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "前は書いていない、後は書いてあり、引用が演者の答えから取られている問いの数"
+        },
+        "dropped": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     }
   }
 }

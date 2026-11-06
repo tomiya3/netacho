@@ -59,6 +59,10 @@ class Neta:
         return self.base / "review" / "deshi.json"
 
     @property
+    def recheck(self) -> Path:
+        return self.base / "review" / "recheck.json"
+
+    @property
     def guide(self) -> Path:
         return self.base / "guide" / "guide.json"
 

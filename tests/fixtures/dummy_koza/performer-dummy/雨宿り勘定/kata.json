@@ -187,6 +187,7 @@
     "speaker": "performer-dummy",
     "recorded_at": "2026-01-02T10:05:00+09:00",
     "words": "行列のところは間を詰めて次へ行く",
+    "question_id": "q-0001",
     "approved": true
    },
    "edited_by": "performer",
