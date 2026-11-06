@@ -1017,11 +1017,11 @@ MAKURA_AND_TALE = {
 }
 
 
-def makura_first(bad_makura=False):
-    """聞き役の返事の代わり。枕を先に並べる。"""
+def makura_first(bad_makura=False, last=False):
+    """聞き役の返事の代わり。枕を先に並べる。`last` なら後ろに並べる。"""
 
     def reply(kw):
-        rows = sorted(json.loads(text_of(kw)), key=lambda r: r["kind"] != "makura")
+        rows = sorted(json.loads(text_of(kw)), key=lambda r: (r["kind"] == "makura") == last)
         questions = []
         for r in rows:
             makura = r["kind"] == "makura"
@@ -1041,13 +1041,14 @@ def makura_first(bad_makura=False):
     return reply
 
 
-def with_makura_laugh(tmp_path):
+def with_makura_laugh(tmp_path, tale=(28,)):
     root, neta = two_books(tmp_path)
     for kdir in (neta.koza_dir(K1), neta.koza_dir(K2)):
         doc = store.read(kdir / "reactions.json", "reactions")
         doc["scores"]["laugh"][8] = 0.0
         doc["scores"]["laugh"][1] = 0.2  # 枕の笑い
-        doc["scores"]["laugh"][28] = 0.2  # 噺の笑い
+        for i in tale:
+            doc["scores"]["laugh"][i] = 0.2  # 噺の笑い
         store.write(kdir / "reactions.json", doc, "reactions")
     return root, neta
 
@@ -1063,6 +1064,16 @@ def test_makura_question_comes_last_even_if_the_role_puts_it_first(tmp_path):
     run(root, client_of(makura_first(), aligner=MAKURA_AND_TALE), tmp_path)
     kinds = asked_kinds(neta)
     assert kinds[-1] == "makura" and kinds.count("makura") == 1 and len(kinds) >= 2
+
+
+def test_tale_questions_do_not_take_the_makura_slot(tmp_path, monkeypatch):
+    """噺の問いだけで枠が埋まる状況でも、聞き役が後ろに並べた枕が 1 枠入る。"""
+    monkeypatch.setattr(pipeline, "COMPARE_QUESTIONS", 2)
+    monkeypatch.setattr(compare, "SPOT_GAP", 1.0)
+    root, neta = with_makura_laugh(tmp_path, tale=(16, 28))
+    run(root, client_of(makura_first(last=True), aligner=MAKURA_AND_TALE), tmp_path)
+    kinds = asked_kinds(neta)
+    assert len(kinds) == 2 and kinds[0] != "makura" and kinds[1] == "makura"
 
 
 def test_makura_dropped_by_the_check_leaves_only_the_tale(tmp_path):

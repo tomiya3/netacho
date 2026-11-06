@@ -598,9 +598,13 @@ def ask_rows(spots: list[dict], a: compare.Side, b: compare.Side, other: str) ->
 
 
 def keep_makura_slot(picks: list[dict], by_id: dict[str, dict]) -> list[dict]:
-    """噺の問いが枕の枠まで埋めないように並べ直す。枕が落ちたら、残りの噺で埋まる。"""
-    makura = [r for r in picks if by_id.get(r["spot_id"], {}).get("kind") == "makura"]
-    tales = [r for r in picks if r not in makura]
+    """噺の問いが枕の枠まで埋めないように並べ直す。
+
+    枕が落ちたときや、答え済みの枕があって数えて飛ばしたときは、残りの噺で埋まる。
+    """
+    makura, tales = [], []
+    for row in picks:
+        (makura if by_id.get(row["spot_id"], {}).get("kind") == "makura" else tales).append(row)
     room = COMPARE_QUESTIONS - COMPARE_MAKURA
     return tales[:room] + makura + tales[room:]
 
