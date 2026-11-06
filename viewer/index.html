@@ -225,6 +225,7 @@ const byId = list => Object.fromEntries(list.map(x => [x.id, x]));
 const kanji = n => n <= 10 ? KANJI[n] : String(n);
 const who = (k, text) => el("span", { class: "who " + k }, text || LABEL[k]);
 const writer = () => localStorage.getItem("netacho-speaker") || "";  // 代筆が「本人」で残らないよう、既定を置かない
+const ja = t => t.replace(/\?/g, "？").replace(/!/g, "！");  // 文字起こし由来の文だけ。演者の言葉には使わない
 const kozaName = id => id.replace(/^0000-00-00-?/, "") || id;
 let KOZAS = [];
 let KOZA = null;  // 型と噺は演目全体の物。別の高座の項目の時刻で、この高座の録音を鳴らさない
@@ -295,7 +296,7 @@ function compareNames(c) {
 function spotBody(s, c) {
   const [nameA, nameB] = compareNames(c);
   const side = (name, row, laugh, key) => el("div", {}, el("div", { class: "label" }, `${name}（${clock(row.t)}）`),
-    el("p", { class: "q" }, `「${row.quote}」`), playButton(`${name}を聞く`, row.t - 8, Math.max(row.end, laugh ?? 0) + 6, key));
+    el("p", { class: "q" }, `「${ja(row.quote)}」`), playButton(`${name}を聞く`, row.t - 8, Math.max(row.end, laugh ?? 0) + 6, key));
   const left = side(nameA, s.a, s.laugh_a, "a");
   const right = s.b ? side(nameB, s.b, s.laugh_b, "b")
     : s.kind === "makura" ? null : el("div", {}, el("div", { class: "label" }, nameB), el("p", { class: "small" }, "この言葉はありません。"));
@@ -380,7 +381,7 @@ function askCard(e, d) {
     const marks = place.lines.map(l => l.text.length >= 3 && q.text.includes(l.text.replace(/[。、]$/, "")));
     if (place.lines.length) body.push(el("div", { class: "lines" }, place.lines.map((l, i) => el("div", { class: "row" },
       el("span", { class: "sp" }, l.speaker && l.speaker !== place.lines[i - 1]?.speaker ? l.speaker : ""),
-      el("div", {}, el("span", { class: marks[i] ? "hit" : "" }, l.text))))));
+      el("div", {}, el("span", { class: marks[i] ? "hit" : "" }, ja(l.text)))))));
     if (!place.clean && place.lines.length) body.push(el("p", { class: "small" }, "清書の無い行は文字起こしのままです。"));
   } else if (here(item)) {
     body.push(el("div", { class: "plays" }, playButton("この所を聞く", item.source.t0 - 4, (item.source.t1 ?? item.source.t0) + 6)));
@@ -524,8 +525,9 @@ function renderWave(d) {
     }) : res.laughs.slice(0, res.nBig)).sort((a, b) => a.t0 - b.t0);
     if (big.length) root.append(el("h3", {}, "ここで受けた"), el("div", {}, big.map(r => el("div", { class: "peak" },
       playButton(clock(r.t0), r.t0 - 10, r.t1 + 4, "a", sceneAt(scenes, r.t0)?.title || "笑いの所") || el("b", {}, clock(r.t0)),
-      el("div", {}, el("span", { class: "line" }, d.laugh_lines?.[r.id] ? `「${d.laugh_lines[r.id].text}」` : ""), el("span", { class: "where" }, sceneAt(scenes, r.t0)?.title || ""))))));
+      el("div", {}, el("span", { class: "line" }, d.laugh_lines?.[r.id] ? `「${ja(d.laugh_lines[r.id].text)}」` : ""), el("span", { class: "where" }, sceneAt(scenes, r.t0)?.title || ""))))));
   }
+  if (!d.seisho) root.append(el("p", { class: "small" }, "この高座は清書がまだ無いので、台詞は出していません。"));
   root.append(el("p", { class: "small" }, "笑いは録音から機械で拾ったものです。山の無い所も、反応が無かったという意味ではありません。"));
   for (const n of (d.candidates?.notices || [])) root.append(el("p", { class: "notice" }, n));
   const items = byId([...d.hanashi, ...d.kata]);
@@ -667,7 +669,7 @@ function renderCards(d) {
 
 /* ---------- 清書 ---------- */
 function upright(text) {  // 縦書きで 1〜2 桁の数字を立てる
-  return text.split(/(?<!\d)(\d{1,2})(?!\d)/).map((part, i) => i % 2 ? el("span", { class: "tcy" }, part) : part);
+  return ja(text).split(/(?<!\d)(\d{1,2})(?!\d)/).map((part, i) => i % 2 ? el("span", { class: "tcy" }, part) : part);
 }
 function renderSeisho(d) {
   const root = document.getElementById("seisho");
