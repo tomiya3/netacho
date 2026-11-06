@@ -570,7 +570,7 @@ def note(
 
 
 COMPARE_QUESTIONS = 5  # 2 本の比較で演者に問う数。多いと答えてもらえない
-COMPARE_MAKURA = 1  # そのうち枕の問いの上限。比べる軸は噺なので
+COMPARE_MAKURA = 1  # そのうち枕の問いの数。比べる軸は噺だが、枕の問いがあれば 1 枠空ける
 CLEAN_MIN = 0.9  # 文字起こしの行のうち、清書で読める割合の下限
 
 
@@ -595,6 +595,14 @@ def ask_rows(spots: list[dict], a: compare.Side, b: compare.Side, other: str) ->
         {"spot_id": s["id"], "kind": s["kind"], "other": other, **compare.context_rows(s, a, b)}
         for s in spots
     ]
+
+
+def keep_makura_slot(picks: list[dict], by_id: dict[str, dict]) -> list[dict]:
+    """噺の問いが枕の枠まで埋めないように並べ直す。枕が落ちたら、残りの噺で埋まる。"""
+    makura = [r for r in picks if by_id.get(r["spot_id"], {}).get("kind") == "makura"]
+    tales = [r for r in picks if r not in makura]
+    room = COMPARE_QUESTIONS - COMPARE_MAKURA
+    return tales[:room] + makura + tales[room:]
 
 
 def previous_spots(path: Path) -> list[dict]:
@@ -706,7 +714,8 @@ def compare_koza(
             doc["spots"] = [kept.get(s["id"], s) for s in doc["spots"]]
             doc["spots"] += [s for s in kept.values() if s["id"] not in fresh]
             asked = [s for s in doc["spots"] if s["id"] in done]
-            for row in picks:
+            makura_q = None
+            for row in keep_makura_slot(picks, by_id):
                 if added == COMPARE_QUESTIONS:
                     break
                 spot = by_id.get(row["spot_id"])
@@ -747,17 +756,21 @@ def compare_koza(
                         "resolved": False,
                     }
                 )
-                questions["questions"].append(
-                    {
-                        "id": q_id,
-                        "issue_id": issue_id,
-                        "scene_id": spot["scene_id"],
-                        "text": words,
-                        "spot_id": spot["id"],
-                    }
-                )
+                new_q = {
+                    "id": q_id,
+                    "issue_id": issue_id,
+                    "scene_id": spot["scene_id"],
+                    "text": words,
+                    "spot_id": spot["id"],
+                }
+                questions["questions"].append(new_q)
                 n_issue, n_q, added = n_issue + 1, n_q + 1, added + 1
-                makura += spot["kind"] == "makura"
+                if spot["kind"] == "makura":
+                    makura += 1
+                    makura_q = new_q
+            if makura_q is not None:  # 噺が落ちて枕が繰り上がっても、聞くのは噺の後
+                questions["questions"].remove(makura_q)
+                questions["questions"].append(makura_q)
             doc["counts"] = compare.count(doc["spots"])  # 聞き役の決めた種類で数え直す
             # 先に書く。落ちても、指す先の無い問いを残さない
             store.write(kdir / "compare.json", doc, "compare")
