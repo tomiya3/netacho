@@ -12,6 +12,11 @@
     "schema_version": {
       "const": 1
     },
+    "koza_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "数を残した run.json の高座。画面はこの高座のときだけ出す"
+    },
     "rows": {
       "type": "array",
       "items": {

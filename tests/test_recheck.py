@@ -164,6 +164,23 @@ def test_view_carries_the_result(built, answered, data, tmp_path):  # noqa: F811
     assert view.payload(built, K)["recheck"]["rows"][0]["question_id"] == answered
 
 
+def test_view_hides_the_result_of_another_koza(built, answered, data, tmp_path):  # noqa: F811
+    run(ScriptedClient(rechecker=[replies(side(answered)), replies(side(answered))]), data, tmp_path)
+    doc = store.read(built.recheck, "recheck")
+    store.write(built.recheck, {**doc, "koza_id": "another-koza"}, "recheck")
+    assert view.payload(built, K)["recheck"] is None
+
+
+def test_quote_running_past_the_answer_is_not_filled(built, answered, data, tmp_path):  # noqa: F811
+    quote = f"演者の言葉：「{WORDS}」"
+    client = ScriptedClient(
+        rechecker=[replies(side(answered)), replies(side(answered, "written", quote, "答えの外まで引いた"))]
+    )
+    result = run(client, data, tmp_path)
+    assert result["after_written"] == 1
+    assert result["filled"] == 0
+
+
 def test_cli_says_when_nothing_is_answered(built, capsys, monkeypatch):  # noqa: F811
     monkeypatch.setattr("netacho.runner.make_client", ScriptedClient)
     cli.main(["recheck", "--performer", P, "--neta", N, "--koza", K])

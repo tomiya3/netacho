@@ -429,7 +429,7 @@ def recheck_answers(
         after, dropped_after, missing_after = recheck_pass(ctx, pairs, after_text, "after")
         rows = recheck.merge_sides(pairs, before, after, before_text)
         result = recheck.stats(rows, dropped_before + dropped_after, missing_before + missing_after)
-        store.write(ctx.neta.recheck, {"schema_version": 1, "rows": rows}, "recheck")
+        store.write(ctx.neta.recheck, {"schema_version": 1, "koza_id": koza_id, "rows": rows}, "recheck")
         ctx.usage.extra["recheck"] = result
     finally:  # 落ちても、呼んだ分の費用を残す
         store.write(run_path, ctx.usage.to_json(), "run")

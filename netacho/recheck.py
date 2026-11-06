@@ -50,7 +50,7 @@ def _cites(side: dict | None, words: str, before_text: str) -> bool:
     """引用が答えから取られている。前の帳面にもある語は、答えで読めたとは言えない。"""
     if side is None or side["verdict"] != WRITTEN or side["quote"] in before_text:
         return False
-    return side["quote"] in words or words in side["quote"]
+    return side["quote"] in words
 
 
 def merge_sides(
