@@ -353,6 +353,21 @@ def test_unknown_end_of_makura_counts_as_dropped_and_compares_all():
     bad["makura"]["a_last"] = "seg-9999"
     doc = compare.compare(side("a", LINES, []), side("b", LINES[2:], []), bad, {})
     assert doc["dropped"] >= 1 and all(x["a"] is None for x in doc["makura"])
+    assert 0.0 <= doc["share"] <= 1.0 and all(s["kind"] != "makura" for s in doc["spots"])
+
+
+def test_makura_without_a_scene_still_reaches_the_asker():
+    a = side("a", LINES, [12.0])
+    for line in a.lines[:4]:
+        line["scene_id"] = None
+    doc = compare.compare(a, side("b", LINES[2:], []), makura_draft(), {"scene-01": "噺"})
+    assert [s["scene_id"] for s in doc["spots"] if s["kind"] == "makura"] == ["scene-01"]
+
+
+def test_laugh_after_the_story_starts_is_not_a_makura_laugh():
+    a = side("a", LINES, [41.0])  # 枕は 40 秒まで。41 秒は噺の最初の行の中
+    doc = compare.compare(a, side("b", LINES[2:], []), makura_draft(), {})
+    assert all(s["kind"] != "makura" for s in doc["spots"])
 
 
 def test_makura_scene_is_not_listed_as_uncompared():
@@ -417,6 +432,10 @@ def test_makura_gets_one_question_at_most(tmp_path):
     run(root, client_of(reply, aligner=head), tmp_path)
     asked = [q for q in store.read(neta.questions, "questions")["questions"] if "spot_id" in q]
     assert len(asked) == 1
+    performer.answer(neta, question=asked[0]["id"], speaker="本人", words="どこでも使います")
+    run(root, client_of(reply, aligner=head), tmp_path)  # 答えた枕があれば、やり直しても増やさない
+    again = [q for q in store.read(neta.questions, "questions")["questions"] if "spot_id" in q]
+    assert [q["id"] for q in again] == [asked[0]["id"]]
 
 
 @pytest.mark.parametrize("value", ["", "。、 "])

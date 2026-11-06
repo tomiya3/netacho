@@ -679,6 +679,8 @@ def compare_koza(
             # 答えた所は聞き役に見せない。また問わないし、費用も使わない
             known = [s for s in doc["spots"] if s["scene_id"] in titles and s["id"] not in done]
             chosen = compare.candidates(known)
+            # 前に答えた枕の問いも数える。やり直しで増やさない
+            makura = sum(s["id"] in done and s["kind"] == "makura" for s in old_spots)
             other_name = "稽古" if doc["practice"] else "もう 1 本"
             rows = ask_rows(chosen, a, b, other_name)
             content = [{"type": "text", "text": json.dumps(rows, ensure_ascii=False, indent=1)}]
@@ -784,6 +786,9 @@ def compare_koza(
 SCRIBE_CHUNK = 120  # 1 回に渡す区間の数。40 分の高座でも切れない長さ。暫定
 
 
+LEXICON_MIN = 2  # 聞こえ方の字数の下限。1 字は普通の語の一部に当たってしまう
+
+
 def lexicon_content(ctx: Context, segments: list[dict], title: str | None, terms: list[str]) -> list[dict]:
     """語の表役に見せる物：文字起こしの全文、演目の題、人物の名前、演者から聞いた語。反応は見せない。"""
     head = {"演目": title or ctx.koza["neta"], "人物": [c["name"] for c in ctx.hanashi["characters"]]}
@@ -802,7 +807,8 @@ def check_lexicon(draft: dict, segments: list[dict]) -> tuple[list[dict], int]:
     rows, seen = [], set()
     for row in draft["terms"]:
         pair = (row["heard"].strip(), row["word"].strip())
-        if pair[0] and pair[1] and pair[0] != pair[1] and pair[0] in whole and pair not in seen:
+        known = len(pair[0]) >= LEXICON_MIN and pair[1] and pair[0] != pair[1] and pair[0] in whole
+        if known and pair not in seen:
             seen.add(pair)
             rows.append({"聞こえ方": pair[0], "語": pair[1]})
     return rows, len(draft["terms"]) - len(rows)

@@ -260,6 +260,21 @@ def test_lexicon_reads_the_whole_koza_and_reaches_every_chunk(built, data, tmp_p
     assert (run["seisho"]["terms"], run["seisho"]["terms_dropped"]) == (1, 1)
 
 
+def test_short_or_empty_lexicon_rows_are_dropped():
+    segs = [{"text": "傘を借りた"}]
+    rows = [("傘", "笠"), ("借りた", "借りた"), ("を借", "語")]
+    draft = {"terms": [{"heard": h, "word": w} for h, w in rows]}
+    assert pipeline.check_lexicon(draft, segs) == ([{"聞こえ方": "を借", "語": "語"}], 2)
+
+
+def test_cost_stays_when_lexicon_fails(built, data, tmp_path):
+    bad = ScriptedClient(lexicon=[lambda kw: '{"schema_version": 1}'])
+    with pytest.raises(ValueError):
+        pipeline.clean_copy(P, N, K, client=bad, budget=Budget(tmp_path / "ledger.json"), root=data)
+    run = store.read(store.Neta(P, N, data).koza_dir(K) / "run.json", "run")
+    assert "lexicon" in {r["name"] for r in run["roles"]}
+
+
 def _echo(kw, doc):
     """渡された区間の分だけ返す。"""
     asked = {row["seg_id"] for row in json.loads(kw["messages"][0]["content"][-1]["text"])}

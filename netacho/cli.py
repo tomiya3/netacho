@@ -325,7 +325,7 @@ def cmd_seisho(args: argparse.Namespace) -> None:
         client=client,
         reuse=args.reuse,
         title=title,
-        terms=[w.strip() for w in (args.terms or "").split(",") if w.strip()],
+        terms=[w.strip() for w in re.split("[,、]", args.terms or "") if w.strip()],
     )
     s = doc["seisho"]
     print(f"清書 {s['lines']} 行、直した行 {s['changed']}、大きく直した行 {s['heavy']}")

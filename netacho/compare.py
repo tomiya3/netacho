@@ -140,13 +140,17 @@ def _topic_side(side: Side, span: tuple[int, int] | None) -> dict | None:
 def _makura_spots(end_a: int, topics: list[dict], a: Side, b: Side) -> list[dict]:
     """枕の笑いの所。もう 1 本に無いのは当たり前なので、言葉の差としては扱わない。"""
     spots = []
+    first_scene = next((x["scene_id"] for x in a.lines if x["scene_id"]), None)
     for t in a.laughs_in(0, end_a):
-        i = min(a.line_at(t), end_a)
+        i = a.line_at(t)
+        if i > end_a:  # 噺に入ってからの笑いは、噺の所で見る
+            continue
         topic = next((x for x in topics if x["span_a"] and x["span_a"][0] <= i <= x["span_a"][1]), None)
         span_a = topic["span_a"] if topic else (0, end_a)
         span_b = topic["span_b"] if topic else None
         spans = {"span_a": list(span_a), "span_b": list(span_b) if span_b else None}
-        spots.append(_spot("makura", a, i, b, None, t, None, spans))
+        spot = _spot("makura", a, i, b, None, t, None, spans)
+        spots.append({**spot, "scene_id": spot["scene_id"] or first_scene})  # 枕に場面が無くても問える
     return spots
 
 
