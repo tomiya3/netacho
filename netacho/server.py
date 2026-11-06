@@ -90,6 +90,12 @@ def _text(body: dict, key: str) -> str:
     return value
 
 
+def _same_koza(server: AnswerServer, body: dict) -> None:
+    """別のタブで高座を開き直していたら、古い画面の書き込みを断る。問いの番号は演目ごとの連番なので。"""
+    if (body.get("neta"), body.get("koza")) != (server.neta.neta, server.koza_id):
+        raise performer.PerformerError("別の高座が開かれています。開き直してください")
+
+
 class Handler(BaseHTTPRequestHandler):
     server: AnswerServer
     timeout = 10  # 本文の来ない接続を残さない
@@ -125,8 +131,11 @@ class Handler(BaseHTTPRequestHandler):
             and self.headers.get_content_type() == "application/json"
         )
 
-    def _audio(self, side: str) -> Path:
-        """1 本目か、比較の 2 本目の録音。"""
+    def _audio(self, args: dict) -> Path:
+        """画面が指した高座の録音。指定が無ければ、開いている高座か、比較の 2 本目。"""
+        if "koza" in args:  # 高座を指す。サーバの開いている高座が変わっても、別の録音を鳴らさない
+            return self.server.neta.sibling(args["neta"][0]).koza_dir(args["koza"][0]) / "audio.wav"
+        side = args.get("side", ["a"])[0]
         kdir = self.server.neta.koza_dir(self.server.koza_id)
         if side != "b":
             return kdir / "audio.wav"
@@ -141,7 +150,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             t0, t1 = _clip_range(args)
-            data = clip_wav(self._audio(args.get("side", ["a"])[0]), t0, t1)
+            data = clip_wav(self._audio(args), t0, t1)
         except (KeyError, ValueError, OverflowError, OSError, wave.Error):
             self._json(404, {"error": "無い"})
             return
@@ -179,7 +188,14 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, data, kind)
 
     def do_POST(self) -> None:  # noqa: N802
-        actions = {"/api/answer": self._answer, "/api/dismiss": self._dismiss, "/api/decide": self._decide}
+        actions = {
+            "/api/answer": self._answer,
+            "/api/dismiss": self._dismiss,
+            "/api/decide": self._decide,
+            "/api/edit": self._edit,
+            "/api/open": self._open,
+            "/api/koza": self._koza,
+        }
         action = actions.get(urlsplit(self.path).path)
         if action is None or not self._write_ok():
             self._json(403, {"error": "受け付けない"})
@@ -230,6 +246,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True})
 
     def _answer(self, body: dict) -> Callable[[], None]:
+        _same_koza(self.server, body)
         neta = self.server.neta
         performer.answer(
             neta,
@@ -239,7 +256,19 @@ class Handler(BaseHTTPRequestHandler):
         )
         return lambda: pipeline.after_performer(neta)
 
+    def _edit(self, body: dict) -> Callable[[], None]:
+        _same_koza(self.server, body)
+        neta = self.server.neta
+        performer.edit_answer(
+            neta,
+            question=_text(body, "question"),
+            speaker=_text(body, "speaker"),
+            words=_text(body, "words"),
+        )
+        return lambda: pipeline.after_performer(neta)
+
     def _decide(self, body: dict) -> Callable[[], None]:
+        _same_koza(self.server, body)
         neta = self.server.neta
         position = _text(body, "position")
         if position not in POSITIONS:
@@ -255,7 +284,21 @@ class Handler(BaseHTTPRequestHandler):
         )
         return lambda: pipeline.after_performer(neta, first_card=True)
 
+    def _open(self, body: dict) -> Callable[[], None]:
+        """別の高座を開く。読めると確かめてから切り替える。"""
+        neta, koza_id = _target(self.server, body)
+        view.payload(neta, koza_id)
+        self.server.neta, self.server.koza_id = neta, koza_id
+        return lambda: None
+
+    def _koza(self, body: dict) -> Callable[[], None]:
+        """公演日と会場を直す。フォルダの名前は変えない。"""
+        neta, koza_id = _target(self.server, body)
+        performer.edit_koza(neta, koza_id, when=_text(body, "date"), venue=_text(body, "venue"))
+        return lambda: None
+
     def _dismiss(self, body: dict) -> Callable[[], None]:
+        _same_koza(self.server, body)
         neta = self.server.neta
         performer.dismiss(
             neta,
@@ -264,6 +307,15 @@ class Handler(BaseHTTPRequestHandler):
             reason=_text(body, "reason"),
         )
         return lambda: pipeline.after_performer(neta)
+
+
+def _target(server: AnswerServer, body: dict) -> tuple[store.Neta, str]:
+    """画面が指した高座。同じ演者の物だけ。名前の検査は store がする。"""
+    neta = server.neta.sibling(_text(body, "neta"))
+    koza_id = _text(body, "koza")
+    if not (neta.koza_dir(koza_id) / "koza.json").is_file():
+        raise performer.PerformerError("高座が無い")
+    return neta, koza_id
 
 
 def serve(neta: store.Neta, koza_id: str, *, port: int, out: Path = view.OUT, browser: bool = True) -> None:

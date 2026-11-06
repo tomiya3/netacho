@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import shutil
@@ -14,6 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "out" / "view"
 VIEWER = ROOT / "viewer" / "index.html"
 PLACE_BEFORE, PLACE_AFTER = 15.0, 3.0  # 問いの前後に見せる台詞の範囲。秒
+LINE_MIN, LINE_BACK, LINE_JOIN = 4, 4, 2  # 笑いの一覧の台詞。短い相づちを飛ばし、さかのぼる行数とつなぐ行数
 
 
 def _optional(path: Path, schema: str) -> dict | None:
@@ -134,6 +136,61 @@ def readable_question(question: str | None, before: str) -> str:
     return gaps.FALLBACK_QUESTION
 
 
+def _clean_fragment(quote: str, raw: str, text: str) -> str:
+    """文字起こしの 1 行の一部 `quote` に当たる、清書の部分を返す。"""
+    start = raw.find(quote)
+    end = start + len(quote)
+    head = tail = None
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, raw, text, autojunk=False).get_opcodes():
+        if head is None and i1 <= start < i2:
+            head = j1 + (start - i1) if tag == "equal" else j1
+        if i1 < end <= i2:
+            tail = j1 + (end - i1) if tag == "equal" else j2
+    return text[head:tail] if head is not None and tail is not None else quote
+
+
+def clean_quotes(text: str, lines: dict) -> str:
+    """Claude が文字起こしから引いた「」の中を、清書の字にする。見せる時だけで、正本は変えない。"""
+
+    def swap(match: re.Match) -> str:
+        quote = match[1]
+        found = {_clean_fragment(quote, r["raw"], r["text"]) for r in lines.values() if quote in r["raw"]}
+        # 短い引用が別々の字の行に当たるなら、どの行か決められない。清書で語が消えた引用も空にしない
+        shown = found.pop() if len(found) == 1 else ""
+        return f"「{shown}」" if shown.strip() else match[0]
+
+    return re.sub(r"「([^「」]+)」", swap, text)
+
+
+def clean_recheck(recheck: dict | None, lines: dict) -> dict | None:
+    """読み直し役の引用と返事の字を、清書にする。見せる時だけで、正本は変えない。"""
+    if not recheck or not lines:
+        return recheck
+
+    def side(row: dict | None) -> dict | None:
+        if not row:
+            return row
+        return {
+            **row,
+            "quote": clean_quotes(f"「{row['quote']}」", lines)[1:-1],
+            "reply": clean_quotes(row["reply"], lines),
+        }
+
+    rows = [{**r, "before": side(r.get("before")), "after": side(r.get("after"))} for r in recheck["rows"]]
+    return {**recheck, "rows": rows}
+
+
+def clean_notes(candidates: dict | None, lines: dict) -> dict | None:
+    """ノートの文の引用を、清書の字で見せる。ノート役は文字起こしを読んで書くので。"""
+    if not candidates or not lines:
+        return candidates
+    rows = [
+        {**c, "note": clean_quotes(c["note"], lines)} if c.get("note") else c
+        for c in candidates["candidates"]
+    ]
+    return {**candidates, "candidates": rows}
+
+
 def clean_gaps(gaps_doc: dict | None, transcript: dict, lines: dict) -> dict | None:
     """読めなかった笑いの問いと直前の台詞を、清書で見せる。"""
     if not gaps_doc or not lines:
@@ -172,13 +229,112 @@ def clean_review(review: dict | None, questions: dict | None, shown: dict | None
     return {**review, "issues": rows}
 
 
+def _run_title(kdir: Path) -> str | None:
+    """清書のときに渡した演目の題。形が古くても、高座を一覧から落とさないように検証しない。"""
+    try:
+        run = json.loads((kdir / "run.json").read_text(encoding="utf-8"))
+        return (run.get("seisho") or {}).get("title")
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+
+
+def koza_list(neta: store.Neta) -> list[dict]:
+    """この演者の高座の一覧。新しい順。作りかけの高座は読み飛ばす。"""
+    rows = []
+    for path in neta.base.parent.glob("*/koza/*/koza.json"):
+        kdir = path.parent
+        try:
+            other = neta.sibling(path.parents[2].name)
+            koza = store.read(path, "koza")
+            # 答えるたびに全部の高座を読むので、要らない検証をしない
+            scores = json.loads((kdir / "reactions.json").read_text(encoding="utf-8")).get("scores") or {}
+            title = _run_title(kdir)
+            questions = _optional(other.questions, "questions") or {"questions": []}
+            row = {
+                "neta": other.neta,
+                "koza_id": koza["id"],
+                "title": title or other.neta,
+                "date": koza["date"],
+                "venue": koza["venue"],
+                "seconds": scores.get("seconds"),
+                "open": sum(1 for q in questions["questions"] if "answer" not in q and "dismissed" not in q),
+            }
+        except (ValueError, OSError, AttributeError, KeyError, TypeError):  # 1 本の壊れで一覧を止めない
+            print(f"読み飛ばした：{kdir.name} の高座", file=sys.stderr)
+            continue
+        rows.append(row)
+    rows.sort(key=lambda r: r["koza_id"])
+    return sorted(rows, key=lambda r: r["date"], reverse=True)
+
+
+def laugh_lines(reactions: dict, transcript: dict | None, lines: dict) -> dict:
+    """笑いごとの、直前の清書の台詞。清書の無い高座には出さない。
+
+    1 区間は短い切れ端のことが多いので、相づちを飛ばして 2 行までつなぐ。
+    """
+    if not transcript or not lines:
+        return {}
+    segs = sorted((s for s in transcript["segments"] if s["text"].strip()), key=lambda s: s["start"])
+    found = {}
+    for r in reactions["reactions"]:
+        if r["kind"] != "laugh":
+            continue
+        before = [lines[s["id"]] for s in segs if s["start"] < r["t0"] and s["id"] in lines][-LINE_BACK:]
+        rows = [row for row in before if len(row["text"].strip()) >= LINE_MIN][-LINE_JOIN:]
+        if rows:
+            text = "　".join(row["text"].strip() for row in rows)
+            found[r["id"]] = {"text": text, "speaker": rows[-1].get("speaker")}
+    return found
+
+
+def scene_times(scenes: list[dict], transcript: dict | None, timeline: dict | None) -> list[dict]:
+    """場面に、この高座の中の時刻を付ける。波の帯に使う。この高座に無い場面は時刻なしのまま。"""
+    if not transcript or not timeline:
+        return scenes
+    spans = {seg["id"]: (seg["start"], seg["end"]) for seg in transcript["segments"]}
+    found: dict[str, list[float]] = {}
+    for row in timeline["segments"]:
+        span = spans.get(row["seg_id"])
+        if span is not None and row["scene_id"] is not None:
+            found.setdefault(row["scene_id"], []).extend(span)
+    timed = {key: {"t0": min(values), "t1": max(values)} for key, values in found.items()}
+    return [{**s, **timed.get(s["id"], {})} for s in scenes]
+
+
 def compare_view(neta: store.Neta, kdir: Path) -> dict | None:
     """2 本の比較と、2 本目の波。2 本目が消えていても比較は見せる。"""
     doc = _optional(kdir / "compare.json", "compare")
     if doc is None:
         return None
     other = neta.sibling(doc["other_neta"]).koza_dir(doc["koza_b"]) / "reactions.json"
-    return {**doc, "other_reactions": _optional(other, "reactions")}
+    return {
+        **doc,
+        "neta_a": neta.neta,
+        "neta_b": doc["other_neta"],
+        "other_reactions": _optional(other, "reactions"),
+    }
+
+
+def compares_from_others(neta: store.Neta, koza_id: str) -> list[dict]:
+    """別の高座の側で作った、この高座との比較。開いている高座を変えずに見られるように。"""
+    rows = []
+    for path in sorted(neta.base.parent.glob("*/koza/*/compare.json")):
+        try:
+            doc = store.read(path, "compare")
+            if doc["koza_b"] == koza_id and doc["other_neta"] == neta.neta:
+                owner = path.parents[2].name
+                other = _optional(path.parent / "reactions.json", "reactions")
+                rows.append({**doc, "neta_a": owner, "neta_b": neta.neta, "other_reactions": other})
+        except (ValueError, OSError, KeyError):
+            print(f"読み飛ばした：{path.parent.name} の比較", file=sys.stderr)
+    return rows
+
+
+def book_items(book: dict, lookup: dict, koza_id: str, transcript: dict, lines: dict) -> list[dict]:
+    """帳面の項目を、清書の字で見せる。演者の言葉と、照合に通らなかった保留の項目はそのまま。"""
+    rows = clean_items(_with_scene(book["items"], lookup), koza_id, transcript, lines)
+    keep = lambda i: i.get("edited_by") == "performer" or i.get("held")  # noqa: E731
+    return [i if keep(i) else {**i, "text": clean_quotes(i["text"], lines)} for i in rows]
 
 
 def payload(neta: store.Neta, koza_id: str) -> dict:
@@ -198,25 +354,34 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
     empty = {"segments": []}
     cleaned = clean_gaps(gaps_doc, transcript or empty, lines)
     shown = clean_questions(questions, cleaned if lines else None)
+    reactions = store.read(kdir / "reactions.json", "reactions")
     return {
         "koza": store.read(kdir / "koza.json", "koza"),
-        "reactions": store.read(kdir / "reactions.json", "reactions"),
-        "candidates": _optional(kdir / "note_candidates.json", "note_candidates"),
+        "reactions": reactions,
+        "laugh_lines": laugh_lines(reactions, transcript, lines),
+        "neta": neta.neta,
+        "kozas": koza_list(neta),
+        "candidates": clean_notes(_optional(kdir / "note_candidates.json", "note_candidates"), lines),
         "gaps": cleaned,
         "seisho": clean,
         "note": note.read_text(encoding="utf-8") if note.exists() else None,
-        "scenes": sorted(hanashi["scenes"], key=lambda s: s["order"]),
+        "scenes": scene_times(
+            sorted(hanashi["scenes"], key=lambda s: s["order"]),
+            transcript,
+            _optional(kdir / "timeline.json", "timeline"),
+        ),
         "characters": hanashi["characters"],
-        "hanashi": clean_items(_with_scene(hanashi["items"], lookup), koza_id, transcript or empty, lines),
-        "kata": clean_items(_with_scene(kata["items"], lookup), koza_id, transcript or empty, lines),
+        "hanashi": book_items(hanashi, lookup, koza_id, transcript or empty, lines),
+        "kata": book_items(kata, lookup, koza_id, transcript or empty, lines),
         "guide": _optional(neta.guide, "guide"),
         "review": clean_review(_optional(neta.review, "review"), questions, shown),
         "questions": shown,
-        "recheck": recheck
+        "recheck": clean_recheck(recheck, lines)
         if (recheck := _optional(neta.recheck, "recheck")) and recheck.get("koza_id") == koza_id
         else None,
         "places": places,
         "compare": compare_view(neta, kdir),
+        "compares": compares_from_others(neta, koza_id),
         "run": _optional(kdir / "run.json", "run"),
     }
 
