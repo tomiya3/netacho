@@ -156,7 +156,8 @@ def clean_quotes(text: str, lines: dict) -> str:
         quote = match[1]
         found = {_clean_fragment(quote, r["raw"], r["text"]) for r in lines.values() if quote in r["raw"]}
         # 短い引用が別々の字の行に当たるなら、どの行か決められない。清書で語が消えた引用も空にしない
-        return f"「{found.pop()}」" if len(found) == 1 and "" not in found else match[0]
+        shown = found.pop() if len(found) == 1 else ""
+        return f"「{shown}」" if shown.strip() else match[0]
 
     return re.sub(r"「([^「」]+)」", swap, text)
 

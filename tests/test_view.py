@@ -496,6 +496,19 @@ def test_clean_quotes_does_not_leave_empty_brackets():
     assert view.clean_quotes("「あのー」の後", lines) == "「あのー」の後"
 
 
+def test_clean_quotes_keeps_a_quote_gone_from_only_one_of_its_lines():
+    lines = {
+        "seg-0001": {"raw": "あのーええ話や", "text": "ええ話や"},
+        "seg-0002": {"raw": "あのー傘の話", "text": "あのー傘の話"},
+    }
+    assert view.clean_quotes("「あのー」の後", lines) == "「あのー」の後"
+
+
+def test_clean_quotes_does_not_leave_blank_brackets():
+    lines = {"seg-0001": {"raw": "あのーええ話や", "text": "　ええ話や"}}
+    assert view.clean_quotes("「あのー」の後", lines) == "「あのー」の後"
+
+
 def test_clean_quotes_leaves_what_it_cannot_find():
     assert view.clean_quotes("「どこにも無い台詞」の後", LINES) == "「どこにも無い台詞」の後"
     assert view.clean_quotes("引用の無い文", LINES) == "引用の無い文"
