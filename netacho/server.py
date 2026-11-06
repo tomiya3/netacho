@@ -92,6 +92,13 @@ def _text(body: dict, key: str) -> str:
     return value
 
 
+def _same_koza(server: AnswerServer, body: dict) -> None:
+    """別のタブで高座を開き直していたら、古い画面の書き込みを断る。問いの番号は演目ごとの連番なので。"""
+    shown = (body.get("neta", server.neta.neta), body.get("koza", server.koza_id))
+    if shown != (server.neta.neta, server.koza_id):
+        raise performer.PerformerError("別の高座が開かれています。開き直してください")
+
+
 class Handler(BaseHTTPRequestHandler):
     server: AnswerServer
     timeout = 10  # 本文の来ない接続を残さない
@@ -242,6 +249,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True})
 
     def _answer(self, body: dict) -> Callable[[], None]:
+        _same_koza(self.server, body)
         neta = self.server.neta
         performer.answer(
             neta,
@@ -252,6 +260,7 @@ class Handler(BaseHTTPRequestHandler):
         return lambda: pipeline.after_performer(neta)
 
     def _edit(self, body: dict) -> Callable[[], None]:
+        _same_koza(self.server, body)
         neta = self.server.neta
         performer.edit_answer(
             neta,
@@ -262,6 +271,7 @@ class Handler(BaseHTTPRequestHandler):
         return lambda: pipeline.after_performer(neta)
 
     def _decide(self, body: dict) -> Callable[[], None]:
+        _same_koza(self.server, body)
         neta = self.server.neta
         position = _text(body, "position")
         if position not in POSITIONS:
@@ -297,6 +307,7 @@ class Handler(BaseHTTPRequestHandler):
         return lambda: None
 
     def _dismiss(self, body: dict) -> Callable[[], None]:
+        _same_koza(self.server, body)
         neta = self.server.neta
         performer.dismiss(
             neta,

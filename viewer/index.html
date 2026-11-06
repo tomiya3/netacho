@@ -277,7 +277,7 @@ async function send(path, body, note, tab = "#deshi") {
   note.textContent = "";
   if ("speaker" in body && !body.speaker) { note.textContent = "右上の「書く人」を先に選んでください。"; return false; }
   try {
-    const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Netacho-Token": TOKEN }, body: JSON.stringify(body) });
+    const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Netacho-Token": TOKEN }, body: JSON.stringify({ neta: NETA, koza: KOZA, ...body }) });
     const doc = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(doc.error || String(res.status));
     if (doc.warning) { note.textContent = doc.warning; return true; }
@@ -332,6 +332,7 @@ function renderList(d) {
   root.append(el("h2", {}, "高座帳"), el("p", { class: "lead" }, "演った高座の一覧です。開いて振り返ります。"));
   const note = el("p", { class: "status", role: "status" });
   const titles = [...new Set(KOZAS.map(r => r.title))];
+  const counted = new Set();  // 問いは演目のフォルダごとの物。同じフォルダの高座で 2 度数えない
   for (const title of titles) {
     root.append(el("div", { class: "group" }, title));
     for (const r of KOZAS.filter(x => x.title === title)) {
@@ -340,7 +341,9 @@ function renderList(d) {
       const open = TOKEN && !here ? el("button", { type: "button", class: "koza-open", onclick: () => openKoza(r, note, "#deshi") }, label)
         : el("span", { class: "koza-open" }, label, here ? "（開いています）" : "");
       const [toggle, box] = TOKEN ? kozaEdit(r, note) : [null, null];
-      root.append(el("div", { class: "koza-row" }, el("div", { class: "row" }, open, r.open ? el("span", { class: "small" }, `問い ${r.open}`) : null, toggle), box));
+      const count = r.open && !counted.has(r.neta) ? el("span", { class: "small" }, `問い ${r.open}`) : null;
+      counted.add(r.neta);
+      root.append(el("div", { class: "koza-row" }, el("div", { class: "row" }, open, count, toggle), box));
     }
   }
   root.append(note);
@@ -445,7 +448,7 @@ function renderDeshi(d) {
 
 /* ---------- 高座の波 ---------- */
 function drawWave(root, reactions, opts = {}) {
-  const { scenes = [], marks = [], src = HERE(), height = 300 } = opts;
+  const { scenes = [], marks = [], src = HERE(), height = 300, signal } = opts;
   const s = reactions?.scores;
   if (!s || !s.laugh.length) { root.append(el("p", { class: "notice" }, "スコアがありません。")); return null; }
   const W = 1120, H = height, L = 10, R = 10, BAND = scenes.length ? 30 : 0, MARK = marks.length ? 58 : 14, T = BAND + MARK + 6, B = 26;
@@ -520,7 +523,7 @@ function drawWave(root, reactions, opts = {}) {
   window.addEventListener("playhead", ev => {
     if (ev.detail.koza !== src.koza) return;
     head.setAttribute("x1", x(ev.detail.t)); head.setAttribute("x2", x(ev.detail.t)); head.setAttribute("visibility", "visible");
-  });
+  }, { signal });
   root.append(box);
   return { laughs, nBig };
 }
@@ -576,6 +579,7 @@ function renderMakura(root, c) {
       c.makura.map(x => el("tr", {}, el("td", {}, x.topic), el("td", {}, x.prepares ? "下地" : ""), cell(x[mine]), cell(x[other]))))));
 }
 let shownPair = null;  // 比べている組。開いている高座は変えない
+let waves = null;  // 比べる画面の波の聞き手。描き直すたびに外す
 function comparePairs(d) {
   return [d.compare, ...(d.compares || [])].filter(Boolean);
 }
@@ -598,6 +602,9 @@ function renderCompare(d) {
   const pairs = comparePairs(d);
   shownPair = shownPair || pairs[0] || null;
   const c = shownPair;
+  waves?.abort();
+  waves = new AbortController();
+  const signal = waves.signal;
   root.replaceChildren(el("h2", {}, "比べる"), compareChoice(d, pairs));
   if (!c) { root.append(el("p", {}, "2 本の比較はまだありません。netacho compare で作ります。")); return; }
   const mine = mineKey(c), other = otherKey(c);
@@ -609,14 +616,15 @@ function renderCompare(d) {
   if (c.practice) root.append(el("p", { class: "notice" }, "片方に笑いがほぼ無いので、稽古と見ています。本番で笑いの山があった所を軸に比べています。"));
   else if (!c.laughs_compared) root.append(el("p", { class: "notice" }, "片方の録音で笑いの山を拾えていないので、笑いは比べていません。言葉の違いだけを出しています。"));
   root.append(el("h3", {}, compareName(c, mine)));
-  drawWave(root, d.reactions, { scenes: timed(d), height: 190 });
+  drawWave(root, d.reactions, { scenes: timed(d), height: 190, signal });
   root.append(el("h3", {}, compareName(c, other)));
-  if (c.other_reactions) drawWave(root, c.other_reactions, { src: sideOf(c, other), height: 160 });
+  if (c.other_reactions) drawWave(root, c.other_reactions, { src: sideOf(c, other), height: 160, signal });
   else root.append(el("p", {}, "もう 1 本の波が見つかりません。"));
   renderMakura(root, c);
   const spots = c.spots.filter(s => s.kind !== "makura");  // 枕は話題で見せる。問いになった所は問いの欄に出る
-  const scenes = byId(d.scenes);
-  const row = s => el("div", { class: "card copy" }, el("div", { class: "card-head" }, el("span", {}, `${scenes[s.scene_id]?.title || ""}　${SPOT[s.kind] || s.kind}`), who("copy", "スクリプトの比較")), spotBody(s, c));
+  // 場面の番号は比較を作った演目のフォルダの物なので、比較に持たせた題を使う
+  const sceneTitle = id => c.scenes.find(x => x.scene_id === id)?.title || "";
+  const row = s => el("div", { class: "card copy" }, el("div", { class: "card-head" }, el("span", {}, `${sceneTitle(s.scene_id)}　${SPOT[s.kind] || s.kind}`), who("copy", "スクリプトの比較")), spotBody(s, c));
   const diff = spots.filter(s => s.kind !== "kept"), kept = spots.filter(s => s.kind === "kept");
   root.append(el("h3", {}, "違いのあった所"));
   if (!diff.length) root.append(el("p", {}, "違いのあった所はありません。"));

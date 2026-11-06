@@ -181,22 +181,27 @@ def answer(neta: store.Neta, *, question: str, speaker: str, words: str, now: st
 def edit_answer(neta: store.Neta, *, question: str, speaker: str, words: str, now: str | None = None) -> None:
     """演者が自分の答えを直す。前の言葉は型の履歴に残す。札の文は別の決定なので変えない。"""
     _required(speaker=speaker, words=words)
-    if not neta.questions.exists():
+    if not neta.questions.exists() or not neta.review.exists():
         raise PerformerError("質問がまだ無い")
     questions = store.read(neta.questions, "questions")
-    kata = store.read(neta.kata, "book")
+    review = store.read(neta.review, "review")
+    hanashi, kata = store.read(neta.hanashi, "book"), store.read(neta.kata, "book")
     q = next((x for x in questions["questions"] if x["id"] == question), None)
     if q is None or "answer" not in q:
         raise PerformerError(f"{question} に答えが無い")
     item = next((i for i in kata["items"] if i["source"].get("question_id") == question), None)
     if item is None:
         raise PerformerError(f"{question} の項目が型に無い")
-    before = q["answer"]["words"]
-    if before == words:
+    if q["answer"]["words"] == words:
         return
     at = now or _now()
-    item["text"] = item["source"]["words"] = item["reason"] = words
-    item["history"].append({"at": at, "before": before, "after": words, "by": speaker})
+    before = item["text"]
+    if before != words:  # 同じなら、途中で落ちた直しのやり直し。履歴を二重にしない
+        if item.get("reason") == before:  # 別に決めた理由は変えない
+            item["reason"] = words
+        item["text"] = item["source"]["words"] = words
+        item["history"].append({"at": at, "before": before, "after": words, "by": speaker})
     q["answer"] = {"speaker": speaker, "recorded_at": at, "words": words}
+    check_refs(hanashi, kata, review=review, questions=questions)
     store.write(neta.kata, kata, "book")  # kata → questions の順。途中で落ちても、やり直せば揃う
     store.write(neta.questions, questions, "questions")

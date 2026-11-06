@@ -103,7 +103,7 @@ def test_koza_empty_date_means_unknown(running):
 
 @pytest.mark.parametrize(
     ("when", "venue"),
-    [("2026-13-40", "会場"), ("2026-02-03", "  "), ("きのう", "会場")],
+    [("2026-13-40", "会場"), ("2026-02-03", "  "), ("きのう", "会場"), ("20260203", "会場")],
 )
 def test_koza_refuses_a_bad_date_or_an_empty_venue(running, when, venue):
     before = (running.neta.koza_dir(K) / "koza.json").read_text(encoding="utf-8")
@@ -671,3 +671,61 @@ def test_clip_does_not_leave_the_performer(running):
     query = urllib.parse.urlencode({"from": 0, "to": 1, "neta": "../..", "koza": K, "t": running.token})
     status, _ = call(running, f"/clip?{query}", headers={})
     assert status == 404
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("/api/answer", {"question": "q-0901", "speaker": "本人", "words": "言葉"}),
+        ("/api/dismiss", {"question": "q-0901", "speaker": "本人", "reason": "理由"}),
+        ("/api/edit", {"question": "q-0901", "speaker": "本人", "words": "言葉"}),
+        (
+            "/api/decide",
+            {
+                "scene": "scene-01",
+                "position": "within",
+                "speaker": "本人",
+                "words": "言葉",
+                "card": "札",
+                "why": "理由",
+            },
+        ),
+    ],
+)
+def test_a_stale_tab_cannot_write_into_the_koza_opened_elsewhere(running, path, body):
+    add_question(running)
+    neta, koza = second_koza(running)
+    assert call(running, "/api/open", {"neta": neta, "koza": koza})[0] == 200
+    before = [p.read_bytes() for p in sorted(running.neta.base.parent.rglob("*.json"))]
+    status, data = call(running, path, {**body, "neta": N, "koza": K})
+    assert status == 400 and "別の高座" in data.decode()
+    assert [p.read_bytes() for p in sorted(running.neta.base.parent.rglob("*.json"))] == before
+
+
+def test_viewer_sends_which_koza_it_shows_with_every_write():
+    html = (Path(__file__).parents[1] / "viewer" / "index.html").read_text(encoding="utf-8")
+    assert "JSON.stringify({ neta: NETA, koza: KOZA, ...body })" in html
+
+
+def test_edit_keeps_a_reason_decided_separately(running):
+    answered(running)
+    kata = store.read(running.neta.kata, "book")
+    item = next(i for i in kata["items"] if i["source"].get("question_id") == "q-0901")
+    item["reason"] = "別に決めた理由"
+    store.write(running.neta.kata, kata, "book")
+    performer.edit_answer(running.neta, question="q-0901", speaker="本人", words="直した言葉")
+    items = store.read(running.neta.kata, "book")["items"]
+    assert next(i for i in items if i["id"] == item["id"])["reason"] == "別に決めた理由"
+
+
+def test_edit_retried_after_a_crash_does_not_double_the_history(running):
+    answered(running)
+    saved = running.neta.questions.read_bytes()
+    performer.edit_answer(running.neta, question="q-0901", speaker="本人", words="直した言葉")
+    running.neta.questions.write_bytes(saved)  # 型を書いた後、問いを書く前に落ちた
+    performer.edit_answer(running.neta, question="q-0901", speaker="本人", words="直した言葉")
+    items = store.read(running.neta.kata, "book")["items"]
+    item = next(i for i in items if i["source"].get("question_id") == "q-0901")
+    assert [h["after"] for h in item["history"]] == ["前の言葉", "直した言葉"]
+    q = next(x for x in store.read(running.neta.questions, "questions")["questions"] if x["id"] == "q-0901")
+    assert q["answer"]["words"] == "直した言葉"
