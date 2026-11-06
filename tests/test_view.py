@@ -432,18 +432,18 @@ def test_screen_data_does_not_change_the_saved_books(tmp_path):
 
 
 LINES = {
-    "seg-0001": {"raw": "反対に3問、損してしまうという話。", "text": "反対に三文、損してしまうという話。"},
-    "seg-0002": {"raw": "見能に家立てたんで", "text": "箕面に家建てたんで"},
+    "seg-0001": {"raw": "裏の池に2匹、逃がしてしまうという話。", "text": "裏の池に二匹、逃がしてしまうという話。"},
+    "seg-0002": {"raw": "物星に屋根つけたんで", "text": "物干しに屋根付けたんで"},
 }
 
 
 def test_clean_quotes_shows_part_of_a_line_in_the_clean_copy():
-    note = "「反対に3問、損してしまう」の後は、反応候補が小さい方です。"
-    assert view.clean_quotes(note, LINES) == "「反対に三文、損してしまう」の後は、反応候補が小さい方です。"
+    note = "「裏の池に2匹、逃がしてしまう」の後は、反応候補が小さい方です。"
+    assert view.clean_quotes(note, LINES) == "「裏の池に二匹、逃がしてしまう」の後は、反応候補が小さい方です。"
 
 
 def test_clean_quotes_shows_a_whole_line_in_the_clean_copy():
-    assert view.clean_quotes("「見能に家立てたんで」の後", LINES) == "「箕面に家建てたんで」の後"
+    assert view.clean_quotes("「物星に屋根つけたんで」の後", LINES) == "「物干しに屋根付けたんで」の後"
 
 
 def test_clean_quotes_leaves_what_it_cannot_find():
@@ -452,21 +452,21 @@ def test_clean_quotes_leaves_what_it_cannot_find():
 
 
 def test_clean_notes_keeps_notes_without_text_and_without_clean_copy():
-    doc = {"candidates": [{"id": "c-1"}, {"id": "c-2", "note": "「見能に家立てたんで」の後"}]}
+    doc = {"candidates": [{"id": "c-1"}, {"id": "c-2", "note": "「物星に屋根つけたんで」の後"}]}
     shown = view.clean_notes(doc, LINES)
     assert shown["candidates"][0] == {"id": "c-1"}
-    assert shown["candidates"][1]["note"] == "「箕面に家建てたんで」の後"
-    assert doc["candidates"][1]["note"] == "「見能に家立てたんで」の後"  # 正本は変えない
+    assert shown["candidates"][1]["note"] == "「物干しに屋根付けたんで」の後"
+    assert doc["candidates"][1]["note"] == "「物星に屋根つけたんで」の後"  # 正本は変えない
     assert view.clean_notes(doc, {}) is doc
 
 
 def test_book_items_do_not_touch_the_words_of_the_performer():
     book = {
         "items": [
-            {"id": "i-1", "text": "「見能に家立てたんで」が受ける", "edited_by": "tool", "source": {}},
-            {"id": "i-2", "text": "「見能に家立てたんで」は演者の字", "edited_by": "performer", "source": {}},
+            {"id": "i-1", "text": "「物星に屋根つけたんで」が受ける", "edited_by": "tool", "source": {}},
+            {"id": "i-2", "text": "「物星に屋根つけたんで」は演者の字", "edited_by": "performer", "source": {}},
         ]
     }
     rows = view.book_items(book, {}, K, {"segments": []}, LINES)
-    assert rows[0]["text"] == "「箕面に家建てたんで」が受ける"
-    assert rows[1]["text"] == "「見能に家立てたんで」は演者の字"
+    assert rows[0]["text"] == "「物干しに屋根付けたんで」が受ける"
+    assert rows[1]["text"] == "「物星に屋根つけたんで」は演者の字"
