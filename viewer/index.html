@@ -299,8 +299,8 @@ function spotBody(s, c) {
 function renderMakura(root, c) {
   if (!c.makura?.length) return;
   root.append(el("h2", {}, "枕の話題"));
-  root.append(el("div", { class: "notice" }, "枕は会ごとに変わるので、台詞ではなく話題で比べています。話題と「噺の下地」は Claude の読みで、位置と笑いの山の数は録音からの実測です。"));
-  const cell = row => el("td", {}, !row ? "なし" : `${clock(row.t)}〜${clock(row.end)}${row.humps === null ? "" : `（山 ${row.humps}）`}`);
+  root.append(el("div", { class: "notice" }, "枕は会ごとに変わるので、台詞ではなく話題で比べています。話題と「噺の下地」は Claude の読みで、位置と検出した笑いの山の数は録音からの実測です。山 0 は検出できなかったという意味で、反応の有無は言えません。"));
+  const cell = row => el("td", {}, !row ? "なし" : `${clock(row.t)}〜${clock(row.end)}${row.humps === null ? "" : `（検出した山 ${row.humps}）`}`);
   const head = el("tr", {}, ...["話題", "噺の下地", c.koza_a, c.koza_b].map(t => el("th", {}, t)));
   const rows = c.makura.map(x => el("tr", {}, el("td", {}, x.topic), el("td", {}, x.prepares ? "下地" : ""), cell(x.a), cell(x.b)));
   root.append(el("table", {}, head, ...rows));
