@@ -324,13 +324,9 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "koza": store.read(kdir / "koza.json", "koza"),
         "reactions": reactions,
         "laugh_lines": laugh_lines(reactions, transcript, lines),
-<<<<<<< HEAD
         "neta": neta.neta,
         "kozas": koza_list(neta),
-        "candidates": _optional(kdir / "note_candidates.json", "note_candidates"),
-=======
         "candidates": clean_notes(_optional(kdir / "note_candidates.json", "note_candidates"), lines),
->>>>>>> 60-ledger-ui
         "gaps": cleaned,
         "seisho": clean,
         "note": note.read_text(encoding="utf-8") if note.exists() else None,
