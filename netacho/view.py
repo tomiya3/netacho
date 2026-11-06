@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import shutil
@@ -135,6 +136,43 @@ def readable_question(question: str | None, before: str) -> str:
     return gaps.FALLBACK_QUESTION
 
 
+def _clean_fragment(quote: str, raw: str, text: str) -> str:
+    """文字起こしの 1 行の一部 `quote` に当たる、清書の部分を返す。"""
+    start = raw.find(quote)
+    end = start + len(quote)
+    head = tail = None
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, raw, text, autojunk=False).get_opcodes():
+        if head is None and i1 <= start < i2:
+            head = j1 + (start - i1) if tag == "equal" else j1
+        if i1 < end <= i2:
+            tail = j1 + (end - i1) if tag == "equal" else j2
+    return text[head:tail] if head is not None and tail is not None else quote
+
+
+def clean_quotes(text: str, lines: dict) -> str:
+    """Claude が文字起こしから引いた「」の中を、清書の字にする。見せる時だけで、正本は変えない。"""
+
+    def swap(match: re.Match) -> str:
+        quote = match[1]
+        for row in lines.values():
+            if quote in row["raw"]:
+                return f"「{_clean_fragment(quote, row['raw'], row['text'])}」"
+        return match[0]
+
+    return re.sub(r"「([^「」]+)」", swap, text)
+
+
+def clean_notes(candidates: dict | None, lines: dict) -> dict | None:
+    """ノートの文の引用を、清書の字で見せる。ノート役は文字起こしを読んで書くので。"""
+    if not candidates or not lines:
+        return candidates
+    rows = [
+        {**c, "note": clean_quotes(c["note"], lines)} if c.get("note") else c
+        for c in candidates["candidates"]
+    ]
+    return {**candidates, "candidates": rows}
+
+
 def clean_gaps(gaps_doc: dict | None, transcript: dict, lines: dict) -> dict | None:
     """読めなかった笑いの問いと直前の台詞を、清書で見せる。"""
     if not gaps_doc or not lines:
@@ -173,6 +211,15 @@ def clean_review(review: dict | None, questions: dict | None, shown: dict | None
     return {**review, "issues": rows}
 
 
+def _run_title(kdir: Path) -> str | None:
+    """清書のときに渡した演目の題。形が古くても、高座を一覧から落とさないように検証しない。"""
+    try:
+        run = json.loads((kdir / "run.json").read_text(encoding="utf-8"))
+        return (run.get("seisho") or {}).get("title")
+    except (OSError, ValueError):
+        return None
+
+
 def koza_list(neta: store.Neta) -> list[dict]:
     """この演者の高座の一覧。新しい順。作りかけの高座は読み飛ばす。"""
     rows = []
@@ -181,7 +228,7 @@ def koza_list(neta: store.Neta) -> list[dict]:
         try:
             koza = store.read(path, "koza")
             scores = store.read(kdir / "reactions.json", "reactions").get("scores") or {}
-            run = _optional(kdir / "run.json", "run") or {}
+            title = _run_title(kdir)
             questions = _optional(other.questions, "questions") or {"questions": []}
             compared = _optional(kdir / "compare.json", "compare")
         except (ValueError, OSError):
@@ -191,7 +238,7 @@ def koza_list(neta: store.Neta) -> list[dict]:
             {
                 "neta": other.neta,
                 "koza_id": koza["id"],
-                "title": (run.get("seisho") or {}).get("title") or other.neta,
+                "title": title or other.neta,
                 "date": koza["date"],
                 "venue": koza["venue"],
                 "seconds": scores.get("seconds"),
@@ -248,6 +295,13 @@ def compare_view(neta: store.Neta, kdir: Path) -> dict | None:
     return {**doc, "other_reactions": _optional(other, "reactions")}
 
 
+def book_items(book: dict, lookup: dict, koza_id: str, transcript: dict, lines: dict) -> list[dict]:
+    """帳面の項目を、清書の字で見せる。演者の言葉と、照合に通らなかった保留の項目はそのまま。"""
+    rows = clean_items(_with_scene(book["items"], lookup), koza_id, transcript, lines)
+    keep = lambda i: i.get("edited_by") == "performer" or i.get("held")  # noqa: E731
+    return [i if keep(i) else {**i, "text": clean_quotes(i["text"], lines)} for i in rows]
+
+
 def payload(neta: store.Neta, koza_id: str) -> dict:
     """1 つの高座を見るのに要る物を 1 つの JSON にまとめる。"""
     kdir = neta.koza_dir(koza_id)
@@ -270,9 +324,13 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "koza": store.read(kdir / "koza.json", "koza"),
         "reactions": reactions,
         "laugh_lines": laugh_lines(reactions, transcript, lines),
+<<<<<<< HEAD
         "neta": neta.neta,
         "kozas": koza_list(neta),
         "candidates": _optional(kdir / "note_candidates.json", "note_candidates"),
+=======
+        "candidates": clean_notes(_optional(kdir / "note_candidates.json", "note_candidates"), lines),
+>>>>>>> 60-ledger-ui
         "gaps": cleaned,
         "seisho": clean,
         "note": note.read_text(encoding="utf-8") if note.exists() else None,
@@ -282,8 +340,8 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
             _optional(kdir / "timeline.json", "timeline"),
         ),
         "characters": hanashi["characters"],
-        "hanashi": clean_items(_with_scene(hanashi["items"], lookup), koza_id, transcript or empty, lines),
-        "kata": clean_items(_with_scene(kata["items"], lookup), koza_id, transcript or empty, lines),
+        "hanashi": book_items(hanashi, lookup, koza_id, transcript or empty, lines),
+        "kata": book_items(kata, lookup, koza_id, transcript or empty, lines),
         "guide": _optional(neta.guide, "guide"),
         "review": clean_review(_optional(neta.review, "review"), questions, shown),
         "questions": shown,
