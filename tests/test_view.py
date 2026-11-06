@@ -145,6 +145,53 @@ def test_html_keeps_tab_ids_for_the_screen_recording():
     assert '"答える"' in HTML
 
 
+def test_html_plays_only_items_of_this_koza():
+    """型と噺は演目全体の物。別の高座の時刻で、この高座の録音を鳴らさない。"""
+    assert "i?.source?.koza_id === KOZA" in HTML
+    assert "here(i) ?" in HTML and "here(item) ?" in HTML
+
+
+def test_html_asks_who_writes_before_saving():
+    """代筆が「本人」で残らないように、書く人に既定を置かない。"""
+    assert 'localStorage.getItem("netacho-speaker") || "";' in HTML
+    assert "if (!body.speaker)" in HTML
+
+
+def test_html_resets_the_player_when_the_clip_ends():
+    assert "audio.onended = stop" in HTML
+
+
+def test_laugh_lines_use_the_line_before_the_laugh():
+    transcript = {
+        "segments": [
+            {"id": "seg-0001", "start": 1.0, "end": 2.0, "text": "前の行"},
+            {"id": "seg-0002", "start": 3.0, "end": 4.0, "text": "落ちの行"},
+            {"id": "seg-0003", "start": 5.0, "end": 6.0, "text": "後の行"},
+        ]
+    }
+    reactions = {
+        "reactions": [
+            {"id": "r-1", "t0": 4.5, "kind": "laugh"},
+            {"id": "r-2", "t0": 4.5, "kind": "applause"},
+            {"id": "r-3", "t0": 0.5, "kind": "laugh"},
+        ]
+    }
+    lines = {"seg-0002": {"text": "清書の落ち", "speaker": "男"}}
+    assert view.laugh_lines(reactions, transcript, lines) == {"r-1": {"text": "清書の落ち", "speaker": "男"}}
+    assert view.laugh_lines(reactions, None, lines) == {}
+
+
+def test_laugh_lines_skip_a_short_backchannel():
+    transcript = {
+        "segments": [
+            {"id": "seg-0001", "start": 1.0, "end": 2.0, "text": "仕込みの台詞です"},
+            {"id": "seg-0002", "start": 3.0, "end": 4.0, "text": "ん"},
+        ]
+    }
+    reactions = {"reactions": [{"id": "r-1", "t0": 4.5, "kind": "laugh"}]}
+    assert view.laugh_lines(reactions, transcript, {})["r-1"]["text"] == "仕込みの台詞です"
+
+
 def test_scene_times_come_from_this_koza(doc):
     timed = [s for s in doc["scenes"] if "t0" in s]
     assert timed
@@ -170,6 +217,8 @@ def test_scene_times_leave_scenes_of_other_koza_alone():
         {"id": "scene-02"},
     ]
     assert view.scene_times(scenes, None, timeline) == scenes
+    assert view.scene_times(scenes, transcript, None) == scenes
+    assert view.scene_times(scenes, {"segments": []}, timeline) == scenes
 
 
 def test_html_does_not_say_no_reaction():

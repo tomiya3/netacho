@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "out" / "view"
 VIEWER = ROOT / "viewer" / "index.html"
 PLACE_BEFORE, PLACE_AFTER = 15.0, 3.0  # 問いの前後に見せる台詞の範囲。秒
+LINE_MIN, LINE_BACK = 4, 3  # 笑いの一覧の台詞。これより短い相づちなら、この行数までさかのぼる
 
 
 def _optional(path: Path, schema: str) -> dict | None:
@@ -172,6 +173,25 @@ def clean_review(review: dict | None, questions: dict | None, shown: dict | None
     return {**review, "issues": rows}
 
 
+def laugh_lines(reactions: dict, transcript: dict | None, lines: dict) -> dict:
+    """笑いごとの、直前の台詞。清書があれば清書で。波の下の一覧で「ここで受けた」を見せる。"""
+    if not transcript:
+        return {}
+    segs = sorted((s for s in transcript["segments"] if s["text"].strip()), key=lambda s: s["start"])
+    found = {}
+    for r in reactions["reactions"]:
+        before = [s for s in segs if s["start"] < r["t0"]]
+        if r["kind"] != "laugh" or not before:
+            continue
+        rows = [
+            (lines.get(s["id"], {}).get("text", s["text"]).strip(), lines.get(s["id"], {}).get("speaker"))
+            for s in before[-LINE_BACK:]
+        ]
+        text, speaker = next((row for row in reversed(rows) if len(row[0]) >= LINE_MIN), rows[-1])
+        found[r["id"]] = {"text": text, "speaker": speaker}
+    return found
+
+
 def scene_times(scenes: list[dict], transcript: dict | None, timeline: dict | None) -> list[dict]:
     """場面に、この高座の中の時刻を付ける。波の帯に使う。この高座に無い場面は時刻なしのまま。"""
     if not transcript or not timeline:
@@ -212,9 +232,11 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
     empty = {"segments": []}
     cleaned = clean_gaps(gaps_doc, transcript or empty, lines)
     shown = clean_questions(questions, cleaned if lines else None)
+    reactions = store.read(kdir / "reactions.json", "reactions")
     return {
         "koza": store.read(kdir / "koza.json", "koza"),
-        "reactions": store.read(kdir / "reactions.json", "reactions"),
+        "reactions": reactions,
+        "laugh_lines": laugh_lines(reactions, transcript, lines),
         "candidates": _optional(kdir / "note_candidates.json", "note_candidates"),
         "gaps": cleaned,
         "seisho": clean,
