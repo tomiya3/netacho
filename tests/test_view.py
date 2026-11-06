@@ -475,6 +475,27 @@ def test_clean_quotes_shows_a_whole_line_in_the_clean_copy():
     assert view.clean_quotes("「物星に屋根つけた」の後", LINES) == "「物干しに屋根付けた」の後"
 
 
+def test_clean_quotes_leaves_a_quote_found_in_lines_with_different_clean_text():
+    lines = {
+        "seg-0001": {"raw": "ええ行こか", "text": "ええ、行こか"},
+        "seg-0002": {"raw": "ええわ帰ろ", "text": "いや、帰ろ"},
+    }
+    assert view.clean_quotes("「ええ」の後", lines) == "「ええ」の後"
+
+
+def test_clean_quotes_uses_the_clean_text_when_every_line_agrees():
+    lines = {
+        "seg-0001": {"raw": "物星に屋根", "text": "物干しに屋根"},
+        "seg-0002": {"raw": "また物星に屋根", "text": "また物干しに屋根"},
+    }
+    assert view.clean_quotes("「物星に屋根」の後", lines) == "「物干しに屋根」の後"
+
+
+def test_clean_quotes_does_not_leave_empty_brackets():
+    lines = {"seg-0001": {"raw": "あのーええ話や", "text": "ええ話や"}}
+    assert view.clean_quotes("「あのー」の後", lines) == "「あのー」の後"
+
+
 def test_clean_quotes_leaves_what_it_cannot_find():
     assert view.clean_quotes("「どこにも無い台詞」の後", LINES) == "「どこにも無い台詞」の後"
     assert view.clean_quotes("引用の無い文", LINES) == "引用の無い文"
