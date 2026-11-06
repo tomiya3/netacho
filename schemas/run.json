@@ -373,6 +373,16 @@
           "type": "string",
           "minLength": 1,
           "description": "清書に渡した演目の題"
+        },
+        "terms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "語の表の語の数"
+        },
+        "terms_dropped": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "文字起こしに無く落とした語の数"
         }
       }
     },
@@ -417,7 +427,7 @@
         "cut": {
           "type": "integer",
           "minimum": 0,
-          "description": "上限を超えて聞き役に見せなかった所の数"
+          "description": "上限を超えて聞き役に見せなかった所の数。古いファイルだけにある"
         }
       },
       "description": "2 本の比較の実測"

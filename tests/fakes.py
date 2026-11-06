@@ -20,11 +20,13 @@ class _Stream:
 
 NO_ISSUES = {"schema_version": 1, "issues": []}
 NO_NOTES = {"schema_version": 1, "notes": []}
+NO_TERMS = {"schema_version": 1, "terms": []}
 ROLE_MARKS = {
     "構成作家役": "writer",
     "照合役": "checker",
     "ノート役": "noter",
     "弟子役": "deshi",
+    "語の表役": "lexicon",
     "速記役": "scribe",
     "聞き役": "asker",
     "対応づけ役": "aligner",
@@ -36,6 +38,7 @@ class ScriptedClient:
         self.replies = {role: list(r) for role, r in replies.items()}
         self.replies.setdefault("deshi", [NO_ISSUES] * 4)  # 指摘なしが既定
         self.replies.setdefault("noter", [NO_NOTES] * 4)
+        self.replies.setdefault("lexicon", [NO_TERMS] * 4)
         self.calls = {role: [] for role in ROLE_MARKS.values()}
         self.messages = self
 

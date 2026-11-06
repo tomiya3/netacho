@@ -1,5 +1,10 @@
 {
   "schema_version": 1,
+  "makura": {
+    "a_last": null,
+    "b_last": null,
+    "topics": []
+  },
   "passages": [
     {
       "relation": "same",

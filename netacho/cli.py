@@ -247,6 +247,9 @@ def cmd_compare(args: argparse.Namespace) -> None:
     elif not doc["laughs_compared"]:
         print("笑いの山かスコアが無いので、笑いは比べていません")
     print(f"所 {len(doc['spots'])}、種類ごと {doc['counts']}")
+    if doc["makura"]:
+        names = [f"{'（下地）' if x['prepares'] else ''}{x['topic']}" for x in doc["makura"]]
+        print(f"枕の話題 {len(names)}：{'、'.join(names)}")
     skipped = [s["title"] or s["scene_id"] for s in doc["scenes"] if not s["compared"]]
     if skipped:
         print(f"揃わず比べなかった場面：{'、'.join(skipped)}")
@@ -316,10 +319,17 @@ def cmd_seisho(args: argparse.Namespace) -> None:
     client = runner.make_client()
     title = _title(args.title)
     doc = pipeline.clean_copy(
-        args.performer, args.neta, args.koza, client=client, reuse=args.reuse, title=title
+        args.performer,
+        args.neta,
+        args.koza,
+        client=client,
+        reuse=args.reuse,
+        title=title,
+        terms=[w.strip() for w in re.split("[,、]", args.terms or "") if w.strip()],
     )
     s = doc["seisho"]
     print(f"清書 {s['lines']} 行、直した行 {s['changed']}、大きく直した行 {s['heavy']}")
+    print(f"語の表 {s['terms']} 語、文字起こしに無く落とした語 {s['terms_dropped']}")
     print(f"原文に戻した行 {s['kept_raw']}、抜け {s['missing']}、重複 {s['duplicate']}")
     if s["missing"] or s["duplicate"] or s["extra"] or s["unknown_speaker"]:
         print(
@@ -473,6 +483,7 @@ def build_parser() -> argparse.ArgumentParser:
     clean.add_argument(
         "--title", help="演目の題（漢字）。無いとフォルダの名前を渡すので、聞き違いが残りやすい"
     )
+    clean.add_argument("--terms", help="演者から聞いた語をカンマ区切りで。会場の地名、人の名前など")
     clean.add_argument("--reuse", action="store_true")
     clean.set_defaults(func=cmd_seisho)
 

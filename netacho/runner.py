@@ -28,6 +28,7 @@ ROLES = {
     "checker": (SONNET, "medium", 8000),
     "noter": (SONNET, "medium", 4000),
     "deshi": (OPUS, "high", 8000),
+    "lexicon": (OPUS, "high", 8000),
     "scribe": (OPUS, "high", 32000),
     "aligner": (OPUS, "high", 32000),
     "asker": (OPUS, "high", 16000),
