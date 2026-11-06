@@ -21,6 +21,7 @@ FILES = {
     BASE / "drafts" / "checker.json": "checker",
     BASE / "drafts" / "noter.json": "noter",
     BASE / "drafts" / "deshi.json": "deshi",
+    BASE / "drafts" / "lexicon.json": "lexicon",
     BASE / "drafts" / "scribe.json": "scribe",
     BASE / "drafts" / "asker.json": "asker",
     BASE / "drafts" / "aligner.json": "aligner",
@@ -34,7 +35,7 @@ FILES = {
     KOZA / "compare.json": "compare",
     KOZA / "run.json": "run",
 }
-ROLE_SCHEMAS = ["writer", "checker", "noter", "deshi", "scribe", "asker", "aligner"]
+ROLE_SCHEMAS = ["writer", "checker", "noter", "deshi", "lexicon", "scribe", "asker", "aligner"]
 
 
 def _load(path: Path) -> dict:

@@ -6,11 +6,87 @@
   "additionalProperties": false,
   "required": [
     "schema_version",
+    "makura",
     "passages"
   ],
   "properties": {
     "schema_version": {
       "const": 1
+    },
+    "makura": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "a_last",
+        "b_last",
+        "topics"
+      ],
+      "description": "噺に入る前。行どうしは比べず、話題で読む",
+      "properties": {
+        "a_last": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "1 本目の枕の最後の行。枕が無ければ null"
+        },
+        "b_last": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "2 本目の枕の最後の行。枕が無ければ null"
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "topic",
+              "prepares",
+              "a_first",
+              "a_last",
+              "b_first",
+              "b_last"
+            ],
+            "properties": {
+              "topic": {
+                "type": "string",
+                "minLength": 1
+              },
+              "prepares": {
+                "type": "boolean",
+                "description": "今からやる噺の下地か"
+              },
+              "a_first": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "a_last": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "b_first": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "b_last": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
     },
     "passages": {
       "type": "array",

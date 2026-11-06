@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "lexicon",
+  "description": "語の表役の出力。高座全体を読んで分かった語",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "terms"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "heard",
+          "word"
+        ],
+        "properties": {
+          "heard": {
+            "type": "string",
+            "minLength": 1,
+            "description": "文字起こしに出てくる字のまま"
+          },
+          "word": {
+            "type": "string",
+            "minLength": 1,
+            "description": "正しい語"
+          }
+        }
+      }
+    }
+  }
+}

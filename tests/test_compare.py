@@ -37,6 +37,9 @@ def side(koza, texts, humps, *, step=10.0, pauses=None):
     return compare.Side(koza, rows, humps, silences)
 
 
+NO_MAKURA = {"a_last": None, "b_last": None, "topics": []}
+
+
 def seg(n):
     return f"seg-{n:04d}"
 
@@ -167,7 +170,7 @@ def test_words_changed_without_a_laugh_is_shown_not_asked():
     d = draft(row("same", (0, 3), (0, 3)), row("changed", (4, 7), (4, 7)))
     found = spots(side("a", LINES, MANY[:1]), side("b", LINES, MANY[:1]), d)
     assert [s["kind"] for s in found if s["laugh_a"] is None] == ["changed"]
-    assert all(s["kind"] != "changed" for s in compare.candidates(found, 60)[0])
+    assert all(s["kind"] != "changed" for s in compare.candidates(found))
 
 
 def test_stories_that_do_not_correspond_are_not_compared():
@@ -231,15 +234,12 @@ def make_spot(n, laugh=True):
 
 def test_candidates_are_every_laugh_not_the_earliest_ones():
     rows = [make_spot(n) for n in range(38)] + [make_spot(99, laugh=False)]
-    assert compare.candidates(rows, 60) == (rows[:38], 0)
+    assert compare.candidates(rows) == rows[:38]
 
 
-def test_too_many_candidates_are_spread_and_counted():
-    """上限で切っても、後半が丸ごと落ちない。切った数は残す。"""
-    rows = [make_spot(n) for n in range(100)]
-    picked, cut = compare.candidates(rows, 10)
-    assert len(picked) == 10 and cut == 90
-    assert picked[-1]["id"] == "spot-0090"
+def test_many_candidates_are_all_read():
+    rows = [{"laugh_a": float(n), "laugh_b": None} for n in range(100)]
+    assert compare.candidates(rows) == rows
 
 
 def test_slow_recording_does_not_make_everything_moved():
@@ -297,6 +297,128 @@ def test_long_passage_shows_only_the_lines_around_the_place():
     assert any(r["seg_id"] == seg(50) for r in rows)
 
 
+def makura_draft():
+    """seg-0000 から 3 までが枕。1 本目の話題の片方は 2 本目にも同じ話題がある。"""
+    topics = [
+        {"topic": "近況", "prepares": False, **topic_row((0, 1), None)},
+        {"topic": "噺の説明", "prepares": True, **topic_row((2, 3), (0, 1))},
+    ]
+    return {
+        "schema_version": 1,
+        "makura": {"a_last": seg(3), "b_last": seg(1), "topics": topics},
+        "passages": [row("same", (4, 7), (2, 5))],
+    }
+
+
+def topic_row(a, b):
+    return {
+        "a_first": seg(a[0]) if a else None,
+        "a_last": seg(a[1]) if a else None,
+        "b_first": seg(b[0]) if b else None,
+        "b_last": seg(b[1]) if b else None,
+    }
+
+
+def test_makura_is_read_by_topic_not_line_by_line():
+    a = side("a", LINES, [12.0, 25.0, 45.0])
+    b = side("b", LINES[2:], [15.0])
+    doc = compare.compare(a, b, makura_draft(), {"scene-01": "場面"})
+    assert doc["share"] == 1.0  # 枕の違いで割合を下げない
+    near = [s for s in doc["spots"] if s["kind"] == "makura"]
+    assert [s["laugh_a"] for s in near] == [12.0, 25.0]
+    assert near[0]["span_b"] is None and near[1]["span_b"] == [0, 1]  # 同じ話題の時だけ 2 本目の行がある
+    assert all(s["b"] is None for s in near)
+    first, second = doc["makura"]
+    assert (first["topic"], first["prepares"], first["a"]["humps"], first["b"]) == ("近況", False, 1, None)
+    assert (second["prepares"], second["a"]["humps"], second["b"]["humps"]) == (True, 1, 1)
+
+
+def test_passage_inside_makura_is_dropped():
+    bad = makura_draft()
+    bad["passages"].insert(0, row("same", (2, 3), (0, 1)))
+    doc = compare.compare(side("a", LINES, []), side("b", LINES[2:], []), bad, {})
+    assert doc["dropped"] == 1 and doc["passages"]["same"] == 1
+
+
+def test_topic_outside_makura_or_missing_is_dropped():
+    bad = makura_draft()
+    bad["makura"]["topics"].append({"topic": "外", "prepares": False, **topic_row((5, 6), None)})
+    bad["makura"]["topics"].append({"topic": "無い", "prepares": False, **topic_row((90, 91), None)})
+    doc = compare.compare(side("a", LINES, []), side("b", LINES[2:], []), bad, {})
+    assert doc["dropped"] == 2 and [x["topic"] for x in doc["makura"]] == ["近況", "噺の説明"]
+
+
+def test_unknown_end_of_makura_counts_as_dropped_and_compares_all():
+    bad = makura_draft()
+    bad["makura"]["a_last"] = "seg-9999"
+    doc = compare.compare(side("a", LINES, []), side("b", LINES[2:], []), bad, {})
+    assert doc["dropped"] >= 1 and all(x["a"] is None for x in doc["makura"])
+
+
+def test_makura_scene_is_not_listed_as_uncompared():
+    a = side("a", LINES, [])
+    for line in a.lines[:4]:
+        line["scene_id"] = "scene-00"
+    doc = compare.compare(a, side("b", LINES[2:], []), makura_draft(), {"scene-00": "枕", "scene-01": "噺"})
+    assert [s["title"] for s in doc["scenes"]] == ["噺"]
+
+
+def test_makura_spot_keeps_its_kind_and_cannot_ask_of_pauses():
+    a, b = side("a", LINES, [12.0]), side("b", LINES[2:], [])
+    spot = next(s for s in compare.compare(a, b, makura_draft(), {})["spots"] if s["kind"] == "makura")
+    shown = compare.context_rows(spot, a, b)
+    row = {"a_seg": seg(1), "b_seg": None, "relation": "none", "text": "どこでも使う話ですか？"}
+    assert compare.settle(spot, row, a, b, shown)["kind"] == "makura"
+    assert compare.settle(spot, {**row, "text": "この間はわざとですか？"}, a, b, shown) is None
+
+
+def test_makura_gets_one_question_at_most(tmp_path):
+    root, neta = two_books(tmp_path)
+    head = {
+        "schema_version": 1,
+        "makura": {
+            "a_last": "seg-0004",
+            "b_last": "seg-0004",
+            "topics": [
+                {
+                    "topic": "近況",
+                    "prepares": False,
+                    **{
+                        k: f"seg-000{n}"
+                        for k, n in zip(("a_first", "a_last", "b_first", "b_last"), (1, 4, 1, 4), strict=True)
+                    },
+                }
+            ],
+        },
+        "passages": [dict(ALIGN["passages"][0], a_first="seg-0005", b_first="seg-0005")],
+    }
+
+    def reply(kw):
+        rows = [r for r in json.loads(text_of(kw)) if r["kind"] == "makura"]
+        assert rows, "枕の笑いが聞き役に届いていない"
+        pick = rows[0]
+        questions = [
+            {
+                "spot_id": pick["spot_id"],
+                "a_seg": pick["lines_a"][-1]["seg_id"],
+                "b_seg": None,
+                "relation": "none",
+                "text": f"どこでも使う話ですか{'？' * n}",
+            }
+            for n in (1, 2)
+        ]
+        return json.dumps({"schema_version": 1, "questions": questions}, ensure_ascii=False)
+
+    for kdir in (neta.koza_dir(K1), neta.koza_dir(K2)):
+        doc = store.read(kdir / "reactions.json", "reactions")
+        doc["scores"]["laugh"][8] = 0.0
+        doc["scores"]["laugh"][1] = 0.2
+        store.write(kdir / "reactions.json", doc, "reactions")
+    run(root, client_of(reply, aligner=head), tmp_path)
+    asked = [q for q in store.read(neta.questions, "questions")["questions"] if "spot_id" in q]
+    assert len(asked) == 1
+
+
 @pytest.mark.parametrize("value", ["", "。、 "])
 def test_plain_drops_marks(value):
     assert compare.plain(value) == ""
@@ -338,6 +460,7 @@ def two_books(tmp_path, *, change=None, other_neta=None):
 
 ALIGN = {
     "schema_version": 1,
+    "makura": NO_MAKURA,
     "passages": [
         {
             "relation": "same",
@@ -597,6 +720,7 @@ def test_failed_comparison_keeps_what_the_answers_point_at(tmp_path):
     performer.answer(neta, question=first["id"], speaker="本人", words="わざとです")
     apart = {
         "schema_version": 1,
+        "makura": NO_MAKURA,
         "passages": [
             {
                 "relation": "only_a",
@@ -619,6 +743,7 @@ def test_an_answered_place_stays_when_a_rerun_no_longer_finds_it(tmp_path):
     performer.answer(neta, question=first["id"], speaker="本人", words="わざとです")
     other = {
         "schema_version": 1,
+        "makura": NO_MAKURA,
         "passages": [
             {
                 "relation": "same",
@@ -740,6 +865,7 @@ def test_stories_that_do_not_correspond_ask_nothing(tmp_path):
     root, neta = two_books(tmp_path)
     apart = {
         "schema_version": 1,
+        "makura": NO_MAKURA,
         "passages": [
             {
                 "relation": "only_a",
@@ -807,6 +933,7 @@ def test_failed_comparison_drops_open_questions_from_before(tmp_path):
     run(root, client_of(answer_all), tmp_path)
     apart = {
         "schema_version": 1,
+        "makura": NO_MAKURA,
         "passages": [
             {
                 "relation": "only_a",

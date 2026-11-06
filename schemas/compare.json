@@ -42,7 +42,7 @@
       "type": "number",
       "minimum": 0,
       "maximum": 1,
-      "description": "短いほうの文字のうち、対応の付いた割合"
+      "description": "枕を除いた短いほうの文字のうち、対応の付いた割合"
     },
     "comparable": {
       "type": "boolean",
@@ -116,7 +116,8 @@
               "words",
               "kept",
               "one_side",
-              "changed"
+              "changed",
+              "makura"
             ]
           },
           "scene_id": {
@@ -246,6 +247,97 @@
       "type": "integer",
       "minimum": 0,
       "description": "確かめて落としたくだりの数"
+    },
+    "makura": {
+      "type": "array",
+      "description": "枕の話題。話題と下地かどうかは役の読み、位置と山の数は実測。古いファイルには無い",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "topic",
+          "prepares",
+          "a",
+          "b"
+        ],
+        "properties": {
+          "topic": {
+            "type": "string",
+            "minLength": 1
+          },
+          "prepares": {
+            "type": "boolean"
+          },
+          "a": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "t",
+                  "end",
+                  "humps"
+                ],
+                "properties": {
+                  "t": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "end": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "humps": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "description": "笑いの山の数。スコアが無ければ null"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "b": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "t",
+                  "end",
+                  "humps"
+                ],
+                "properties": {
+                  "t": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "end": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "humps": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "description": "笑いの山の数。スコアが無ければ null"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
     }
   }
 }

@@ -67,6 +67,7 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 | 照合役 | `roles/checker.md` | claude-sonnet-5-5 | medium | 8000 | 項目の主張が引用で言えるかだけ判定する |
 | ノート役 | `roles/noter.md` | claude-sonnet-5-5 | medium | 4000 | スクリプトが選んだ候補を、演者向けの短い文にする |
 | 弟子役 | `roles/deshi.md` | claude-opus-5-5 | high | 8000 | 噺・型だけを読み、演れない所と本人に聞くべき所を挙げる |
+| 語の表役 | `roles/lexicon.md` | claude-opus-5-5 | high | 8000 | 高座全体を読み、聞き違えた固有の語の表を作る |
 | 速記役 | `roles/scribe.md` | claude-opus-5-5 | high | 32000 | 文字起こしの聞き違いを直し、話者を付けて清書する |
 | 対応づけ役 | `roles/aligner.md` | claude-opus-5-5 | high | 32000 | 同じ演目の 2 本の、どの台詞が同じくだりかを読む |
 | 聞き役 | `roles/asker.md` | claude-opus-5-5 | high | 16000 | 笑いの所から聞く所を選び、弟子の口調で問う |
@@ -79,7 +80,8 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 | 照合役 | 項目の文と引用だけ | transcript 全体、演目名 | `drafts/checker.json` |
 | ノート役 | 選ばれた候補、前後の引用、場面の尺 | 反応の全体、型の全文 | `drafts/noter.json` |
 | 弟子役 | 確定した噺・型の `.md` だけ | transcript、音声、反応、差し戻しの履歴 | `review/deshi.json` |
-| 速記役 | transcript、演目の題、人物 | 反応、型 | `drafts/scribe.json` |
+| 語の表役 | transcript の全文、演目の題、人物、演者から聞いた語 | 反応、型 | `drafts/lexicon.json` |
+| 速記役 | transcript、演目の題、人物、語の表、演者から聞いた語 | 反応、型 | `drafts/scribe.json` |
 | 対応づけ役 | 演目の題と、2 本の清書 | 反応、録音、型 | `drafts/aligner.json` |
 | 聞き役 | 笑いのあった所の種類と、2 本の前後の台詞、実測の間 | 録音、スコア、型の全文 | `drafts/asker.json` |
 
@@ -211,7 +213,10 @@ Messages API + structured outputs。役ごとに別の文脈で、1 つずつ順
 - 比べるのは笑いの量ではなくタイミング。スコアの大きさは使わず、各高座の中で山があるかだけを見る
 - 間は文字起こしの区間から取らず、VAD の無音から取る。前に笑いがあれば、笑いの長さが混ざるので間と言わない
 - 片方の山がごく少なければ、客のいない稽古と見て、本番の笑いを軸に比べる。「片方だけ」は出さない
-- 枕など、最初と最後の対応の外は比べない
+- 枕は会ごとに変わるので、行どうしは比べない。対応づけ役が枕の終わりと話題を読み、話題ごとに下地かどうか、2 本の位置、笑いの山の数を出す。話題と下地は役の読み、位置と山の数は実測
+- 対応の割合は枕を除いて測る
+- 枕の笑いは聞き役に全部読ませ、問いは 1 問まで。もう 1 本に無いことは聞かない
+- 噺の後など、最後の対応の外は比べない
 - もう 1 本に無いくだりの笑いは、くだりの最初の 1 件だけを問う。同じくだりで何度も聞かないため
 - 本番を 1 本目に指定する。スコアの無い高座は稽古と呼ばず、笑いを比べない
 - 種類：同じ言葉（`kept`）、来る所がずれた（`moved`）、間が違う（`ma`）、笑いの所で言葉が違う（`words`）、もう 1 本に無い言葉で笑い（`added`）、片方の録音でだけ拾えた（`one_side`）、笑いの無い所で言葉が違う（`changed`、画面だけ）
@@ -242,7 +247,7 @@ transcript に、反応の位置で印を入れた `sokki.md`。未校正と明�
 
 ### 清書
 
-速記役が聞き違いを直し、話者を付けた `seisho.md`。原文を必ず並べて残し、話者と直した語は推定と示す。全区間があることと、言い換えすぎていないことをスクリプトが確かめる。正本と札には入れない。長い高座でも切れないように、区間を分けて呼ぶ。
+速記役が聞き違いを直し、話者を付けた `seisho.md`。原文を必ず並べて残し、話者と直した語は推定と示す。全区間があることと、言い換えすぎていないことをスクリプトが確かめる。正本と札には入れない。長い高座でも切れないように、区間を分けて呼ぶ。区間を分けると、ある塊で分かった語が別の塊に届かない。だから先に語の表役が全文を読み、聞き違えた固有の語の表を作って全部の塊に渡す。表の聞こえ方の字が文字起こしに無ければ、スクリプトが落とす。表は手がかりで、同じ字でも文脈で別の語の所は直さない。演者から聞いた語は `--terms` で渡す。
 
 ## 5. 契約（schemas/）
 
@@ -318,7 +323,7 @@ netacho mark    --koza KOZA --tsv FILE                             # 手で付�
 netacho decide  --performer ID --neta 演目 --speaker S --words W --card T --why Y --scene ID [--candidate C --koza KOZA] [--position before|within|after]
 netacho answer  --performer ID --neta 演目 --question Q --speaker S --words W
 netacho reread  --performer ID --neta 演目 --koza KOZA             # 演者の判断が入った型を弟子役に読み直させる
-netacho seisho  --performer ID --neta 演目 --koza KOZA [--title 題]  # 清書（速記役）
+netacho seisho  --performer ID --neta 演目 --koza KOZA [--title 題] [--terms 語,語]  # 語の表、清書（語の表役、速記役）
 netacho guide   --performer ID --neta 演目                         # LLM 0 回
 netacho view    --performer ID --neta 演目 --koza KOZA             # out/view/ へ書き出す
 netacho compare --performer ID --neta 演目 --koza KOZA --with-koza KOZA2 [--with-neta 演目2]  # 2 本を比べて問う

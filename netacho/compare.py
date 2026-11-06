@@ -5,6 +5,7 @@
 役に笑いの位置は見せない。結果から対応を逆算させないため。
 
 比べるのは笑いの量ではなくタイミング。スコアの大きさは使わず、各高座の中で山があるかだけを見る。
+枕は会ごとに変わるので、行どうしは比べない。役の読んだ話題に、位置と笑いの山の数を付ける。
 未検出を「受けなかった」と扱わない。片方に笑いがほぼ無ければ稽古と見て、本番の笑いを軸に比べる。
 """
 
@@ -18,7 +19,7 @@ from dataclasses import dataclass, field
 from .evidence import MAX_MA_SEC
 from .reactions import laugh_humps
 
-MIN_SHARE = 0.3  # 短いほうの文字のうち、対応の付いた割合。これ未満なら比べない
+MIN_SHARE = 0.3  # 枕を除いた短いほうの文字のうち、対応の付いた割合。これ未満なら比べない
 SAME_SEC = 6.0  # くだりの頭からの秒の差がこの範囲なら、同じ所の笑い。窓の幅と刻みから
 AFTER_SEC = 4.0  # くだりの言い終わりの後、この秒までの笑いは、そのくだりの笑い
 MA_DIFF = 0.8  # 一言の前の間の差。秒
@@ -30,7 +31,7 @@ PAIR_SEC = 30.0  # もう 1 本の山と組む距離の上限。これより遠�
 LINES_B_MAX = 40  # 聞き役に見せる、もう 1 本の行の上限。長いくだりで費用が膨らまないように
 CONTEXT_BEFORE, CONTEXT_AFTER = 8, 2  # 笑いの前後に聞き役へ見せる行の数
 CONTEXT_EDGE = 3  # もう 1 本の同じくだりの前後に足す行の数
-KINDS = ("added", "moved", "words", "kept", "one_side", "ma", "changed")
+KINDS = ("added", "moved", "words", "kept", "one_side", "ma", "changed", "makura")
 # 間（ま）ではない語。「間」の字だけでは判定できない
 NOT_PAUSE = re.compile(
     r"時間|人間|仲間|合間|間違|瞬間|世間|期間|空間|間に合|昼間|夜間|年間|週間|月間|日間|民間|中間|区間|隙間|間隔|間際|間柄|間接|手間|居間|間もなく|その間"
@@ -103,11 +104,62 @@ def side_of(koza_id: str, transcript: dict, lines: dict, reactions: dict, timeli
     return Side(koza_id, rows, humps, silences_of(transcript.get("vad") or []), found is not None)
 
 
-def check_passages(draft: dict, a: Side, b: Side) -> tuple[list[dict], int]:
-    """役の対応を確かめる。(残ったくだり, 落とした数)。実在しない区間と、順番の前後した区間は落とす。"""
+def check_makura(draft: dict, a: Side, b: Side) -> tuple[int, int, list[dict], int]:
+    """役の読んだ枕を確かめる。(1 本目の最後の行, 2 本目の, 話題, 落とした数)。枕が無ければ -1。"""
+    head = draft.get("makura") or {"a_last": None, "b_last": None, "topics": []}
+    end_a, end_b = a.index.get(head["a_last"], -1), b.index.get(head["b_last"], -1)
+    dropped = sum(
+        seg is not None and seg not in side.index for seg, side in ((head["a_last"], a), (head["b_last"], b))
+    )
+    topics = []
+    for row in head["topics"]:
+        span_a = _span(a, row["a_first"], row["a_last"])
+        span_b = _span(b, row["b_first"], row["b_last"])
+        span_a = span_a if span_a and span_a[1] <= end_a else None  # 枕の外の行は話題と呼ばない
+        span_b = span_b if span_b and span_b[1] <= end_b else None
+        if span_a is None and span_b is None:
+            dropped += 1
+            continue
+        topics.append(
+            {"topic": row["topic"].strip(), "prepares": row["prepares"], "span_a": span_a, "span_b": span_b}
+        )
+    return end_a, end_b, topics, dropped
+
+
+def _topic_side(side: Side, span: tuple[int, int] | None) -> dict | None:
+    if span is None:
+        return None
+    first, last = span
+    return {
+        "t": side.lines[first]["start"],
+        "end": side.lines[last]["end"],
+        "humps": len(side.laughs_in(first, last)) if side.scored else None,  # 無ければ測っていない
+    }
+
+
+def _makura_spots(end_a: int, topics: list[dict], a: Side, b: Side) -> list[dict]:
+    """枕の笑いの所。もう 1 本に無いのは当たり前なので、言葉の差としては扱わない。"""
+    spots = []
+    for t in a.laughs_in(0, end_a):
+        i = min(a.line_at(t), end_a)
+        topic = next((x for x in topics if x["span_a"] and x["span_a"][0] <= i <= x["span_a"][1]), None)
+        span_a = topic["span_a"] if topic else (0, end_a)
+        span_b = topic["span_b"] if topic else None
+        spans = {"span_a": list(span_a), "span_b": list(span_b) if span_b else None}
+        spots.append(_spot("makura", a, i, b, None, t, None, spans))
+    return spots
+
+
+def check_passages(
+    draft: dict, a: Side, b: Side, start: tuple[int, int] = (-1, -1)
+) -> tuple[list[dict], int]:
+    """役の対応を確かめる。(残ったくだり, 落とした数)。
+
+    実在しない区間と、順番の前後した区間は落とす。`start` は枕の最後の行で、ここまでの行は対応づけない。
+    """
     kept: list[dict] = []
     dropped = 0
-    last_a = last_b = -1
+    last_a, last_b = start
     for row in draft["passages"]:
         rel = row["relation"]
         need_a, need_b = rel != "only_b", rel != "only_a"
@@ -256,11 +308,12 @@ def settle(spot: dict, row: dict, a: Side, b: Side, shown: dict) -> dict | None:
         return None
     if row["relation"] == "none" and spot.get("laugh_b") is not None:
         return None  # もう 1 本にも笑いの山があるのに「無い」とは言えない
-    ma = None if j is None else _ma(a, b, i, j)
+    makura = spot["kind"] == "makura"
+    ma = None if j is None or makura else _ma(a, b, i, j)  # 枕は別の話なので、間を比べられない
     if speaks_of_pause(row["text"]) and ma is None:
         return None
     new = {**spot, "a": _quote(a, i), "b": None if j is None else _quote(b, j)}
-    if row["relation"] == "none" or spot["kind"] in ("kept", "words", "added"):
+    if not makura and (row["relation"] == "none" or spot["kind"] in ("kept", "words", "added")):
         new["kind"] = {"same": "kept", "changed": "words", "none": "added"}[row["relation"]]
     if speaks_of_pause(row["text"]):
         new.update(kind="ma", **ma)
@@ -308,10 +361,11 @@ def is_practice(a: Side, b: Side) -> bool:
 
 def compare(a: Side, b: Side, draft: dict, titles: dict) -> dict:
     """役の対応に、録音の実測を付ける。揃わなければ `comparable` を false にして、所は出さない。"""
-    passages, dropped = check_passages(draft, a, b)
+    end_a, end_b, topics, lost = check_makura(draft, a, b)
+    passages, dropped = check_passages(draft, a, b, (end_a, end_b))
     paired = [p for p in passages if p["a"] and p["b"]]
     covered = sum(b.size(*p["b"]) for p in paired)
-    short = min(a.total, b.total)
+    short = min(a.size(end_a + 1, len(a.lines) - 1), b.size(end_b + 1, len(b.lines) - 1))
     share = round(min(covered / short, 1.0), 3) if short else 0.0
     laughs = bool(a.humps) and a.scored and b.scored
     practice = laughs and is_practice(a, b)
@@ -326,11 +380,22 @@ def compare(a: Side, b: Side, draft: dict, titles: dict) -> dict:
         "humps_a": len(a.humps),
         "humps_b": len(b.humps),
         "passages": {rel: sum(p["relation"] == rel for p in passages) for rel in RELATIONS},
-        "dropped": dropped,
+        "dropped": dropped + lost,
+        "makura": [
+            {
+                "topic": x["topic"],
+                "prepares": x["prepares"],
+                "a": _topic_side(a, x["span_a"]),
+                "b": _topic_side(b, x["span_b"]),
+            }
+            for x in topics
+        ],
     }
     if not head["comparable"]:
         return {**head, "scenes": [], "spots": [], "counts": {}}
     found: list[dict] = []
+    if head["laughs_compared"] and end_a >= 0:
+        found += _makura_spots(end_a, topics, a, b)
     # 最初と最後の対応の外は枕や結び。もう 1 本に無いのは当たり前なので、足した言葉と呼ばない
     rows = [n for n, p in enumerate(passages) if p["a"] and p["b"]]
     inside = range(rows[0], rows[-1] + 1) if rows else range(0)
@@ -355,18 +420,18 @@ def compare(a: Side, b: Side, draft: dict, titles: dict) -> dict:
     spots = [{"id": _spot_id(s), **s} for s in _unique(found)]
     return {
         **head,
-        "scenes": scene_rows(a, paired, titles),
+        "scenes": scene_rows(a, paired, titles, end_a),
         "spots": spots,
         "counts": count(spots),
     }
 
 
-def scene_rows(a: Side, paired: list[dict], titles: dict) -> list[dict]:
-    """場面ごとに、どれだけ対応が付いたかと、1 本目の尺。"""
+def scene_rows(a: Side, paired: list[dict], titles: dict, end_a: int = -1) -> list[dict]:
+    """場面ごとに、どれだけ対応が付いたかと、1 本目の尺。枕は話題で比べるので入れない。"""
     shared = {n for p in paired for n in range(p["a"][0], p["a"][1] + 1)}
     rows: dict[str, dict] = {}
     for n, line in enumerate(a.lines):
-        if line["scene_id"] is None:
+        if line["scene_id"] is None or n <= end_a:
             continue
         row = rows.setdefault(
             line["scene_id"], {"chars": 0, "shared": 0, "t0": line["start"], "t1": line["end"]}
@@ -387,13 +452,6 @@ def scene_rows(a: Side, paired: list[dict], titles: dict) -> list[dict]:
     ]
 
 
-def candidates(spots: list[dict], limit: int) -> tuple[list[dict], int]:
-    """聞き役に見せる所と、見せなかった数。笑いのあった所を全部。どれを聞くかは役に読ませる。
-
-    上限を超えたら、後半が丸ごと落ちないように、時刻の順に等しい間隔で間引く。
-    """
-    laughs = [s for s in spots if s["laugh_a"] is not None or s["laugh_b"] is not None]
-    if len(laughs) <= limit:
-        return laughs, 0
-    picked = [laughs[n * len(laughs) // limit] for n in range(limit)]
-    return picked, len(laughs) - limit
+def candidates(spots: list[dict]) -> list[dict]:
+    """聞き役に見せる所。笑いのあった所を全部。どれを聞くかは役に読ませる。"""
+    return [s for s in spots if s["laugh_a"] is not None or s["laugh_b"] is not None]

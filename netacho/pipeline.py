@@ -570,7 +570,7 @@ def note(
 
 
 COMPARE_QUESTIONS = 5  # 2 本の比較で演者に問う数。多いと答えてもらえない
-COMPARE_CANDIDATES = 60  # 聞き役に見せる所の上限。価値の判断は計算でせず、役に読ませる。費用の歯止め
+COMPARE_MAKURA = 1  # そのうち枕の問いの上限。比べる軸は噺なので
 CLEAN_MIN = 0.9  # 文字起こしの行のうち、清書で読める割合の下限
 
 
@@ -663,7 +663,7 @@ def compare_koza(
         raise store.StoreError("1 本目に笑いがほぼ無い。--koza に本番、--with-koza に稽古を指定する")
     titles = {s["id"]: s["title"] for s in ctx.hanashi["scenes"]}
     kdir = ctx.neta.koza_dir(koza_id)
-    fallback = added = skipped = cut = 0
+    fallback = added = skipped = makura = 0
     doc = {"share": None, "spots": [], "dropped": 0}  # 対応づけが落ちたら、測っていないと残す
     pair = f"（{koza_id} と {other_koza}、"
     old_spots = previous_spots(kdir / "compare.json")  # API を使う前に読む
@@ -678,7 +678,7 @@ def compare_koza(
             done = {q.get("spot_id") for q in questions["questions"] if "answer" in q or "dismissed" in q}
             # 答えた所は聞き役に見せない。また問わないし、費用も使わない
             known = [s for s in doc["spots"] if s["scene_id"] in titles and s["id"] not in done]
-            chosen, cut = compare.candidates(known, COMPARE_CANDIDATES)
+            chosen = compare.candidates(known)
             other_name = "稽古" if doc["practice"] else "もう 1 本"
             rows = ask_rows(chosen, a, b, other_name)
             content = [{"type": "text", "text": json.dumps(rows, ensure_ascii=False, indent=1)}]
@@ -717,6 +717,8 @@ def compare_koza(
                     fallback += 1  # 場所の合わない問いは出さない。所も書き換えない
                     continue
                 spot = settled
+                if spot["kind"] == "makura" and makura == COMPARE_MAKURA:
+                    continue
                 if any(abs(spot["a"]["t"] - s["a"]["t"]) < compare.SPOT_GAP for s in asked):
                     continue  # 同じ所を 2 度聞かない
                 asked.append(spot)
@@ -753,6 +755,7 @@ def compare_koza(
                     }
                 )
                 n_issue, n_q, added = n_issue + 1, n_q + 1, added + 1
+                makura += spot["kind"] == "makura"
             doc["counts"] = compare.count(doc["spots"])  # 聞き役の決めた種類で数え直す
             # 先に書く。落ちても、指す先の無い問いを残さない
             store.write(kdir / "compare.json", doc, "compare")
@@ -773,7 +776,6 @@ def compare_koza(
             "fallback": fallback,
             "skipped": skipped,
             "dropped": doc["dropped"],
-            "cut": cut,
         }
         store.write(kdir / "run.json", ctx.usage.to_json(), "run")
     return doc
@@ -782,12 +784,47 @@ def compare_koza(
 SCRIBE_CHUNK = 120  # 1 回に渡す区間の数。40 分の高座でも切れない長さ。暫定
 
 
-def scribe_content(ctx: Context, segments: list[dict], title: str | None = None) -> list[dict]:
-    """速記役に見せる物：文字起こし、演目の題、人物の名前。反応は見せない。
+def lexicon_content(ctx: Context, segments: list[dict], title: str | None, terms: list[str]) -> list[dict]:
+    """語の表役に見せる物：文字起こしの全文、演目の題、人物の名前、演者から聞いた語。反応は見せない。"""
+    head = {"演目": title or ctx.koza["neta"], "人物": [c["name"] for c in ctx.hanashi["characters"]]}
+    if terms:
+        head["演者から聞いた語"] = terms
+    lines = [s["text"].strip() for s in segments if s["text"].strip()]
+    return [
+        {"type": "text", "text": json.dumps(head, ensure_ascii=False, indent=1)},
+        {"type": "text", "text": "\n".join(lines)},
+    ]
+
+
+def check_lexicon(draft: dict, segments: list[dict]) -> tuple[list[dict], int]:
+    """語の表を確かめる。(残った語, 落とした数)。聞こえた字が文字起こしに無ければ、手がかりにならない。"""
+    whole = "\n".join(s["text"] for s in segments)
+    rows, seen = [], set()
+    for row in draft["terms"]:
+        pair = (row["heard"].strip(), row["word"].strip())
+        if pair[0] and pair[1] and pair[0] != pair[1] and pair[0] in whole and pair not in seen:
+            seen.add(pair)
+            rows.append({"聞こえ方": pair[0], "語": pair[1]})
+    return rows, len(draft["terms"]) - len(rows)
+
+
+def scribe_content(
+    ctx: Context,
+    segments: list[dict],
+    title: str | None = None,
+    lexicon: list[dict] | None = None,
+    terms: list[str] | None = None,
+) -> list[dict]:
+    """速記役に見せる物：文字起こし、演目の題、人物の名前、語の表。反応は見せない。
 
     `koza.neta` はフォルダの名前で、演目の題とは限らない。題が分かると聞き違いを直せる。
+    区間を分けて呼ぶので、高座全体を読んで分かった語は語の表で渡す。
     """
     head = {"演目": title or ctx.koza["neta"], "人物": [c["name"] for c in ctx.hanashi["characters"]]}
+    if lexicon:
+        head["語の表"] = lexicon
+    if terms:
+        head["演者から聞いた語"] = terms
     lines = [{"seg_id": s["id"], "text": s["text"]} for s in segments if s["text"].strip()]
     return [
         {"type": "text", "text": json.dumps(head, ensure_ascii=False, indent=1)},
@@ -805,6 +842,7 @@ def clean_copy(
     reuse: bool = False,
     root: Path | None = None,
     title: str | None = None,
+    terms: list[str] | None = None,
 ) -> dict:
     """清書を作る。返すのは run.json の中身。正本には触らない。"""
     ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
@@ -812,13 +850,19 @@ def clean_copy(
     run_path = kdir / "run.json"
     segs = ctx.transcript["segments"]
     lines: list[dict] = []
+    terms = terms or []
     try:
+        # 先に全文を読ませる。塊ごとに呼ぶと、ある塊で分かった語が別の塊に届かない
+        content = lexicon_content(ctx, segs, title, terms)
+        found = call_role(ctx.client, "lexicon", content, "lexicon", ctx.usage, ctx.budget, ctx.cache)
+        store.write(ctx.neta.drafts / "lexicon.json", found, "lexicon")
+        lexicon, lost = check_lexicon(found, segs)
         # 1 回の出力が max_tokens で切れないように、区間を分けて呼ぶ
         for i in range(0, len(segs), SCRIBE_CHUNK):
             chunk = segs[i : i + SCRIBE_CHUNK]
             if not any(s["text"].strip() for s in chunk):
                 continue
-            content = scribe_content(ctx, chunk, title)
+            content = scribe_content(ctx, chunk, title, lexicon, terms)
             part = call_role(ctx.client, "scribe", content, "scribe", ctx.usage, ctx.budget, ctx.cache)
             lines += part["lines"]
     except Exception:
@@ -832,6 +876,7 @@ def clean_copy(
     doc, stats = seisho.build(draft, ctx.transcript, reactions, names)
     store.write(kdir / "seisho.json", doc, "seisho")
     (kdir / "seisho.md").write_text(seisho.markdown(ctx.koza, doc, stats), encoding="utf-8")
+    stats = {**stats, "terms": len(lexicon), "terms_dropped": lost}
     ctx.usage.extra["seisho"] = {**stats, "title": title} if title else stats
     result = ctx.usage.to_json()
     store.write(run_path, result, "run")

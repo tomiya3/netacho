@@ -234,6 +234,45 @@ def test_title_reaches_the_scribe_instead_of_the_folder_name(built, data, tmp_pa
     assert run["seisho"]["title"] == "正しい題"
 
 
+def test_lexicon_reads_the_whole_koza_and_reaches_every_chunk(built, data, tmp_path, monkeypatch):
+    transcript = store.read(store.Neta(P, N, data).koza_dir(K) / "transcript.json", "transcript")
+    first, last = transcript["segments"][0]["text"], transcript["segments"][-1]["text"]
+    heard = first.strip()[:3]
+    terms = {
+        "schema_version": 1,
+        "terms": [{"heard": heard, "word": "確かな語"}, {"heard": "無い字", "word": "作った語"}],
+    }
+    monkeypatch.setattr(pipeline, "SCRIBE_CHUNK", 2)
+    doc = json.loads((DUMMY.parent.parent / "drafts" / "scribe.json").read_text(encoding="utf-8"))
+    replies = [lambda kw, d=doc: _echo(kw, d)] * len(transcript["segments"])
+    client = ScriptedClient(lexicon=[terms], scribe=replies)
+    pipeline.clean_copy(
+        P, N, K, client=client, budget=Budget(tmp_path / "ledger.json"), root=data, terms=["会場の語"]
+    )
+    whole = text_of(client.calls["lexicon"][0])
+    assert first.strip() in whole and last.strip() in whole and "会場の語" in whole
+    assert "react-" not in whole and "strength" not in whole
+    assert len(client.calls["scribe"]) >= 2
+    for call in client.calls["scribe"]:
+        text = text_of(call)
+        assert "確かな語" in text and "会場の語" in text and "作った語" not in text
+    run = store.read(store.Neta(P, N, data).koza_dir(K) / "run.json", "run")
+    assert (run["seisho"]["terms"], run["seisho"]["terms_dropped"]) == (1, 1)
+
+
+def _echo(kw, doc):
+    """渡された区間の分だけ返す。"""
+    asked = {row["seg_id"] for row in json.loads(kw["messages"][0]["content"][-1]["text"])}
+    lines = [line for line in doc["lines"] if line["seg_id"] in asked]
+    return json.dumps({"schema_version": 1, "lines": lines}, ensure_ascii=False)
+
+
+def test_lexicon_promises():
+    text = runner.role_prompt("lexicon")
+    assert "作りません" in text and "見せないもの" not in text
+    assert runner.ROLES["lexicon"][:2] == (runner.OPUS, "high")
+
+
 def test_scribe_is_opus_high():
     assert runner.ROLES["scribe"][:2] == (runner.OPUS, "high")
 
