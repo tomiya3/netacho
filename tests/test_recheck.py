@@ -52,7 +52,14 @@ def test_before_hides_the_answer_and_after_shows_it(built, answered, data, tmp_p
     for shown in (before, after):
         assert answered in shown
         assert "transcript" not in shown
-    assert result == {"questions": 1, "before_written": 0, "after_written": 1, "filled": 1, "dropped": 0}
+    assert result == {
+        "questions": 1,
+        "before_written": 0,
+        "after_written": 1,
+        "filled": 1,
+        "dropped": 0,
+        "missing": 0,
+    }
     doc = store.read(built.recheck, "recheck")
     assert doc["rows"][0]["cites_answer"] is True
     assert store.read(built.koza_dir(K) / "run.json", "run")["recheck"] == result
@@ -98,7 +105,14 @@ def test_written_before_is_kept_as_it_is(built, answered, data, tmp_path):  # no
         rechecker=[replies(side(answered, "written", "雨", "前から読める")), replies(side(answered))]
     )
     result = run(client, data, tmp_path)
-    assert result == {"questions": 1, "before_written": 1, "after_written": 0, "filled": 0, "dropped": 0}
+    assert result == {
+        "questions": 1,
+        "before_written": 1,
+        "after_written": 0,
+        "filled": 0,
+        "dropped": 0,
+        "missing": 0,
+    }
     assert store.read(built.recheck, "recheck")["rows"][0]["before"]["verdict"] == "written"
 
 
@@ -106,7 +120,43 @@ def test_unknown_and_repeated_questions_are_dropped(answered, data, tmp_path):
     client = ScriptedClient(
         rechecker=[replies(side("q-9999"), side(answered), side(answered)), replies(side(answered))]
     )
+    assert run(client, data, tmp_path)["dropped"] == 3  # 順で結果を変えないよう、重複は両方落とす
+
+
+def test_missing_replies_are_counted_apart_from_dropped(built, answered, data, tmp_path):  # noqa: F811
+    result = run(ScriptedClient(rechecker=[replies(), replies(side(answered))]), data, tmp_path)
+    assert (result["dropped"], result["missing"]) == (0, 1)
+    assert store.read(built.recheck, "recheck")["rows"][0]["before"] is None
+
+
+def test_contradictory_or_empty_verdicts_are_dropped(answered, data, tmp_path):
+    client = ScriptedClient(
+        rechecker=[
+            replies(side(answered, "not_written", "雨", "引用があるのに書いていない")),
+            replies(side(answered, reply="  ")),
+        ]
+    )
     assert run(client, data, tmp_path)["dropped"] == 2
+
+
+def test_failed_second_read_leaves_no_old_result_and_keeps_cost(built, answered, data, tmp_path):  # noqa: F811
+    run(ScriptedClient(rechecker=[replies(side(answered)), replies(side(answered))]), data, tmp_path)
+    client = ScriptedClient(rechecker=[replies(side(answered))])  # 2 回目の分が無いので落ちる
+    with pytest.raises(IndexError):
+        run(client, data, tmp_path)
+    assert not built.recheck.exists()
+    doc = store.read(built.koza_dir(K) / "run.json", "run")
+    assert "recheck" not in doc
+    assert next(r for r in doc["roles"] if r["name"] == "rechecker")["calls"] == 3
+
+
+def test_short_answer_does_not_match_an_unrelated_quote(built, data, tmp_path):  # noqa: F811
+    q = with_question(built, data, tmp_path)
+    performer.answer(built, question=q, speaker=P, words="雨")
+    client = ScriptedClient(
+        rechecker=[replies(side(q)), replies(side(q, "written", "雨を行列に見立てる", "別の所から"))]
+    )
+    assert run(client, data, tmp_path)["filled"] == 0
 
 
 def test_view_carries_the_result(built, answered, data, tmp_path):  # noqa: F811

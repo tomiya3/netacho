@@ -440,7 +440,8 @@
         "before_written",
         "after_written",
         "filled",
-        "dropped"
+        "dropped",
+        "missing"
       ],
       "description": "答えの前後の読み直し。数は直近の実行の物",
       "properties": {
@@ -464,6 +465,11 @@
         "dropped": {
           "type": "integer",
           "minimum": 0
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "役が返さなかった判定の数。前と後の合計"
         }
       }
     }

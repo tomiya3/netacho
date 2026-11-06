@@ -410,7 +410,8 @@ def cmd_recheck(args: argparse.Namespace) -> None:
     print(
         f"答えた問い {result['questions']}、書いてあると読めた数 "
         f"前 {result['before_written']} → 後 {result['after_written']}、"
-        f"答えで埋まった問い {result['filled']}、検査で落とした判定 {result['dropped']}"
+        f"答えで埋まった問い {result['filled']}、検査で落とした判定 {result['dropped']}、"
+        f"返らなかった判定 {result['missing']}"
     )
 
 

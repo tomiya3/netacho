@@ -350,7 +350,7 @@ function decideForm(d) {
 function recheckLine(label, side) {
   if (!side) return el("p", { class: "quote" }, `${label}：判定なし（検査で落としたか、返らなかった）`);
   const written = side.verdict === "written";
-  return el("p", { class: "quote" }, `${label}：${written ? "書いてある" : "書いていない"}。${side.reply}${written ? `（引用「${side.quote}」）` : ""}`);
+  return el("p", { class: "quote" }, `${label}：${written ? "書いてある" : "書いていない"}。${side.reply}${written ? `　帳面の引用：${side.quote}` : ""}`);
 }
 
 function recheckBody(row) {
@@ -358,6 +358,7 @@ function recheckBody(row) {
     el("div", { class: "meta" }, tag("claude", "Claude の候補"), "帳面だけを読んで、この問いに答えられるか"),
     recheckLine("答えの前", row.before),
     recheckLine("答えの後", row.after),
+    ...(row.after?.verdict === "written" ? [el("p", { class: "quote" }, row.cites_answer ? "後の引用は、演者の答えから。" : "後の引用は、答え以外の所から。")] : []),
   ];
 }
 

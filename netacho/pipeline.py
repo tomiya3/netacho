@@ -395,8 +395,7 @@ def book_text(neta: store.Neta, hanashi: dict, kata: dict) -> str:
     return render.to_markdown(hanashi, lookup) + "\n" + render.to_markdown(kata, lookup)
 
 
-def recheck_pass(ctx: Context, pairs: list, kata: dict, name: str) -> tuple[dict, int]:
-    text = book_text(ctx.neta, ctx.hanashi, kata)
+def recheck_pass(ctx: Context, pairs: list, text: str, name: str) -> tuple[dict, int, int]:
     raw = call_role(
         ctx.client, "rechecker", recheck.content(text, pairs), "rechecker", ctx.usage, ctx.budget, ctx.cache
     )
@@ -421,11 +420,15 @@ def recheck_answers(
     if not pairs:
         return None
     run_path = ctx.neta.koza_dir(koza_id) / "run.json"
+    ctx.neta.recheck.unlink(missing_ok=True)  # 途中で落ちたとき、前回の結果を今の帳面の物として見せない
+    ctx.usage.extra.pop("recheck", None)
+    before_text = book_text(ctx.neta, ctx.hanashi, recheck.without_answers(ctx.kata, pairs))
+    after_text = book_text(ctx.neta, ctx.hanashi, ctx.kata)
     try:
-        before, dropped_before = recheck_pass(ctx, pairs, recheck.without_answers(ctx.kata, pairs), "before")
-        after, dropped_after = recheck_pass(ctx, pairs, ctx.kata, "after")
-        rows = recheck.merge_sides(pairs, before, after)
-        result = recheck.stats(rows, dropped_before + dropped_after)
+        before, dropped_before, missing_before = recheck_pass(ctx, pairs, before_text, "before")
+        after, dropped_after, missing_after = recheck_pass(ctx, pairs, after_text, "after")
+        rows = recheck.merge_sides(pairs, before, after, before_text)
+        result = recheck.stats(rows, dropped_before + dropped_after, missing_before + missing_after)
         store.write(ctx.neta.recheck, {"schema_version": 1, "rows": rows}, "recheck")
         ctx.usage.extra["recheck"] = result
     finally:  # 落ちても、呼んだ分の費用を残す

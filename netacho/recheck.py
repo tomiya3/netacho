@@ -6,8 +6,9 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 WRITTEN = "written"
-MIN_QUOTE = 4  # 短い引用は、たまたま答えの中にある語と区別できない
 
 
 def answered(questions: dict, kata: dict) -> list[tuple[dict, dict]]:
@@ -28,37 +29,39 @@ def content(text: str, pairs: list[tuple[dict, dict]]) -> list[dict]:
     return [{"type": "text", "text": f"{text}\n# 師匠に聞いた問い\n\n{asked}\n"}]
 
 
-def receive(raw: dict, pairs: list[tuple[dict, dict]], text: str) -> tuple[dict[str, dict], int]:
-    """役の出力を検査する。(問いの id → 判定, 落とした数)。"""
+def receive(raw: dict, pairs: list[tuple[dict, dict]], text: str) -> tuple[dict[str, dict], int, int]:
+    """役の出力を検査する。(問いの id → 判定, 落とした数, 返らなかった問いの数)。"""
     asked = {q["id"] for q, _ in pairs}
+    seen = Counter(row["question_id"] for row in raw["answers"])
     sides: dict[str, dict] = {}
     dropped = 0
     for row in raw["answers"]:
-        qid, quote = row["question_id"], row["quote"].strip()
+        qid, quote, reply = row["question_id"], row["quote"].strip(), row["reply"].strip()
         written = row["verdict"] == WRITTEN
-        if qid not in asked or qid in sides or (written and (not quote or quote not in text)):
+        fits = quote in text and bool(quote) if written else not quote
+        if qid not in asked or seen[qid] > 1 or not reply or not fits:  # 重複は順で結果を変えない
             dropped += 1
             continue
-        sides[qid] = {"verdict": row["verdict"], "quote": quote if written else "", "reply": row["reply"]}
-    return sides, dropped
+        sides[qid] = {"verdict": row["verdict"], "quote": quote, "reply": reply}
+    return sides, dropped, len(asked - set(seen))
 
 
-def _cites(side: dict | None, words: str) -> bool:
-    if side is None or side["verdict"] != WRITTEN:
+def _cites(side: dict | None, words: str, before_text: str) -> bool:
+    """引用が答えから取られている。前の帳面にもある語は、答えで読めたとは言えない。"""
+    if side is None or side["verdict"] != WRITTEN or side["quote"] in before_text:
         return False
-    quote = side["quote"]
-    return words in quote or (len(quote) >= MIN_QUOTE and quote in words)
+    return side["quote"] in words or words in side["quote"]
 
 
 def merge_sides(
-    pairs: list[tuple[dict, dict]], before: dict[str, dict], after: dict[str, dict]
+    pairs: list[tuple[dict, dict]], before: dict[str, dict], after: dict[str, dict], before_text: str
 ) -> list[dict]:
     return [
         {
             "question_id": q["id"],
             "before": before.get(q["id"]),
             "after": after.get(q["id"]),
-            "cites_answer": _cites(after.get(q["id"]), item["source"]["words"]),
+            "cites_answer": _cites(after.get(q["id"]), item["source"]["words"], before_text),
         }
         for q, item in pairs
     ]
@@ -70,7 +73,7 @@ def filled(row: dict) -> bool:
     return before is not None and before["verdict"] != WRITTEN and row["cites_answer"]
 
 
-def stats(rows: list[dict], dropped: int) -> dict:
+def stats(rows: list[dict], dropped: int, missing: int) -> dict:
     def written(side: str) -> int:
         return sum(r[side] is not None and r[side]["verdict"] == WRITTEN for r in rows)
 
@@ -80,4 +83,5 @@ def stats(rows: list[dict], dropped: int) -> dict:
         "after_written": written("after"),
         "filled": sum(filled(r) for r in rows),
         "dropped": dropped,
+        "missing": missing,
     }
