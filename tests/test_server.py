@@ -36,8 +36,14 @@ def running(tmp_path):
     srv.server_close()
 
 
+WRITES = {"/api/answer", "/api/decide", "/api/dismiss", "/api/edit"}
+
+
 def call(srv, path, body=None, *, headers=None, data=None):
+    """書き込みの本文には、画面と同じく開いている高座を添える。"""
     sent = {"Content-Type": "application/json", "X-Netacho-Token": srv.token} if headers is None else headers
+    if path in WRITES and isinstance(body, dict):
+        body = {"neta": srv.neta.neta, "koza": srv.koza_id, **body}
     payload = data if data is not None else (None if body is None else json.dumps(body).encode())
     req = urllib.request.Request(f"http://127.0.0.1:{srv.port}{path}", data=payload, headers=sent)
     try:
@@ -729,3 +735,9 @@ def test_edit_retried_after_a_crash_does_not_double_the_history(running):
     assert [h["after"] for h in item["history"]] == ["前の言葉", "直した言葉"]
     q = next(x for x in store.read(running.neta.questions, "questions")["questions"] if x["id"] == "q-0901")
     assert q["answer"]["words"] == "直した言葉"
+
+
+@pytest.mark.parametrize("path", sorted(WRITES))
+def test_write_without_the_koza_it_was_made_on_is_refused(running, path):
+    status, _ = call(running, path, data=json.dumps({"question": "q-0001", "words": "x"}).encode())
+    assert status == 400

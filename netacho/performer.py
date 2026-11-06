@@ -200,7 +200,7 @@ def edit_answer(neta: store.Neta, *, question: str, speaker: str, words: str, no
         if item.get("reason") == before:  # 別に決めた理由は変えない
             item["reason"] = words
         item["text"] = item["source"]["words"] = words
-        item["history"].append({"at": at, "before": before, "after": words, "by": speaker})
+        item.setdefault("history", []).append({"at": at, "before": before, "after": words, "by": speaker})
     q["answer"] = {"speaker": speaker, "recorded_at": at, "words": words}
     check_refs(hanashi, kata, review=review, questions=questions)
     store.write(neta.kata, kata, "book")  # kata → questions の順。途中で落ちても、やり直せば揃う

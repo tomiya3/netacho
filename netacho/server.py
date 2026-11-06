@@ -94,8 +94,7 @@ def _text(body: dict, key: str) -> str:
 
 def _same_koza(server: AnswerServer, body: dict) -> None:
     """別のタブで高座を開き直していたら、古い画面の書き込みを断る。問いの番号は演目ごとの連番なので。"""
-    shown = (body.get("neta", server.neta.neta), body.get("koza", server.koza_id))
-    if shown != (server.neta.neta, server.koza_id):
+    if (body.get("neta"), body.get("koza")) != (server.neta.neta, server.koza_id):
         raise performer.PerformerError("別の高座が開かれています。開き直してください")
 
 

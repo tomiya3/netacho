@@ -224,10 +224,12 @@ def koza_list(neta: store.Neta) -> list[dict]:
     """この演者の高座の一覧。新しい順。作りかけの高座は読み飛ばす。"""
     rows = []
     for path in neta.base.parent.glob("*/koza/*/koza.json"):
-        kdir, other = path.parent, neta.sibling(path.parents[2].name)
+        kdir = path.parent
         try:
+            other = neta.sibling(path.parents[2].name)
             koza = store.read(path, "koza")
-            scores = store.read(kdir / "reactions.json", "reactions").get("scores") or {}
+            # 答えるたびに全部の高座を読むので、要らない検証をしない
+            scores = json.loads((kdir / "reactions.json").read_text(encoding="utf-8")).get("scores") or {}
             title = _run_title(kdir)
             questions = _optional(other.questions, "questions") or {"questions": []}
         except (ValueError, OSError):
