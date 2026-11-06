@@ -719,7 +719,7 @@ def compare_koza(
                     fallback += 1  # 場所の合わない問いは出さない。所も書き換えない
                     continue
                 spot = settled
-                if spot["kind"] == "makura" and makura == COMPARE_MAKURA:
+                if spot["kind"] == "makura" and makura >= COMPARE_MAKURA:
                     continue
                 if any(abs(spot["a"]["t"] - s["a"]["t"]) < compare.SPOT_GAP for s in asked):
                     continue  # 同じ所を 2 度聞かない
