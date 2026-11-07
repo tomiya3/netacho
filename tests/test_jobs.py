@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from netacho import jobs
+from netacho import budget, jobs
 
 
 @pytest.mark.parametrize(
@@ -60,10 +60,11 @@ def job(terms="テスト太郎"):
 
 class Fake:
     def __init__(self, fail_at=None):
-        self.calls, self.fail_at = [], fail_at
+        self.calls, self.fail_at, self.envs = [], fail_at, []
 
-    def __call__(self, argv, log):
+    def __call__(self, argv, log, env):
         self.calls.append(argv)
+        self.envs.append(env)
         return 1 if argv[0] == self.fail_at else 0
 
 
@@ -110,7 +111,7 @@ def test_retry_does_not_reuse_for_prep(tmp_path):
 
 
 def test_a_crashing_command_is_a_failure_without_its_message(tmp_path):
-    def boom(argv, log):
+    def boom(argv, log, env):
         raise RuntimeError("演者の言葉を含むかもしれない")
 
     j = job()
@@ -132,7 +133,7 @@ def test_runner_takes_one_job_at_a_time(tmp_path):
 
 def test_run_command_writes_the_log(tmp_path):
     log = tmp_path / "job.log"
-    code = jobs.run_command(["--help"], log)
+    code = jobs.run_command(["--help"], log, {})
     assert code == 0
     assert "$ netacho --help" in log.read_text(encoding="utf-8")
 
@@ -172,3 +173,64 @@ def test_terms_starting_with_a_dash_stay_one_argument(tmp_path):
     j = jobs.Job("performer-x", "傘貸し長屋", "2026-03-04-hall", Path("/a.m4a"), "-foo,bar")
     assert "--terms=-foo,bar" in j.argv(1, reuse=False)
     assert "--terms=-foo,bar" in j.argv(4, reuse=False)
+
+
+def test_every_stage_and_the_retry_share_one_budget_base(tmp_path, monkeypatch):
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text('{"total_usd": 1.25, "entries": []}', encoding="utf-8")
+    monkeypatch.setattr(budget, "LEDGER", ledger)
+    monkeypatch.setattr(budget.Budget.__init__, "__defaults__", (ledger,))
+    j, fake = job(), Fake(fail_at="note")
+    j.run(fake, tmp_path / "job.log")
+    ledger.write_text('{"total_usd": 3.0, "entries": []}', encoding="utf-8")  # 前の段階で使った
+    j.reset_failed()
+    again = Fake()
+    j.run(again, tmp_path / "job.log", retry=True)
+    bases = {e[budget.RUN_BASE_ENV] for e in fake.envs + again.envs}
+    assert bases == {repr(1.25)}  # やり直しても、始めたときの累計から数える
+
+
+def test_budget_counts_earlier_stages_of_the_same_recording(tmp_path, monkeypatch):
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text('{"total_usd": 5.5, "entries": []}', encoding="utf-8")
+    monkeypatch.setenv(budget.RUN_BASE_ENV, "1.0")
+    b = budget.Budget(ledger)
+    assert b.run_spent == pytest.approx(4.5)
+    with pytest.raises(budget.BudgetError):
+        b.check("writer", "claude-opus-5-5", 20000, 32000)  # 上限 $0.72 で 1 本の $5 を超える
+    monkeypatch.delenv(budget.RUN_BASE_ENV)
+    assert budget.Budget(ledger).run_spent == 0.0
+
+
+def test_an_unreadable_ledger_fails_the_first_stage(tmp_path, monkeypatch):
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text("{", encoding="utf-8")
+    monkeypatch.setattr(budget.Budget.__init__, "__defaults__", (ledger,))
+    j, fake = job(), Fake()
+    j.run(fake, tmp_path / "job.log")
+    assert fake.calls == [] and j.status()["failed"] == "鍵の確認"
+
+
+def test_run_command_hands_the_base_to_the_child(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen.update(cmd=cmd, env=kw["env"])
+        return type("Done", (), {"returncode": 0})()
+
+    monkeypatch.setattr(jobs.subprocess, "run", fake_run)
+    monkeypatch.setenv("NETACHO_DATA", "/somewhere")
+    assert jobs.run_command(["build"], tmp_path / "job.log", {budget.RUN_BASE_ENV: "1.5"}) == 0
+    assert seen["cmd"][1:4] == ["-m", "netacho", "build"]
+    assert seen["env"][budget.RUN_BASE_ENV] == "1.5"
+    assert seen["env"]["NETACHO_DATA"] == "/somewhere"  # 鍵や置き場はサーバから受け継ぐ
+
+
+def test_recording_with_a_base_does_not_count_twice(tmp_path, monkeypatch):
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text('{"total_usd": 2.0, "entries": []}', encoding="utf-8")
+    monkeypatch.setenv(budget.RUN_BASE_ENV, "1.0")
+    first = budget.Budget(ledger)
+    first.record("writer", "claude-opus-5-5", 0.5)
+    assert first.run_spent == pytest.approx(1.5)
+    assert budget.Budget(ledger).run_spent == pytest.approx(1.5)  # 次の段階も同じ値から

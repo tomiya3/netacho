@@ -15,6 +15,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import threading
 import wave
 import webbrowser
@@ -231,8 +232,8 @@ class Handler(BaseHTTPRequestHandler):
     def _upload(self, query: str) -> None:
         """録音を受け取り、処理を始める。演目、公演日、会場、語、ファイル名は URL の引数で受ける。
 
-        `check=1` なら本文を読まずに、入力と空きだけを確かめる。大きな録音を送り始めてから断ると、
-        ブラウザには理由が届かないことがあるので、画面は先にこれを呼ぶ。
+        `check=1` なら本文を読まずに、入力、処理の空き、ディスクの空きだけを確かめる。
+        大きな録音を送り始めてから断ると、ブラウザには理由が届かないことがあるので、画面は先にこれを呼ぶ。
         受け取りの途中で送るのが止まっても、Handler.timeout（読み取りごと 10 秒）で切れて枠を返す。
         """
         if not self._token_ok() or self.headers.get_content_type() != "application/octet-stream":
@@ -268,6 +269,10 @@ class Handler(BaseHTTPRequestHandler):
                 "同じ演目に、同じ日付と会場の高座がもうあります。途中で止まった高座なら、"
                 "端末で netacho build、note、seisho に --reuse を付けて続きを回せます"
             )
+            self._json(400, {"error": message})
+            return
+        if not _room_for(kdir, length):
+            message = "ディスクの空きが足りません。録音の 2 倍と 1 GB ほどの空きを作ってください"
             self._json(400, {"error": message})
             return
         runner = self.server.runner
@@ -450,6 +455,17 @@ class Handler(BaseHTTPRequestHandler):
             reason=_text(body, "reason"),
         )
         return lambda: pipeline.after_performer(neta)
+
+
+def _room_for(kdir: Path, size: int) -> bool:
+    """録音と、prep が作る wav や途中の物の分の空きがあるか。録音の 2 倍と 1 GB を見込む。"""
+    where = kdir
+    while not where.exists():  # まだ無いフォルダは、ある所まで遡って測る
+        where = where.parent
+    try:
+        return shutil.disk_usage(where).free >= 2 * size + 1024**3
+    except OSError:  # 測れなければ受け取らない
+        return False
 
 
 def _target(server: AnswerServer, body: dict) -> tuple[store.Neta, str]:

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -18,7 +19,7 @@ from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
-from . import store
+from . import budget, store
 
 UNKNOWN_DATE = "0000-00-00"
 # フォルダの名前にする。空白、区切り、先頭の . と -（コマンドの引数と取り違える）を許さない
@@ -77,13 +78,21 @@ def parse_terms(text: str) -> str:
     return ",".join(w.strip() for w in re.split("[,、]", text) if w.strip())
 
 
-def run_command(argv: list[str], log: Path) -> int:
-    """netacho のコマンドを別のプロセスで動かし、出力は job.log に足す。"""
+def run_command(argv: list[str], log: Path, env: dict[str, str]) -> int:
+    """netacho のコマンドを別のプロセスで動かし、出力は job.log に足す。env は足す環境変数。"""
     with log.open("a", encoding="utf-8") as f:
         f.write(f"\n$ netacho {argv[0]}\n")
         f.flush()
-        done = subprocess.run([sys.executable, "-m", "netacho", *argv], stdout=f, stderr=subprocess.STDOUT)
+        done = subprocess.run(
+            [sys.executable, "-m", "netacho", *argv],
+            stdout=f,
+            stderr=subprocess.STDOUT,
+            env={**os.environ, **env},
+        )
     return done.returncode
+
+
+Command = Callable[[list[str], Path, dict[str, str]], int]
 
 
 class Job:
@@ -106,6 +115,7 @@ class Job:
         self.stages = [{"name": name, "state": "waiting", "seconds": None} for name, _, _ in self.plan]
         self.started: float | None = None
         self.code: int | None = None
+        self.base_usd: float | None = None  # 始めたときの費用の累計。やり直しでも変えない
 
     @property
     def state(self) -> str:
@@ -131,15 +141,23 @@ class Job:
             extra = []
         return [command, *who, *extra] + (["--reuse"] if reuse and self.plan[index][2] else [])
 
-    def run(self, command: Callable[[list[str], Path], int], log: Path, *, retry: bool = False) -> None:
-        """待っている段階から順に回す。落ちたらそこで止める。"""
+    def run(self, command: Command, log: Path, *, retry: bool = False) -> None:
+        """待っている段階から順に回す。落ちたらそこで止める。費用は録音 1 本で 1 回と数える。"""
+        if self.base_usd is None:
+            try:
+                self.base_usd = budget.Budget().total_spent()
+            except (OSError, ValueError, KeyError, TypeError):  # 台帳が読めなければ、どの段階も呼べない
+                first = next(s for s in self.stages if s["state"] != "done")
+                first["state"], self.code = "failed", -1
+                return
+        env = {budget.RUN_BASE_ENV: repr(self.base_usd)}
         for i, stage in enumerate(self.stages):
             if stage["state"] == "done":
                 continue
             stage["state"], stage["seconds"] = "running", None
             self.started = time.monotonic()
             try:
-                code = command(self.argv(i, reuse=retry), log)
+                code = command(self.argv(i, reuse=retry), log, env)
             except Exception:  # 落ちた理由は応答に出さない
                 code = -1
             stage["seconds"] = round(time.monotonic() - self.started, 1)
@@ -176,7 +194,7 @@ class Job:
 class Runner:
     """サーバに 1 つ。処理は 1 本ずつ。"""
 
-    def __init__(self, command: Callable[[list[str], Path], int] = run_command) -> None:
+    def __init__(self, command: Command = run_command) -> None:
         self.command = command
         self.lock = threading.Lock()
         self.job: Job | None = None

@@ -18,6 +18,13 @@ import pytest
 from netacho import cli, gaps, guide, jobs, performer, pipeline, server, store, view
 
 DATA = Path(__file__).parent / "fixtures" / "dummy_koza"
+ROOM_FOR = server._room_for  # 実機の空きを測る本物。下のテストだけで使う
+
+
+@pytest.fixture(autouse=True)
+def plenty_of_room(monkeypatch):
+    """テストの結果を、実機のディスクの空きに左右させない。"""
+    monkeypatch.setattr(server, "_room_for", lambda kdir, size: True)
 P, N, K = "performer-dummy", "雨宿り勘定", "2026-01-01-dummy-hall"
 
 
@@ -786,7 +793,7 @@ class FakeCommand:
     def __init__(self, fail_at=None):
         self.calls, self.fail_at = [], fail_at
 
-    def __call__(self, argv, log):
+    def __call__(self, argv, log, env):
         self.calls.append(argv)
         log.write_text("演者の言葉（応答に出てはいけない）", encoding="utf-8")
         return 2 if argv[0] == self.fail_at else 0
@@ -1051,3 +1058,70 @@ def test_cli_serve_needs_both_neta_and_koza(tmp_path, monkeypatch):
     capture_serve(monkeypatch)
     with pytest.raises(SystemExit):
         cli.main(["serve", "--performer", P, "--neta", N])
+
+
+def raw_post(srv, path, head, body):
+    """本文を途中まで送って切る。urllib では送れない形。"""
+    with socket.create_connection(("127.0.0.1", srv.port)) as sock:
+        lines = [f"POST {path} HTTP/1.1", f"Host: 127.0.0.1:{srv.port}", *head, "", ""]
+        sock.sendall("\r\n".join(lines).encode() + body)
+        sock.shutdown(socket.SHUT_WR)
+        return sock.recv(4096)
+
+
+def upload_query():
+    q = {"neta": "傘貸し長屋", "date": "", "venue": "hall-c", "name": "a.wav"}
+    return "/api/upload?" + urllib.parse.urlencode(q)
+
+
+def test_a_cut_upload_leaves_no_file_and_frees_the_slot(uploading):
+    head = [
+        "Content-Type: application/octet-stream",
+        f"X-Netacho-Token: {uploading.token}",
+        "Content-Length: 100000",
+    ]
+    raw_post(uploading, upload_query(), head, b"x" * 10)
+    kdir = uploading.neta.sibling("傘貸し長屋").koza_dir("0000-00-00-hall-c")
+    for _ in range(100):
+        if not uploading.runner.busy:
+            break
+        time.sleep(0.02)
+    assert not uploading.runner.busy and uploading.runner.status() is None
+    assert not list(kdir.glob("source*"))
+
+
+def test_upload_without_a_length_is_refused(uploading):
+    head = ["Content-Type: application/octet-stream", f"X-Netacho-Token: {uploading.token}"]
+    reply = raw_post(uploading, upload_query(), head, b"")
+    assert reply.startswith(b"HTTP/1.0 400") or reply.startswith(b"HTTP/1.1 400")
+    assert "長さが無い" in reply.decode()
+    assert not uploading.runner.busy
+
+
+def test_upload_over_the_limit_is_refused(uploading, monkeypatch):
+    monkeypatch.setattr(server, "MAX_AUDIO", 5)
+    status, body = upload(uploading, data=b"123456")
+    assert status == 400 and "2 GB" in json.loads(body)["error"]
+    assert uploading.runner.status() is None
+    assert not uploading.neta.sibling("傘貸し長屋").base.exists()
+
+
+def test_upload_needs_room_on_the_disk(uploading, monkeypatch):
+    monkeypatch.setattr(server, "_room_for", lambda kdir, size: False)
+    assert check(uploading)[0] == 400
+    status, body = upload(uploading)
+    assert status == 400 and "空き" in json.loads(body)["error"]
+    assert uploading.runner.status() is None and not uploading.runner.busy
+
+
+def test_room_for_measures_an_existing_parent(tmp_path):
+    assert ROOM_FOR(tmp_path / "a" / "b" / "c", 1)
+    assert not ROOM_FOR(tmp_path / "a", 10**18)
+
+
+def test_room_for_refuses_when_it_cannot_measure(tmp_path, monkeypatch):
+    def broken(path):
+        raise OSError("測れない")
+
+    monkeypatch.setattr(server.shutil, "disk_usage", broken)
+    assert not ROOM_FOR(tmp_path, 1)

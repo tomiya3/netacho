@@ -444,13 +444,13 @@ function uploadForm(job, note, open, cost) {
   const toggle = open ? null : el("button", { type: "button", class: "koza-open", onclick: () => { box.hidden = !box.hidden; } }, "＋ 録音を入れる");
   return el("div", { class: "upload" }, toggle, box);
 }
-// 参考の値は README の「数字」の 2 回の実測（25 分の高座）から写した。数字を変えたら、ここも直す
+// 参考の値は README の「数字」の表の 2 回の実測（25 分の高座）から写した。表を変えたら、ここも直す
 function costText(s) {
   const spent = s?.spent_usd !== null && s?.spent_usd !== undefined ? `（今の合計 $${s.spent_usd.toFixed(2)}）` : "";
-  const limits = s ? `費用は段階ごとに $${s.run_limit_usd}、これまでの合計が $${s.total_limit_usd} を超えそうなら、呼ぶ前に止まります${spent}。` : "";
+  const limits = s ? `費用は録音 1 本（やり直しも含む）で $${s.run_limit_usd}、これまでの合計が $${s.total_limit_usd} を超えそうなら、呼ぶ前に止まります${spent}。` : "";
   const key = s && !s.api_key ? "いまは ANTHROPIC_API_KEY が無いので、始めても鍵の確認で止まります。" : "";
   return `${key}文字起こしと笑いの検出は、この機械の中で動かします。帳面、問い、清書で Claude の API を使います。${limits}`
-    + "参考：25 分の高座 1 本で、清書を含めて実測 $1.11〜$1.65 でした。文字起こしだけで 10 分ほどかかります。";
+    + "参考：25 分の高座の実測では、清書を除く Claude の役が $0.71〜$0.90、清書が $0.21〜$0.94（版が違う 2 回）、文字起こしが 558〜618 秒でした。";
 }
 function uploadParts(open) {
   const note = el("p", { class: "status", role: "status" });
