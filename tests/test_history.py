@@ -89,7 +89,25 @@ def test_noter_input_is_one_block_without_history(built, data, tmp_path):  # noq
 
 def test_quoted_lines_do_not_count_as_a_leak():
     answers = ["わしもこうやって儲けた"]
-    assert not pipeline.leaks_answer("「わしもこうやって儲けた」の所で、間を延ばしたんですか？", answers)
+    line = "わしもこうやって儲けた"
+    assert not pipeline.leaks_answer(
+        "「わしもこうやって儲けた」の所で、間を延ばしたんですか？", answers, line
+    )
+
+
+def test_quoting_the_answer_itself_is_a_leak():
+    answers = ["土地の名を言うと受ける"]
+    assert pipeline.leaks_answer("「土地の名を言うと受ける」んですね？", answers, "家建てたんで")
+
+
+def test_punctuation_does_not_hide_a_leak():
+    assert pipeline.leaks_answer("土地の名を、言うと？", ["土地の名を言うと受ける"])
+
+
+def test_only_shown_answers_are_checked():
+    rows = [q(n, answer=f"古い答え{n:02d}です", at=f"2026-01-01T00:{n:02d}:00+09:00") for n in range(1, 31)]
+    words = pipeline.answer_words({"questions": rows})
+    assert len(words) == pipeline.HISTORY_MAX and "古い答え01です" not in words
 
 
 def test_odd_times_do_not_stop_the_order():
