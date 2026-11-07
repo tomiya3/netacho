@@ -409,7 +409,7 @@ def test_makura_gets_one_question_at_most(tmp_path):
     }
 
     def reply(kw):
-        rows = [r for r in json.loads(text_of(kw)) if r["kind"] == "makura"]
+        rows = [r for r in rows_of(kw) if r["kind"] == "makura"]
         assert rows, "枕の笑いが聞き役に届いていない"
         pick = rows[0]
         questions = [
@@ -502,9 +502,14 @@ def run(root, client, tmp_path, **kw):
     return pipeline.compare_koza(P, N, K1, client=client, budget=budget, root=root, **kw)
 
 
+def rows_of(call):
+    """聞き役に見せた所。2 つ目の塊はこれまでのやり取り。"""
+    return json.loads(call["messages"][0]["content"][0]["text"])
+
+
 def answer_all(kw):
     """聞き役の返事の代わり。見せた行の最初を選んで問う。"""
-    rows = json.loads(text_of(kw))
+    rows = rows_of(kw)
     return json.dumps(
         {
             "schema_version": 1,
@@ -541,7 +546,7 @@ def test_asker_sees_only_kinds_and_lines(tmp_path):
     root, _ = two_books(tmp_path)
     client = client_of(REPLY)
     run(root, client, tmp_path)
-    rows = json.loads(text_of(client.calls["asker"][0]))
+    rows = rows_of(client.calls["asker"][0])
     assert set(rows[0]) == {"spot_id", "kind", "other", "lines_a", "lines_b"}
     assert set(rows[0]["lines_b"][0]) == {"seg_id", "text", "間"}  # 時刻もスコアも見せない
 
@@ -784,9 +789,7 @@ def test_answered_places_are_not_shown_to_the_asker_again(tmp_path):
     performer.answer(neta, question=first["id"], speaker="本人", words="わざとです")
     client = client_of(REPLY)
     run(root, client, tmp_path)
-    assert all(
-        first["spot_id"] != r["spot_id"] for c in client.calls["asker"] for r in json.loads(text_of(c))
-    )
+    assert all(first["spot_id"] != r["spot_id"] for c in client.calls["asker"] for r in rows_of(c))
 
 
 def test_open_questions_of_another_pair_stay(tmp_path):
@@ -808,7 +811,7 @@ def test_a_refused_question_does_not_change_the_place(tmp_path):
     root, neta = two_books(tmp_path)
 
     def bad(kw):
-        rows = json.loads(text_of(kw))
+        rows = rows_of(kw)
         return json.dumps(
             {
                 "schema_version": 1,
@@ -1021,7 +1024,7 @@ def makura_first(bad_makura=False, last=False):
     """聞き役の返事の代わり。枕を先に並べる。`last` なら後ろに並べる。"""
 
     def reply(kw):
-        rows = sorted(json.loads(text_of(kw)), key=lambda r: (r["kind"] == "makura") == last)
+        rows = sorted(rows_of(kw), key=lambda r: (r["kind"] == "makura") == last)
         questions = []
         for r in rows:
             makura = r["kind"] == "makura"
@@ -1094,3 +1097,44 @@ def test_answered_makura_gives_its_slot_to_the_tale(tmp_path, monkeypatch):
     run(root, client_of(makura_first(last=True), aligner=MAKURA_AND_TALE), tmp_path)
     kinds = asked_kinds(neta)
     assert kinds.count("makura") == 1 and len(kinds) == 3  # 答えた枕は残り、枠は噺 2 件に回る
+
+
+def test_asker_reads_the_answers_of_the_same_neta(tmp_path):
+    root, neta = two_books(tmp_path)
+    answered = [q for q in store.read(neta.questions, "questions")["questions"] if "answer" in q]
+    client = client_of(REPLY)
+    run(root, client, tmp_path)
+    content = client.calls["asker"][0]["messages"][0]["content"]
+    assert len(content) == 2 and content[1]["text"].startswith("# これまでのやり取り")
+    history = json.loads(content[1]["text"].split("\n", 1)[1])
+    assert history == [{"問い": q["text"], "答え": q["answer"]["words"]} for q in answered]
+
+
+def test_asker_input_is_unchanged_without_history(tmp_path):
+    root, neta = two_books(tmp_path)
+    doc = store.read(neta.questions, "questions")
+    for q in doc["questions"]:
+        q.pop("answer", None)
+        q.pop("dismissed", None)
+    store.write(neta.questions, doc, "questions")
+    client = client_of(REPLY)
+    run(root, client, tmp_path)
+    assert len(client.calls["asker"][0]["messages"][0]["content"]) == 1
+
+
+def test_question_that_quotes_the_answer_is_dropped(tmp_path):
+    root, neta = two_books(tmp_path)
+    words = next(q for q in store.read(neta.questions, "questions")["questions"] if "answer" in q)["answer"][
+        "words"
+    ]
+
+    def leaky(kw):
+        reply = json.loads(answer_all(kw))
+        for r in reply["questions"]:
+            r["text"] = f"{words}ですか？"
+        return json.dumps(reply, ensure_ascii=False)
+
+    run(root, client_of(leaky), tmp_path)
+    assert not [q for q in store.read(neta.questions, "questions")["questions"] if words in q["text"]]
+    counts = store.read(neta.koza_dir(K1) / "run.json", "run")["compare"]
+    assert counts["leaked"] >= 1 and counts["fallback"] == counts["leaked"]  # 混入のほかは落ちていない

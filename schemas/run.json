@@ -201,6 +201,11 @@
         "fallback": {
           "type": "integer",
           "minimum": 0
+        },
+        "leaked": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "演者の答えの言葉がそのまま入っていて決まった文にした数。fallback にも含む"
         }
       }
     },
@@ -428,6 +433,11 @@
           "type": "integer",
           "minimum": 0,
           "description": "上限を超えて聞き役に見せなかった所の数。古いファイルだけにある"
+        },
+        "leaked": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "演者の答えの言葉がそのまま入っていて落とした問いの数。fallback にも含む"
         }
       },
       "description": "2 本の比較の実測"

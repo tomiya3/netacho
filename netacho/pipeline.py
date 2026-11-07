@@ -8,6 +8,7 @@ import sys
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import candidates, compare, evidence, gaps, guide, merge, recheck, render, review, seisho, store, view
@@ -263,6 +264,84 @@ def read_review(neta: store.Neta) -> tuple[dict, dict]:
     return doc, questions
 
 
+HISTORY_MAX = 20  # 役に渡すこれまでのやり取りの上限。新しい順
+HISTORY_CHARS = 200  # 1 つの文の上限。超えた分は切り、切ったと書く。要約はしない
+LEAK_CHARS = 6  # 答えのこの字数の連続が問いやノートに入っていたら、答えを事実として書いたと見る
+
+
+JST = timezone(timedelta(hours=9))
+
+
+def _when(at: str) -> datetime:
+    """並べるための時刻。時差の無い時刻は日本時間、読めない時刻は一番古いと見る。止めない。"""
+    try:
+        t = datetime.fromisoformat(at)
+    except ValueError:
+        return datetime.min.replace(tzinfo=JST)
+    return t if t.tzinfo else t.replace(tzinfo=JST)
+
+
+def _cut(text: str) -> str:
+    return text if len(text) <= HISTORY_CHARS else text[:HISTORY_CHARS] + "…（以下略）"
+
+
+def _shown(questions: dict) -> list[dict]:
+    """役に見せるやり取り。答えたか捨てた問いを、新しい順に HISTORY_MAX 件まで。"""
+    rows = []
+    for q in questions["questions"]:
+        if "answer" in q:
+            rows.append((q["answer"]["recorded_at"], q, "答え", q["answer"]["words"]))
+        elif "dismissed" in q:
+            rows.append((q["dismissed"]["recorded_at"], q, "捨てた理由", q["dismissed"]["reason"]))
+    rows.sort(key=lambda r: _when(r[0]), reverse=True)
+    return [{"問い": q["text"], key: words} for _, q, key, words in rows[:HISTORY_MAX]]
+
+
+def history_block(questions: dict) -> list[dict]:
+    """答えたか捨てた問いを、新しい順に渡す。未回答は渡さない。無ければ空（入力を変えない）。"""
+    rows = [{k: _cut(v) for k, v in r.items()} for r in _shown(questions)]
+    if not rows:
+        return []
+    text = json.dumps(rows, ensure_ascii=False, indent=1)
+    return [{"type": "text", "text": "# これまでのやり取り\n" + text}]
+
+
+def answer_words(questions: dict) -> list[str]:
+    """混入を検べる答え。役に見せた分だけ（200 字で切った後の文）。見せていない言葉は混ざりようがない。"""
+    return [_cut(r["答え"]) for r in _shown(questions) if "答え" in r]
+
+
+_MARKS = re.compile(r"[\s、。，．,.!?！？…・]")
+
+
+def _plain(text: str) -> str:
+    return _MARKS.sub("", text)
+
+
+def _leaked(text: str, answers: list[str] | None, lines: str, stat: dict | None) -> bool:
+    """混入なら数える。落とした数を fallback と分けて run.json に残し、検査が効きすぎていないか見る。"""
+    hit = leaks_answer(text, answers, lines)
+    if hit and stat is not None:
+        stat["leaked"] = stat.get("leaked", 0) + 1
+    return hit
+
+
+def leaks_answer(text: str, answers: list[str] | None, lines: str = "") -> bool:
+    """演者の答えの言葉が、役の文にそのまま入っているか。言い換えまでは見ない。
+
+    「」で引いた所は、見せた台詞にあるときだけ除く。台詞の引用は検査済みで、答えが台詞の語を
+    繰り返すと誤って当たるため。台詞に無い引用（答えを引いた物）は残して検べる。句読点と空白は除いて比べる。
+    """
+    ref = _plain(lines)
+    body = re.sub(r"[「『](.*?)[」』]", lambda m: "" if _plain(m.group(1)) in ref else m.group(1), text)
+    body = _plain(body)
+    for words in answers or []:
+        w = _plain(words)
+        if any(w[k : k + LEAK_CHARS] in body for k in range(len(w) - LEAK_CHARS + 1)):
+            return True
+    return False
+
+
 def deshi_pass(ctx: Context, doc: dict, questions: dict, round_no: int) -> tuple[list[dict], int]:
     """弟子役を 1 回呼び、指摘を受け取り、質問を足す。(今回の指摘, 落とした数)。"""
     raw = call_role(ctx.client, "deshi", deshi_content(ctx.neta), "deshi", ctx.usage, ctx.budget, ctx.cache)
@@ -508,19 +587,31 @@ def surprise_rows(found: dict) -> list[dict]:
     ]
 
 
-def checked_questions(doc: dict | None, found: dict) -> None:
+def checked_questions(
+    doc: dict | None, found: dict, answers: list[str] | None = None, stat: dict | None = None
+) -> None:
     """問いの文を入れる。無い、重なる、検査に落ちるものは決まった文にする。"""
     written: dict[str, list[str]] = {}
     for n in (doc or {"notes": []})["notes"]:
         written.setdefault(n["candidate_id"], []).append(n["text"].strip())
     for s in found["surprises"]:
         texts = written.get(s["id"], [])
-        ok = len(texts) == 1 and note_is_ok(texts[0], QUESTION_ALLOWED)
+        ok = (
+            len(texts) == 1
+            and note_is_ok(texts[0], QUESTION_ALLOWED)
+            and not _leaked(texts[0], answers, s.get("before_quote", ""), stat)
+        )
         s["question"] = texts[0] if ok else gaps.FALLBACK_QUESTION
         s["question_source"] = "claude" if ok else "fixed"
 
 
-def checked_notes(doc: dict | None, cands: dict) -> tuple[dict[str, str], set[str]]:
+def checked_notes(
+    doc: dict | None,
+    cands: dict,
+    answers: list[str] | None = None,
+    stat: dict | None = None,
+    lines: dict[str, str] | None = None,
+) -> tuple[dict[str, str], set[str]]:
     """候補ごとに 1 件の文を返す。無い、重なる、検査に落ちるものは決まった文にする。
 
     返すのは (文, 決まった文にした候補の ID)。
@@ -532,7 +623,8 @@ def checked_notes(doc: dict | None, cands: dict) -> tuple[dict[str, str], set[st
     fixed: set[str] = set()
     for c in cands["candidates"]:
         texts = written.get(c["id"], [])
-        if len(texts) == 1 and note_is_ok(texts[0]):
+        said = (lines or {}).get(c["id"], "")
+        if len(texts) == 1 and note_is_ok(texts[0]) and not _leaked(texts[0], answers, said, stat):
             out[c["id"]] = texts[0]
         else:
             out[c["id"]] = NOTE_FALLBACK[c["why"]]
@@ -579,18 +671,24 @@ def note(
     items = {i["id"]: i for i in all_items}
     found = gaps.compare(all_items, reactions, ctx.transcript, tl)
     doc = None
+    past = read_review(ctx.neta)[1]  # 役に見せるやり取りと、混入の検査で同じ物を使う
     rows = noter_rows(cands, items, ctx.transcript, ctx.hanashi, tl) + surprise_rows(found)
     if rows:
         text = json.dumps(rows, ensure_ascii=False, indent=1)
-        content = [{"type": "text", "text": text}]
+        content = [{"type": "text", "text": text}, *history_block(past)]
         try:
             doc = call_role(ctx.client, "noter", content, "noter", ctx.usage, ctx.budget, ctx.cache)
         except Exception:
             store.write(run_path, ctx.usage.to_json(), "run")  # 費用は実測として残す
             raise
         store.write(ctx.neta.drafts / "noter.json", doc, "noter")
-    notes, fixed = checked_notes(doc, cands)
-    checked_questions(doc, found)
+    answers = answer_words(past)  # 答えを事実として書いた文は、決まった文にする
+    stat: dict = {}
+    said = {
+        r["candidate_id"]: " ".join(str(v) for k, v in r.items() if k.endswith("_quote") and v) for r in rows
+    }  # ノート役に見せた台詞。これを引いただけなら混入と見ない
+    notes, fixed = checked_notes(doc, cands, answers, stat, said)
+    checked_questions(doc, found, answers, stat)
     store.write(kdir / "gaps.json", found, "gaps")
     review_doc, questions = read_review(ctx.neta)
     gaps.add_questions(found, review_doc, questions)
@@ -608,7 +706,11 @@ def note(
     (kdir / "note.md").write_text(
         render.note_markdown(ctx.koza, cands, notes, items, item_scene, found), encoding="utf-8"
     )
-    ctx.usage.extra["notes"] = {"candidates": len(cands["candidates"]), "fallback": len(fixed)}
+    ctx.usage.extra["notes"] = {
+        "candidates": len(cands["candidates"]),
+        "fallback": len(fixed),
+        "leaked": stat.get("leaked", 0),
+    }
     ctx.usage.extra["gaps"] = gaps.counts(found)
     ctx.usage.extra["questions"] = len(questions["questions"])
     result = ctx.usage.to_json()
@@ -722,7 +824,7 @@ def compare_koza(
         raise store.StoreError("1 本目に笑いがほぼ無い。--koza に本番、--with-koza に稽古を指定する")
     titles = {s["id"]: s["title"] for s in ctx.hanashi["scenes"]}
     kdir = ctx.neta.koza_dir(koza_id)
-    fallback = added = skipped = makura = 0
+    fallback = added = skipped = makura = leaked = 0
     doc = {"share": None, "spots": [], "dropped": 0}  # 対応づけが落ちたら、測っていないと残す
     pair = f"（{koza_id} と {other_koza}、"
     old_spots = previous_spots(kdir / "compare.json")  # API を使う前に読む
@@ -735,6 +837,7 @@ def compare_koza(
             review_doc, questions = read_review(ctx.neta)
             drop_open_asks(review_doc, questions, pair)
             done = {q.get("spot_id") for q in questions["questions"] if "answer" in q or "dismissed" in q}
+            answers = answer_words(questions)
             # 答えた所は聞き役に見せない。また問わないし、費用も使わない
             known = [s for s in doc["spots"] if s["scene_id"] in titles and s["id"] not in done]
             chosen = compare.candidates(known)
@@ -742,7 +845,10 @@ def compare_koza(
             makura = sum(s["id"] in done and s["kind"] == "makura" for s in old_spots)
             other_name = "稽古" if doc["practice"] else "もう 1 本"
             rows = ask_rows(chosen, a, b, other_name)
-            content = [{"type": "text", "text": json.dumps(rows, ensure_ascii=False, indent=1)}]
+            content = [
+                {"type": "text", "text": json.dumps(rows, ensure_ascii=False, indent=1)},
+                *history_block(questions),
+            ]
             reply = (
                 call_role(ctx.client, "asker", content, "asker", ctx.usage, ctx.budget, ctx.cache)
                 if chosen
@@ -775,6 +881,13 @@ def compare_koza(
                     fallback += 1
                     continue
                 settled = compare.settle(spot, row, a, b, shown[spot["id"]])
+                said = " ".join(
+                    ln["text"] for ln in shown[spot["id"]]["lines_a"] + shown[spot["id"]]["lines_b"]
+                )
+                if leaks_answer(words, answers, said):
+                    leaked += 1  # 答えを事実として書いた問いは出さない。fallback とは分けて数える
+                    fallback += 1
+                    continue
                 if settled is None or not ask_is_ok(words, settled):
                     fallback += 1  # 場所の合わない問いは出さない。所も書き換えない
                     continue
@@ -840,6 +953,7 @@ def compare_koza(
             "spots": len(doc["spots"]),
             "questions": added,
             "fallback": fallback,
+            "leaked": leaked,
             "skipped": skipped,
             "dropped": doc["dropped"],
         }
