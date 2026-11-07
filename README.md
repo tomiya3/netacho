@@ -83,6 +83,7 @@ netacho run     --audio 録音 --performer ID --neta 演目 --koza 日付-会場
 netacho seisho  --performer ID --neta 演目 --koza 日付-会場 --title 題 [--terms 語,語]  # 清書
 netacho compare --performer ID --neta 演目 --koza 日付-会場 --with-koza 日付-会場2  # 同じ演目の 2 本を比べて問う
 netacho answer  --performer ID --neta 演目 --question Q --speaker 名 --words 言葉
+netacho reread  --performer ID --neta 演目 --koza 日付-会場     # 演者の判断が入った帳面を、弟子役に読み直させる
 netacho recheck --performer ID --neta 演目 --koza 日付-会場     # 答えの前と後の帳面で、同じ問いを読み直す
 netacho dismiss --performer ID --neta 演目 --question Q --speaker 名 --reason 理由
 netacho decide  --performer ID --neta 演目 --speaker 名 --words 言葉 --card 札の文 --why 理由 --scene 場面
@@ -114,9 +115,9 @@ netacho serve   [--performer ID] [--neta 演目 --koza 日付-会場] [--port 87
 | ノート役 | Sonnet 5.5 | 選ばれた候補、前後の引用、場面の尺、これまでの問いと答え | 笑いの全体、型の全文 |
 | 弟子役 | Opus 5.5 | 確定した帳面（噺・型の `.md`）だけ | 文字起こし、録音、笑い、差し戻しの履歴 |
 | 読み直し役 | Opus 5.5 | 答えの前か後の帳面、答えた問いの文 | 文字起こし、録音、笑い |
-| 語の表役 | Opus 5.5 | 文字起こしの全文、演目の題、人物 | 笑い |
+| 語の表役 | Opus 5.5 | 文字起こしの全文、演目の題、人物 | 笑い、型 |
 | 速記役 | Opus 5.5 | 文字起こし、演目の題、人物、語の表 | 笑い |
-| 対応づけ役 | Opus 5.5 | 演目の題と、2 本の清書 | 笑い、録音 |
+| 対応づけ役 | Opus 5.5 | 演目の題と、2 本の清書 | 笑い、録音、型 |
 | 聞き役 | Opus 5.5 | 笑いのあった所の種類、2 本の前後の台詞、実測の間、これまでの問いと答え | 録音、スコア、帳面の全文 |
 
 見せる物を分けるのがこの構成の要点です。構成作家役に笑いを見せないので、予測の外れた所が「文字に無い芸」の候補になります。弟子役には帳面しか読ませないので、書けていない所がそのまま挙がります。聞き役も弟子の立場で問いを書きますが、読むのは 2 本の台詞と笑いの所で、帳面の全文は読みません。
@@ -184,7 +185,7 @@ netacho serve   [--performer ID] [--neta 演目 --koza 日付-会場] [--port 87
 
 ## 開発
 
-開発期間は 4 日間（2026-11-05〜11-08）で、マージした PR は 41 本です（GitHub の Pull requests で確かめられます）。Claude Code を開発の中心にして、作り方そのものを仕組みにしました。
+開発期間は 4 日間（2026-11-05〜11-08）で、マージした PR は 41 本です（2026-11-08 未明の時点。GitHub の Pull requests で確かめられます）。Claude Code を開発の中心にして、作り方そのものを仕組みにしました。
 
 - **スキル**（`.claude/skills/`）：`/start`、`/pr`、`/report`、`/log` で、Issue から PR、報告書、日誌までの手順をそろえる
 - **フック**（`.claude/hooks/`）：秘密のファイルや演者のデータへの書き込み、消す・書き換える操作、レビューの印が無い PR の作成を止める
