@@ -15,9 +15,16 @@ from pathlib import Path
 
 import pytest
 
-from netacho import gaps, guide, performer, pipeline, server, store, view
+from netacho import cli, gaps, guide, jobs, performer, pipeline, server, store, view
 
 DATA = Path(__file__).parent / "fixtures" / "dummy_koza"
+ROOM_FOR = server._room_for  # 実機の空きを測る本物。下のテストだけで使う
+
+
+@pytest.fixture(autouse=True)
+def plenty_of_room(monkeypatch):
+    """テストの結果を、実機のディスクの空きに左右させない。"""
+    monkeypatch.setattr(server, "_room_for", lambda kdir, size: True)
 P, N, K = "performer-dummy", "雨宿り勘定", "2026-01-01-dummy-hall"
 
 
@@ -775,3 +782,394 @@ def test_edit_drops_the_recheck_of_the_old_answer(running):
     left = store.read(running.neta.recheck, "recheck")["rows"]
     assert [r["question_id"] for r in left] == ["q-0001"]
 
+
+
+# ---------- 録音を入れる ----------
+
+
+class FakeCommand:
+    """netacho のコマンドの代わり。呼ばれた引数を控える。API も Whisper も呼ばない。"""
+
+    def __init__(self, fail_at=None):
+        self.calls, self.fail_at = [], fail_at
+
+    def __call__(self, argv, log, env):
+        self.calls.append(argv)
+        log.write_text("演者の言葉（応答に出てはいけない）", encoding="utf-8")
+        return 2 if argv[0] == self.fail_at else 0
+
+
+def start_server(neta, koza, out, command):
+    srv = server.AnswerServer(neta, koza, out=out, runner=jobs.Runner(command))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+@pytest.fixture
+def uploading(tmp_path):
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    out = tmp_path / "view"
+    neta = store.Neta(P, N, root)
+    view.write(neta, K, out)
+    srv = start_server(neta, K, out, FakeCommand())
+    yield srv
+    srv.shutdown()
+    srv.server_close()
+
+
+def upload(srv, data=b"RIFF-dummy", *, headers=None, **params):
+    query = {"neta": "傘貸し長屋", "date": "2026-03-04", "venue": "hall-b"}
+    query.update({"terms": "テスト太郎", "name": "a.m4a"})
+    query.update(params)
+    sent = headers
+    if sent is None:
+        sent = {"Content-Type": "application/octet-stream", "X-Netacho-Token": srv.token}
+    return call(srv, "/api/upload?" + urllib.parse.urlencode(query), headers=sent, data=data)
+
+
+def wait_job(srv):
+    for _ in range(200):
+        if not srv.runner.busy:
+            return srv.runner.status()
+        time.sleep(0.01)
+    raise AssertionError("処理が終わらない")
+
+
+def job_state(srv, token=True):
+    headers = {"X-Netacho-Token": srv.token} if token else {}
+    return call(srv, "/api/job", headers=headers)
+
+
+def test_upload_saves_the_recording_and_runs_every_stage(uploading):
+    status, body = upload(uploading)
+    assert status == 200, body
+    done = wait_job(uploading)
+    assert done["state"] == "done" and (done["neta"], done["koza"]) == ("傘貸し長屋", "2026-03-04-hall-b")
+    kdir = uploading.neta.sibling("傘貸し長屋").koza_dir("2026-03-04-hall-b")
+    assert (kdir / "source.m4a").read_bytes() == b"RIFF-dummy"
+    assert not list(kdir.glob("*.part"))
+    calls = uploading.runner.command.calls
+    assert [c[0] for c in calls] == ["auth", "prep", "build", "note", "seisho"]
+    assert calls[1][calls[1].index("--audio") + 1] == str(kdir / "source.m4a")
+    assert uploading.koza_id == K  # 開いている高座は勝手に変えない
+
+
+def test_job_state_needs_the_token_and_shows_the_budget(uploading):
+    assert job_state(uploading, token=False)[0] == 403
+    status, body = job_state(uploading)
+    doc = json.loads(body)
+    assert status == 200 and doc["job"] is None and doc["busy"] is False
+    assert (doc["run_limit_usd"], doc["total_limit_usd"]) == (5.0, 30.0)
+
+
+def test_job_state_tells_only_whether_the_key_exists(uploading, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-secret")
+    status, body = job_state(uploading)
+    assert json.loads(body)["api_key"] is True
+    assert b"sk-test-secret" not in body
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    assert json.loads(job_state(uploading)[1])["api_key"] is False
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Content-Type": "application/octet-stream"},
+        {"Content-Type": "application/json", "X-Netacho-Token": "TOKEN"},
+        {"Content-Type": "application/octet-stream", "X-Netacho-Token": "TOKEN", "Origin": "http://evil.example"},
+    ],
+)
+def test_upload_needs_the_token_the_type_and_the_origin(uploading, headers):
+    headers = {k: (uploading.token if v == "TOKEN" else v) for k, v in headers.items()}
+    status, _ = upload(uploading, headers=headers)
+    assert status == 403
+    assert uploading.runner.status() is None
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"venue": "a b"},
+        {"venue": ""},
+        {"neta": "../x"},
+        {"date": "2026-02-30"},
+        {"name": "memo.txt"},
+        {"terms": "a\nb"},
+        {"neta": N, "date": "2026-01-01", "venue": "dummy-hall"},  # もうある高座
+    ],
+)
+def test_upload_refuses_bad_fields(uploading, params):
+    status, body = upload(uploading, **params)
+    assert status == 400
+    assert "error" in json.loads(body)
+    assert uploading.runner.status() is None and not uploading.runner.busy
+
+
+def test_upload_can_compare_with_an_earlier_koza(uploading):
+    status, body = upload(uploading, with_neta=N, with_koza=K)
+    assert status == 200, body
+    assert wait_job(uploading)["state"] == "done"
+    last = uploading.runner.command.calls[-1]
+    assert last[0] == "compare" and last[last.index("--with-koza") + 1] == K
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"with_neta": N, "with_koza": "2099-01-01-none"},
+        {"with_neta": "../x", "with_koza": K},
+    ],
+)
+def test_upload_refuses_a_partner_that_is_not_a_koza(uploading, params):
+    status, _ = upload(uploading, **params)
+    assert status == 400
+    assert uploading.runner.status() is None and not uploading.runner.busy
+
+
+def check(srv, **params):
+    return upload(srv, data=b"", **{"check": "1", "size": "10", **params})
+
+
+def test_check_validates_without_reading_or_reserving(uploading):
+    assert check(uploading)[0] == 200
+    assert uploading.runner.status() is None and not uploading.runner.busy
+    assert not uploading.neta.sibling("傘貸し長屋").base.exists()
+    assert check(uploading, venue="a b")[0] == 400
+    assert check(uploading, size="abc")[0] == 400
+    assert check(uploading, size=str(3 * 1024**3))[0] == 400
+    uploading.runner.reserve()
+    assert check(uploading)[0] == 409
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"neta": "傘\x00貸し"},
+        {"venue": "hall\x00"},
+        {"venue": "hall\x1b"},
+        {"with_neta": N + "\x00", "with_koza": K},
+        {"with_neta": N, "with_koza": K + "\x00"},
+    ],
+)
+def test_control_characters_are_refused_before_taking_the_slot(uploading, params):
+    status, _ = upload(uploading, **params)
+    assert status == 400
+    assert not uploading.runner.busy
+    assert upload(uploading)[0] == 200  # 次の録音は入れられる
+    wait_job(uploading)
+
+
+def test_slot_is_freed_when_starting_fails(uploading, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("始められない")
+
+    monkeypatch.setattr(uploading.runner, "start", broken)
+    status, _ = upload(uploading)
+    assert status == 500
+    assert not uploading.runner.busy
+    kdir = uploading.neta.sibling("傘貸し長屋").koza_dir("2026-03-04-hall-b")
+    assert not list(kdir.glob("source*"))  # 受け取った録音をごみに残さない
+
+
+def test_slot_is_freed_when_receiving_fails(uploading, monkeypatch):
+    def broken(*args, **kwargs):
+        raise ValueError("想定外")
+
+    monkeypatch.setattr(server.Handler, "_receive", broken)
+    status, _ = upload(uploading)
+    assert status == 400
+    assert not uploading.runner.busy and uploading.runner.status() is None
+
+
+def test_check_refuses_a_koza_that_already_exists(uploading):
+    status, body = check(uploading, neta=N, date="2026-01-01", venue="dummy-hall")
+    assert status == 400 and "もうあります" in json.loads(body)["error"]
+
+
+def test_upload_refuses_a_second_while_busy(uploading):
+    uploading.runner.reserve()
+    status, _ = upload(uploading)
+    assert status == 409
+    assert not uploading.neta.sibling("傘貸し長屋").base.exists()
+
+
+def test_failed_stage_is_reported_without_the_log_and_can_be_retried(tmp_path):
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    out = tmp_path / "view"
+    neta = store.Neta(P, N, root)
+    view.write(neta, K, out)
+    srv = start_server(neta, K, out, FakeCommand(fail_at="build"))
+    try:
+        assert upload(srv)[0] == 200
+        wait_job(srv)
+        status, body = job_state(srv)
+        doc = json.loads(body)
+        assert doc["job"]["state"] == "failed" and doc["job"]["failed"] == "帳面と弟子の問い"
+        assert doc["job"]["code"] == 2
+        assert "演者の言葉" not in body.decode()
+        srv.runner.command.fail_at = None
+        status, body = call(srv, "/api/retry", {})
+        assert status == 200
+        assert wait_job(srv)["state"] == "done"
+        assert [c[0] for c in srv.runner.command.calls[-3:]] == ["build", "note", "seisho"]
+        assert all("--reuse" in c for c in srv.runner.command.calls[-3:])
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_retry_without_a_failed_job_is_refused(uploading):
+    assert call(uploading, "/api/retry", {})[0] == 409
+
+
+def test_server_without_a_koza_serves_the_start_screen(tmp_path):
+    root = tmp_path / "data"
+    root.mkdir()
+    out = tmp_path / "view"
+    view.write_empty(out)
+    srv = start_server(store.Neta(P, server.NO_NETA, root), None, out, FakeCommand())
+    try:
+        assert call(srv, "/view.json")[0] == 404
+        assert call(srv, "/")[0] == 200
+        status, _ = call(srv, "/api/answer", {"question": "q-1", "speaker": "本人", "words": "x"})
+        assert status == 400  # 開いている高座が無いので書かない
+        assert upload(srv)[0] == 200
+        assert wait_job(srv)["state"] == "done"
+        assert not (root / P / server.NO_NETA).exists()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_open_works_from_the_start_screen(tmp_path):
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    out = tmp_path / "view"
+    view.write_empty(out)
+    srv = start_server(store.Neta(P, server.NO_NETA, root), None, out, FakeCommand())
+    try:
+        assert call(srv, "/api/open", {"neta": N, "koza": K})[0] == 200
+        assert (srv.neta.neta, srv.koza_id) == (N, K)
+        assert json.loads((out / "view.json").read_text(encoding="utf-8"))["koza"]["id"] == K
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_serve_falls_back_to_the_start_screen_for_a_half_built_koza(tmp_path, monkeypatch):
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    neta = store.Neta(P, N, root)
+    neta.hanashi.unlink()  # build の前で止まった高座
+    out = tmp_path / "view"
+    started = {}
+
+    def fake_forever(self):
+        started["koza"] = self.koza_id
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(server.AnswerServer, "serve_forever", fake_forever)
+    server.serve(neta, K, port=0, out=out, browser=False)
+    assert started["koza"] is None
+    assert not (out / "view.json").exists() and (out / "index.html").exists()
+
+
+def capture_serve(monkeypatch):
+    got = {}
+    monkeypatch.setattr(server, "serve", lambda neta, koza, **kw: got.update(neta=neta.neta, koza=koza))
+    return got
+
+
+def test_cli_serve_opens_the_newest_koza_when_none_is_given(tmp_path, monkeypatch):
+    root = tmp_path / "data"
+    shutil.copytree(DATA, root)
+    monkeypatch.setenv("NETACHO_DATA", str(root))
+    got = capture_serve(monkeypatch)
+    cli.main(["serve", "--performer", P, "--no-open"])
+    assert got == {"neta": N, "koza": K}
+
+
+def test_cli_serve_starts_empty_without_any_koza(tmp_path, monkeypatch):
+    monkeypatch.setenv("NETACHO_DATA", str(tmp_path))
+    got = capture_serve(monkeypatch)
+    cli.main(["serve", "--performer", P, "--no-open"])
+    assert got == {"neta": server.NO_NETA, "koza": None}
+
+
+def test_cli_serve_needs_both_neta_and_koza(tmp_path, monkeypatch):
+    monkeypatch.setenv("NETACHO_DATA", str(tmp_path))
+    capture_serve(monkeypatch)
+    with pytest.raises(SystemExit):
+        cli.main(["serve", "--performer", P, "--neta", N])
+
+
+def raw_post(srv, path, head, body):
+    """本文を途中まで送って切る。urllib では送れない形。"""
+    with socket.create_connection(("127.0.0.1", srv.port)) as sock:
+        lines = [f"POST {path} HTTP/1.1", f"Host: 127.0.0.1:{srv.port}", *head, "", ""]
+        sock.sendall("\r\n".join(lines).encode() + body)
+        sock.shutdown(socket.SHUT_WR)
+        reply = b""
+        while chunk := sock.recv(4096):  # 頭と本文が別に届くことがある
+            reply += chunk
+        return reply
+
+
+def upload_query():
+    q = {"neta": "傘貸し長屋", "date": "", "venue": "hall-c", "name": "a.wav"}
+    return "/api/upload?" + urllib.parse.urlencode(q)
+
+
+def test_a_cut_upload_leaves_no_file_and_frees_the_slot(uploading):
+    head = [
+        "Content-Type: application/octet-stream",
+        f"X-Netacho-Token: {uploading.token}",
+        "Content-Length: 100000",
+    ]
+    raw_post(uploading, upload_query(), head, b"x" * 10)
+    kdir = uploading.neta.sibling("傘貸し長屋").koza_dir("0000-00-00-hall-c")
+    for _ in range(100):
+        if not uploading.runner.busy:
+            break
+        time.sleep(0.02)
+    assert not uploading.runner.busy and uploading.runner.status() is None
+    assert not list(kdir.glob("source*"))
+
+
+def test_upload_without_a_length_is_refused(uploading):
+    head = ["Content-Type: application/octet-stream", f"X-Netacho-Token: {uploading.token}"]
+    reply = raw_post(uploading, upload_query(), head, b"")
+    assert reply.startswith(b"HTTP/1.0 400") or reply.startswith(b"HTTP/1.1 400")
+    assert "長さが無い" in reply.decode()
+    assert not uploading.runner.busy
+
+
+def test_upload_over_the_limit_is_refused(uploading, monkeypatch):
+    monkeypatch.setattr(server, "MAX_AUDIO", 5)
+    status, body = upload(uploading, data=b"123456")
+    assert status == 400 and "2 GB" in json.loads(body)["error"]
+    assert uploading.runner.status() is None
+    assert not uploading.neta.sibling("傘貸し長屋").base.exists()
+
+
+def test_upload_needs_room_on_the_disk(uploading, monkeypatch):
+    monkeypatch.setattr(server, "_room_for", lambda kdir, size: False)
+    assert check(uploading)[0] == 400
+    status, body = upload(uploading)
+    assert status == 400 and "空き" in json.loads(body)["error"]
+    assert uploading.runner.status() is None and not uploading.runner.busy
+
+
+def test_room_for_measures_an_existing_parent(tmp_path):
+    assert ROOM_FOR(tmp_path / "a" / "b" / "c", 1)
+    assert not ROOM_FOR(tmp_path / "a", 10**18)
+
+
+def test_room_for_refuses_when_it_cannot_measure(tmp_path, monkeypatch):
+    def broken(path):
+        raise OSError("測れない")
+
+    monkeypatch.setattr(server.shutil, "disk_usage", broken)
+    assert not ROOM_FOR(tmp_path, 1)

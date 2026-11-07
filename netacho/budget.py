@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -14,6 +15,9 @@ ROOT = Path(__file__).resolve().parent.parent
 LEDGER = ROOT / "out" / "ledger.json"
 RUN_LIMIT_USD = 5.0
 TOTAL_LIMIT_USD = 30.0
+# 画面から入れた録音は段階ごとに別のプロセスで回す。始めたときの累計をここに入れて渡し、
+# 録音 1 本（やり直しも含む）を 1 回として $5 で止める
+RUN_BASE_ENV = "NETACHO_RUN_BASE_USD"
 # USD / 1M トークン（入力、出力、キャッシュ読み、キャッシュ書き）
 # 出典: https://platform.claude.com/docs/ja/about-claude/models/overview（2026-11-03 確認）
 PRICE = {
@@ -48,6 +52,13 @@ class Budget:
     def __init__(self, ledger: Path = LEDGER) -> None:
         self.ledger = ledger
         self.run_spent = 0.0
+        base = os.environ.get(RUN_BASE_ENV)
+        if base is not None:  # 同じ録音の前の段階で使った分を、この回の使用に数える
+            try:
+                start = float(base)
+            except ValueError as e:
+                raise BudgetError(f"{RUN_BASE_ENV} が数字でない。費用を数えられないので止める") from e
+            self.run_spent = max(0.0, self.total_spent() - start)
 
     def total_spent(self) -> float:
         if not self.ledger.exists():

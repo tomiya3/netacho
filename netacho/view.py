@@ -392,6 +392,13 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
     }
 
 
+def write_empty(out: Path = OUT) -> None:
+    """高座がまだ無いとき。画面だけを置き、view.json は置かない（画面は録音を入れる所だけを出す）。"""
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "view.json").unlink(missing_ok=True)
+    shutil.copy2(VIEWER, out / "index.html")
+
+
 def write(neta: store.Neta, koza_id: str, out: Path = OUT) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     path = out / "view.json"
