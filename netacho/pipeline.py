@@ -263,6 +263,26 @@ def read_review(neta: store.Neta) -> tuple[dict, dict]:
     return doc, questions
 
 
+HISTORY_MAX = 20  # 役に渡すこれまでのやり取りの上限。新しい順
+
+
+def history_block(questions: dict) -> list[dict]:
+    """答えたか捨てた問いを、新しい順に渡す。未回答は渡さない。無ければ空（入力を変えない）。"""
+    rows = []
+    for q in questions["questions"]:
+        if "answer" in q:
+            rows.append((q["answer"]["recorded_at"], {"問い": q["text"], "答え": q["answer"]["words"]}))
+        elif "dismissed" in q:
+            rows.append(
+                (q["dismissed"]["recorded_at"], {"問い": q["text"], "捨てた理由": q["dismissed"]["reason"]})
+            )
+    if not rows:
+        return []
+    rows.sort(key=lambda r: r[0], reverse=True)
+    text = json.dumps([r for _, r in rows[:HISTORY_MAX]], ensure_ascii=False, indent=1)
+    return [{"type": "text", "text": "# これまでのやり取り\n" + text}]
+
+
 def deshi_pass(ctx: Context, doc: dict, questions: dict, round_no: int) -> tuple[list[dict], int]:
     """弟子役を 1 回呼び、指摘を受け取り、質問を足す。(今回の指摘, 落とした数)。"""
     raw = call_role(ctx.client, "deshi", deshi_content(ctx.neta), "deshi", ctx.usage, ctx.budget, ctx.cache)
@@ -582,7 +602,7 @@ def note(
     rows = noter_rows(cands, items, ctx.transcript, ctx.hanashi, tl) + surprise_rows(found)
     if rows:
         text = json.dumps(rows, ensure_ascii=False, indent=1)
-        content = [{"type": "text", "text": text}]
+        content = [{"type": "text", "text": text}, *history_block(read_review(ctx.neta)[1])]
         try:
             doc = call_role(ctx.client, "noter", content, "noter", ctx.usage, ctx.budget, ctx.cache)
         except Exception:
@@ -742,7 +762,10 @@ def compare_koza(
             makura = sum(s["id"] in done and s["kind"] == "makura" for s in old_spots)
             other_name = "稽古" if doc["practice"] else "もう 1 本"
             rows = ask_rows(chosen, a, b, other_name)
-            content = [{"type": "text", "text": json.dumps(rows, ensure_ascii=False, indent=1)}]
+            content = [
+                {"type": "text", "text": json.dumps(rows, ensure_ascii=False, indent=1)},
+                *history_block(questions),
+            ]
             reply = (
                 call_role(ctx.client, "asker", content, "asker", ctx.usage, ctx.budget, ctx.cache)
                 if chosen
