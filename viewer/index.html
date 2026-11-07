@@ -106,6 +106,22 @@ button.koza-open { border: 1px solid var(--ink); border-radius: 6px; background:
 .chip:disabled { opacity: .55; cursor: default; }
 .group { font: 700 22px/1.5 var(--mincho); margin: 40px 0 0; padding-bottom: 4px; border-bottom: 1px solid var(--ink); }
 .progress { font: 700 20px var(--mincho); margin: 0 0 8px; }
+/* 録音を入れる */
+.upload { margin: 8px 0 28px; }
+.upload .answer[hidden] { display: none; }
+.upload .check { display: flex; gap: 10px; align-items: flex-start; font-size: 16px; }
+.upload .check input { margin-top: 6px; width: 20px; height: 20px; }
+.upload progress { width: 100%; height: 12px; }
+.upload select { font: 18px var(--mincho); padding: 8px 12px; border: 1.5px solid var(--rule-2); border-radius: 6px; background: #fff; display: block; margin-top: 4px; }
+.job { border: 1.5px solid var(--rule-2); border-radius: 6px; padding: 12px 20px; margin: 8px 0 24px; max-width: 860px; }
+.job:empty { display: none; }
+.job h3 { margin: 0 0 6px; font: 700 20px var(--mincho); }
+.stages { list-style: none; padding: 0; margin: 0 0 8px; }
+.stages li { padding: 4px 0; color: var(--ink-3); }
+.stages li.running { color: var(--ink); font-weight: 700; }
+.stages li.done { color: var(--ink-2); }
+.stages li.failed { color: var(--me); font-weight: 700; }
+.stages .mark { display: inline-block; width: 2.2em; }
 
 /* 波 */
 .chart { position: relative; margin: 8px 0; }
@@ -327,9 +343,138 @@ function kozaEdit(row, note) {
   const toggle = el("button", { type: "button", class: "quiet", onclick: () => { box.hidden = !box.hidden; } }, "日付と会場を直す");
   return [toggle, box];
 }
+/* ---------- 録音を入れる ---------- */
+const STAGE_MARK = { waiting: "", running: "いま", done: "済", failed: "止" };
+async function jobState() {
+  const res = await fetch("/api/job", { headers: { "X-Netacho-Token": TOKEN } });
+  if (!res.ok) throw new Error(String(res.status));
+  return res.json();
+}
+function jobBox(note, onState) {
+  const box = el("div", { class: "job", role: "status", "aria-live": "polite" });
+  let timer = null;
+  const draw = s => {
+    onState(s);
+    const j = s.job;
+    box.replaceChildren();
+    if (!j || (j.state === "done" && j.koza === KOZA && j.neta === NETA)) return;  // 開いた後は出さない
+    box.append(el("h3", {}, `${j.neta}　${kozaName(j.koza)}`),
+      el("ol", { class: "stages" }, j.stages.map(st => el("li", { class: st.state }, el("span", { class: "mark" }, STAGE_MARK[st.state]),
+        st.name, st.seconds !== null ? el("span", { class: "small" }, `　${clock(st.seconds)}`) : null))));
+    if (j.state === "running") box.append(el("p", { class: "small" }, "この画面を閉じても処理は続きます。端末の netacho serve は止めないでください。"));
+    if (j.state === "done") box.append(el("p", {}, el("button", { type: "button", class: "btn", onclick: () => openKoza({ neta: j.neta, koza_id: j.koza }, note, "#deshi") }, "できた高座を開く")));
+    if (j.state === "failed") {
+      const hint = j.failed === "鍵の確認" ? "ANTHROPIC_API_KEY を環境変数に入れて、netacho serve を起動し直してから、録音を入れ直してください。" : "";
+      box.append(el("p", { class: "notice" }, `「${j.failed}」で止まりました（終了コード ${j.code}）。${hint}詳しい出力は、演者のデータの置き場の ${j.log} にあります。`),
+        el("p", {}, el("button", { type: "button", class: "btn", onclick: retry }, "止まった所からやり直す")));
+    }
+  };
+  const tick = async () => {
+    clearTimeout(timer);
+    try {
+      const s = await jobState();
+      draw(s);
+      if (s.busy) timer = setTimeout(tick, 2000);
+    } catch (e) { note.textContent = `処理の様子を読めません：${e.message}`; }
+  };
+  const retry = async () => {
+    note.textContent = "";
+    const res = await fetch("/api/retry", { method: "POST", headers: { "Content-Type": "application/json", "X-Netacho-Token": TOKEN }, body: "{}" });
+    const doc = await res.json().catch(() => ({}));
+    if (!res.ok) note.textContent = `やり直せません：${doc.error || res.status}`;
+    tick();
+  };
+  return { box, tick };
+}
+function uploadForm(job, note, open, cost) {
+  const input = (label, attrs) => { const i = el("input", attrs); return [el("label", {}, label, i), i]; };
+  const [fileRow, file] = input("録音（wav、m4a、mp3 など）", { type: "file", accept: ".wav,.m4a,.mp3,.aac,.flac,.mp4,.mov,audio/*" });
+  const netas = [...new Set(KOZAS.map(r => r.neta))];
+  const list = el("datalist", { id: "netas" }, netas.map(n => el("option", { value: n })));
+  const [netaRow, neta] = input("演目", { type: "text", list: "netas", placeholder: "例：雨宿り勘定" });
+  if (NETA && netas.includes(NETA)) neta.value = NETA;
+  const [whenRow, when] = input("公演日（分からなければ空のまま）", { type: "date" });
+  const [venueRow, venue] = input("会場", { type: "text", placeholder: "例：hall-a（空白と / は使えません）" });
+  const [termsRow, terms] = input("聞き違えやすい語（任意。人の名前や地名をカンマ区切りで）", { type: "text" });
+  const pick = el("select", {}, el("option", { value: "" }, "比べない"),
+    KOZAS.map((r, i) => el("option", { value: String(i) }, [r.title, dateOf(r.date), r.venue].join("　"))));
+  const pickRow = KOZAS.length ? el("label", {}, "前の高座と比べる（任意。同じ演目の 2 本で、言葉や間が違う所を問いにします）", pick) : null;
+  const agree = el("input", { type: "checkbox" });
+  const bar = el("progress", { max: "100", value: "0", hidden: "" });
+  const go = el("button", { type: "button", class: "btn" }, "始める");
+  go.addEventListener("click", () => {
+    note.textContent = "";
+    if (!file.files[0]) { note.textContent = "録音を選んでください。"; return; }
+    if (!neta.value.trim() || !venue.value.trim()) { note.textContent = "演目と会場を入れてください。"; return; }
+    if (!agree.checked) { note.textContent = "費用の説明を読んで、チェックを入れてください。"; return; }
+    const other = pick.value ? KOZAS[Number(pick.value)] : null;
+    const q = new URLSearchParams({ neta: neta.value, date: when.value, venue: venue.value, terms: terms.value, name: file.files[0].name,
+      with_neta: other?.neta || "", with_koza: other?.koza_id || "" });
+    go.disabled = true;
+    fetch("/api/upload?" + q + "&check=1&size=" + file.files[0].size, { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-Netacho-Token": TOKEN }, body: "" })
+      .then(async res => {
+        if (res.ok) return send(q);
+        const doc = await res.json().catch(() => ({}));
+        go.disabled = false;
+        note.textContent = `始められません：${doc.error || res.status}`;
+      })
+      .catch(() => { go.disabled = false; note.textContent = "サーバにつながりません。netacho serve が動いているか確かめてください。"; });
+  });
+  const send = q => {  // 入力を確かめてから送る。送り始めてから断られると、理由が届かないことがある
+    const xhr = new XMLHttpRequest();  // 大きな録音でも、送った割合を出す
+    xhr.open("POST", "/api/upload?" + q);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.setRequestHeader("X-Netacho-Token", TOKEN);
+    xhr.upload.addEventListener("progress", e => { if (e.lengthComputable) bar.value = String(Math.round(e.loaded / e.total * 100)); });
+    const done = () => { go.disabled = false; bar.hidden = true; };
+    xhr.addEventListener("load", () => {
+      done();
+      let doc = {};
+      try { doc = JSON.parse(xhr.responseText); } catch { /* 応答が JSON でない */ }
+      if (xhr.status !== 200) { note.textContent = `始められません：${doc.error || xhr.status}`; return; }
+      box.hidden = true;
+      job.tick();
+    });
+    xhr.addEventListener("error", () => { done(); note.textContent = "録音を送れませんでした。サーバが動いているか、入力が合っているかを確かめてください。"; });
+    bar.hidden = false; bar.value = "0";
+    xhr.send(file.files[0]);
+  };
+  const box = el("div", { class: "answer", ...(open ? {} : { hidden: "" }) }, fileRow, netaRow, list, whenRow, venueRow, termsRow, pickRow, cost,
+    el("label", { class: "check" }, agree, "Claude の API を使い、費用がかかることを分かったうえで始めます"), bar, el("div", {}, go));
+  const toggle = open ? null : el("button", { type: "button", class: "koza-open", onclick: () => { box.hidden = !box.hidden; } }, "＋ 録音を入れる");
+  return el("div", { class: "upload" }, toggle, box);
+}
+// 参考の値は README の「数字」の 2 回の実測（25 分の高座）から写した。数字を変えたら、ここも直す
+function costText(s) {
+  const spent = s?.spent_usd !== null && s?.spent_usd !== undefined ? `（今の合計 $${s.spent_usd.toFixed(2)}）` : "";
+  const limits = s ? `費用は段階ごとに $${s.run_limit_usd}、これまでの合計が $${s.total_limit_usd} を超えそうなら、呼ぶ前に止まります${spent}。` : "";
+  const key = s && !s.api_key ? "いまは ANTHROPIC_API_KEY が無いので、始めても鍵の確認で止まります。" : "";
+  return `${key}文字起こしと笑いの検出は、この機械の中で動かします。帳面、問い、清書で Claude の API を使います。${limits}`
+    + "参考：25 分の高座 1 本で、清書を含めて実測 $1.11〜$1.65 でした。文字起こしだけで 10 分ほどかかります。";
+}
+function uploadParts(open) {
+  const note = el("p", { class: "status", role: "status" });
+  const cost = el("p", { class: "small" }, costText(null));
+  const job = jobBox(note, s => { cost.textContent = costText(s); });
+  return { parts: [job.box, uploadForm(job, note, open, cost), note], tick: job.tick };
+}
+function renderStart() {
+  for (const [key] of TABS) if (key !== "list") document.getElementById("tab-" + key).hidden = true;
+  const root = document.getElementById("list");
+  const { parts, tick } = uploadParts(true);
+  root.append(el("h2", {}, "最初の高座を入れる"),
+    el("p", { class: "lead" }, "高座の録音を入れると、文字起こし、笑いの波、噺と型を分けた帳面、弟子の問いができます。録音はこの機械の中に置きます。"), ...parts);
+  select("list");
+  tick();
+}
 function renderList(d) {
   const root = document.getElementById("list");
   root.append(el("h2", {}, "高座帳"), el("p", { class: "lead" }, "演った高座の一覧です。開いて振り返ります。"));
+  if (TOKEN) {
+    const { parts, tick } = uploadParts(false);
+    root.append(...parts);
+    tick();
+  }
   const note = el("p", { class: "status", role: "status" });
   const titles = [...new Set(KOZAS.map(r => r.title))];
   const counted = new Set();  // 問いは演目のフォルダごとの物。同じフォルダの高座で 2 度数えない
@@ -816,6 +961,7 @@ async function main() {
     renderList(d); renderDeshi(d); renderWave(d); renderCompare(d); renderKata(d); renderCards(d); renderSeisho(d); renderNumbers(d);
     select(TABS.some(([k]) => "#" + k === location.hash) ? location.hash.slice(1) : open ? "deshi" : "wave");
   } catch (e) {
+    if (TOKEN && e.message === "404") { renderStart(); return; }  // まだ高座が無い。録音を入れる所だけ出す
     document.getElementById("error").append(el("p", { class: "notice" },
       `読み込めません（${e.message}）。netacho view で書き出してから開きます。`));
   }

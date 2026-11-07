@@ -4,12 +4,15 @@
 Host、Origin を確かめる。配信するのは画面と view.json だけ。演者の言葉はログに出さない。
 読み取りにトークンは要らない。`make viewer` と同じで、同じ機械の上の物は読める前提。
 録音だけは別で、トークンのある画面に、問いの所の短い切り抜きだけを渡す。`out/view` には置かない。
+画面から録音を受け取り、jobs で段階ごとに処理する。処理の状態と費用の累計も、トークンのある画面にだけ渡す。
+高座が 1 本も無いときは、高座を開かずに起動する（録音を入れる画面だけ）。
 """
 
 from __future__ import annotations
 
 import hmac
 import json
+import os
 import re
 import secrets
 import threading
@@ -21,9 +24,12 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import performer, pipeline, store, view
+from . import budget, jobs, performer, pipeline, store, view
 
 MAX_BODY = 64 * 1024
+MAX_AUDIO = 2 * 1024**3  # 録音の上限。2 GB
+CHUNK = 1024 * 1024
+NO_NETA = "-"  # 高座を開いていないときの仮の演目。フォルダは作らない
 POSITIONS = ("before", "within", "after")
 CLIP_BEFORE, CLIP_AFTER = 12.0, 6.0  # 笑いの前後に聞かせる長さ。秒
 CLIP_MAX = 90.0  # 切り抜きの上限。録音を丸ごと渡さないため。秒
@@ -39,9 +45,18 @@ class AnswerServer(ThreadingHTTPServer):
 
     daemon_threads = True
 
-    def __init__(self, neta: store.Neta, koza_id: str, *, out: Path, port: int = 0) -> None:
+    def __init__(
+        self,
+        neta: store.Neta,
+        koza_id: str | None,
+        *,
+        out: Path,
+        port: int = 0,
+        runner: jobs.Runner | None = None,
+    ) -> None:
         super().__init__(("127.0.0.1", port), Handler)
         self.neta, self.koza_id, self.out = neta, koza_id, out
+        self.runner = runner or jobs.Runner()
         self.lock = threading.Lock()
         self.token = secrets.token_urlsafe(24)
         self.port = self.server_address[1]
@@ -121,15 +136,17 @@ class Handler(BaseHTTPRequestHandler):
     def _host_ok(self) -> bool:
         return self.headers.get("Host") in self.server.hosts  # 名前の差し替えで読まれないように
 
-    def _write_ok(self) -> bool:
+    def _token_ok(self) -> bool:
         origin = self.headers.get("Origin")
         given = self.headers.get("X-Netacho-Token", "")
         return (
             self._host_ok()
             and (origin is None or urlsplit(origin).netloc in self.server.hosts)
             and hmac.compare_digest(given.encode(), self.server.token.encode())
-            and self.headers.get_content_type() == "application/json"
         )
+
+    def _write_ok(self) -> bool:
+        return self._token_ok() and self.headers.get_content_type() == "application/json"
 
     def _audio(self, args: dict) -> Path:
         """画面が指した高座の録音。指定が無ければ、開いている高座か、比較の 2 本目。"""
@@ -175,6 +192,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts.path == "/clip" and self._host_ok():
             self._clip(parts.query)
             return
+        if parts.path == "/api/job":
+            self._job()
+            return
         found = FILES.get(parts.path)
         if not self._host_ok() or found is None:
             self._json(404, {"error": "無い"})
@@ -187,7 +207,117 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._send(200, data, kind)
 
+    def _job(self) -> None:
+        """処理の状態と、費用の累計と上限。始める前の確認に使う。"""
+        if not self._token_ok():
+            self._json(403, {"error": "受け付けない"})
+            return
+        try:
+            spent = round(budget.Budget().total_spent(), 2)
+        except (OSError, ValueError, KeyError, TypeError):
+            spent = None
+        self._json(
+            200,
+            {
+                "job": self.server.runner.status(),
+                "busy": self.server.runner.busy,
+                "api_key": bool(os.environ.get("ANTHROPIC_API_KEY")),  # 有無だけ。値は出さない
+                "spent_usd": spent,
+                "run_limit_usd": budget.RUN_LIMIT_USD,
+                "total_limit_usd": budget.TOTAL_LIMIT_USD,
+            },
+        )
+
+    def _upload(self, query: str) -> None:
+        """録音を受け取り、処理を始める。演目、公演日、会場、語、ファイル名は URL の引数で受ける。
+
+        `check=1` なら本文を読まずに、入力と空きだけを確かめる。大きな録音を送り始めてから断ると、
+        ブラウザには理由が届かないことがあるので、画面は先にこれを呼ぶ。
+        受け取りの途中で送るのが止まっても、Handler.timeout（読み取りごと 10 秒）で切れて枠を返す。
+        """
+        if not self._token_ok() or self.headers.get_content_type() != "application/octet-stream":
+            self._json(403, {"error": "受け付けない"})
+            return
+        args = parse_qs(query)
+        arg = lambda key: args.get(key, [""])[0]  # noqa: E731
+        check = arg("check") == "1"
+        try:  # 確かめるだけのときは、これから送る録音の大きさ
+            length = int(arg("size") if check else self.headers.get("Content-Length", ""))
+        except ValueError:
+            self._json(400, {"error": "長さが無い"})
+            return
+        if not 0 < length <= MAX_AUDIO:
+            self._json(400, {"error": "録音は 2 GB までで"})
+            return
+        try:
+            neta_name, koza_id = jobs.new_koza(arg("neta"), arg("date"), arg("venue"))
+            suffix = jobs.audio_suffix(arg("name"))
+            terms = jobs.parse_terms(arg("terms"))
+            kdir = self.server.neta.sibling(neta_name).koza_dir(koza_id)
+            compare = None
+            if arg("with_koza"):
+                other, other_koza = _target(self.server, {"neta": arg("with_neta"), "koza": arg("with_koza")})
+                if (other.neta, other_koza) == (neta_name, koza_id):
+                    raise jobs.JobError("同じ高座とは比べられません")
+                compare = (other.neta, other_koza)
+        except (jobs.JobError, store.StoreError, performer.PerformerError) as e:
+            self._json(400, {"error": str(e)})
+            return
+        if (kdir / "koza.json").exists():
+            message = (
+                "同じ演目に、同じ日付と会場の高座がもうあります。途中で止まった高座なら、"
+                "端末で netacho build、note、seisho に --reuse を付けて続きを回せます"
+            )
+            self._json(400, {"error": message})
+            return
+        runner = self.server.runner
+        if check:
+            if runner.busy:
+                self._json(409, {"error": "別の録音を処理しています。終わってから入れてください"})
+                return
+            self._json(200, {"ok": True})
+            return
+        try:
+            runner.reserve()
+        except jobs.JobError as e:
+            self._json(409, {"error": str(e)})
+            return
+        try:
+            dest = self._receive(kdir, suffix, length)
+        except OSError:
+            runner.release()
+            self._json(400, {"error": "録音を受け取れなかった"})
+            return
+        job = jobs.Job(self.server.neta.performer, neta_name, koza_id, dest, terms, compare=compare)
+        runner.start(job, kdir)
+        self._json(200, {"ok": True, "job": job.status()})
+
+    def _receive(self, kdir: Path, suffix: str, length: int) -> Path:
+        """本文を少しずつ書く。途中で切れたら、書きかけを残さない。"""
+        kdir.mkdir(parents=True, exist_ok=True)
+        dest = kdir / f"source{suffix}"
+        part = kdir / f"source{suffix}.part"
+        left = length
+        try:
+            with part.open("wb") as f:
+                while left:
+                    chunk = self.rfile.read(min(CHUNK, left))
+                    if not chunk:
+                        raise OSError("本文が途中で切れた")
+                    f.write(chunk)
+                    left -= len(chunk)
+            part.replace(dest)
+        finally:
+            part.unlink(missing_ok=True)
+        return dest
+
     def do_POST(self) -> None:  # noqa: N802
+        if urlsplit(self.path).path == "/api/upload":
+            self._upload(urlsplit(self.path).query)
+            return
+        if urlsplit(self.path).path == "/api/retry":
+            self._retry()
+            return
         actions = {
             "/api/answer": self._answer,
             "/api/dismiss": self._dismiss,
@@ -216,6 +346,18 @@ class Handler(BaseHTTPRequestHandler):
         with self.server.lock:  # 帳面の読み書きが重ならないように
             self._save(action, raw)
 
+    def _retry(self) -> None:
+        """落ちた段階から、--reuse を付けてやり直す。"""
+        if not self._token_ok():
+            self._json(403, {"error": "受け付けない"})
+            return
+        try:
+            self.server.runner.retry(self.server.neta)
+        except jobs.JobError as e:
+            self._json(409, {"error": str(e)})
+            return
+        self._json(200, {"ok": True, "job": self.server.runner.status()})
+
     def _save(self, action: Callable[[dict], Callable[[], None]], raw: bytes) -> None:
         try:
             body = json.loads(raw)
@@ -233,7 +375,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:  # ここから先で落ちても、保存は済んでいる。「保存できなかった」と言わない
             after()
-            view.write(self.server.neta, self.server.koza_id, self.server.out)
+            if self.server.koza_id is not None:
+                view.write(self.server.neta, self.server.koza_id, self.server.out)
         except Exception:
             self._json(
                 200,
@@ -318,8 +461,18 @@ def _target(server: AnswerServer, body: dict) -> tuple[store.Neta, str]:
     return neta, koza_id
 
 
-def serve(neta: store.Neta, koza_id: str, *, port: int, out: Path = view.OUT, browser: bool = True) -> None:
-    view.write(neta, koza_id, out)
+def serve(
+    neta: store.Neta, koza_id: str | None, *, port: int, out: Path = view.OUT, browser: bool = True
+) -> None:
+    """koza_id が None なら、高座を開かずに、録音を入れる画面だけで起動する。"""
+    try:
+        if koza_id is not None:
+            view.write(neta, koza_id, out)
+    except (OSError, ValueError) as e:  # 作りかけの高座でも、録音を入れる画面は開く
+        print(f"{koza_id} を開けません（{type(e).__name__}）。録音を入れる画面だけを開きます", flush=True)
+        koza_id = None
+    if koza_id is None:
+        view.write_empty(out)
     try:
         server = AnswerServer(neta, koza_id, out=out, port=port)
     except OSError as e:
@@ -327,6 +480,11 @@ def serve(neta: store.Neta, koza_id: str, *, port: int, out: Path = view.OUT, br
     print(
         f"開く：{server.url()}（止めるときは Ctrl-C）", flush=True
     )  # 出力先が端末でなくても、すぐ見えるように
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print(
+            "ANTHROPIC_API_KEY がありません。見るのと答えるのはできますが、録音の処理は鍵の確認で止まります",
+            flush=True,
+        )
     if browser:
         webbrowser.open(server.url())
     try:

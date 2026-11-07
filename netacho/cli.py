@@ -280,21 +280,27 @@ def _rewrite_markdown(neta: store.Neta) -> None:
     pipeline.write_markdown(neta, store.read(neta.hanashi, "book"), store.read(neta.kata, "book"))
 
 
-def cmd_run(args: argparse.Namespace) -> None:
-    """prep、build、note を順に回す。"""
+def cmd_auth(args: argparse.Namespace) -> None:
+    """API の鍵を確かめる。長い文字起こしの後で落ちないように、先に呼ぶ。課金はされない。"""
     import anthropic
 
     from . import runner
 
+    try:
+        runner.check_auth(runner.make_client())
+    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
+        raise SystemExit("API の鍵が通らない。ANTHROPIC_API_KEY を確かめる") from e
+    except TypeError as e:
+        if "authentication" not in str(e).lower():  # 別のバグを認証の問題と言わない
+            raise
+        raise SystemExit("API の認証が無い。ANTHROPIC_API_KEY を用意する") from e
+    print("API の鍵は通りました")
+
+
+def cmd_run(args: argparse.Namespace) -> None:
+    """prep、build、note を順に回す。"""
     if not args.reuse:  # --reuse はキャッシュだけで済むことがあるので、鍵を要求しない
-        try:
-            runner.check_auth(runner.make_client())  # 長い文字起こしの後で落ちないように、先に確かめる
-        except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
-            raise SystemExit("API の鍵が通らない。ANTHROPIC_API_KEY を確かめる") from e
-        except TypeError as e:
-            if "authentication" not in str(e).lower():  # 別のバグを認証の問題と言わない
-                raise
-            raise SystemExit("API の認証が無い。ANTHROPIC_API_KEY を用意する") from e
+        cmd_auth(args)
     where = f"--performer {args.performer} --neta {args.neta} --koza {args.koza}"
     print("1/3 prep")
     cmd_prep(args)
@@ -377,9 +383,16 @@ def cmd_dismiss(args: argparse.Namespace) -> None:
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
-    from . import server
+    """高座を指さなければ、いちばん新しい高座を開く。1 本も無ければ、録音を入れる画面だけを開く。"""
+    from . import server, view
 
-    server.serve(store.Neta(args.performer, args.neta), args.koza, port=args.port, browser=not args.no_open)
+    if (args.neta is None) != (args.koza is None):
+        raise SystemExit("--neta と --koza は両方指定するか、両方省く")
+    if args.neta is None:
+        rows = view.koza_list(store.Neta(args.performer, server.NO_NETA))
+        args.neta, args.koza = (rows[0]["neta"], rows[0]["koza_id"]) if rows else (server.NO_NETA, None)
+    neta = store.Neta(args.performer, args.neta)
+    server.serve(neta, args.koza, port=args.port, browser=not args.no_open)
 
 
 def cmd_guide(args: argparse.Namespace) -> None:
@@ -478,6 +491,9 @@ def build_parser() -> argparse.ArgumentParser:
     note.add_argument("--reuse", action="store_true", help="同じ入力の役の出力を使い回す")
     note.set_defaults(func=cmd_note)
 
+    auth = sub.add_parser("auth", help="API の鍵を確かめる（課金なし）")
+    auth.set_defaults(func=cmd_auth)
+
     run = sub.add_parser("run", help="prep + build + note")
     run.add_argument("--audio", required=True)
     run.add_argument("--performer", required=True)
@@ -539,9 +555,10 @@ def build_parser() -> argparse.ArgumentParser:
     dismiss.add_argument("--reason", required=True)
     dismiss.set_defaults(func=cmd_dismiss)
 
-    serve = sub.add_parser("serve", help="画面を開き、演者が問いに答える（LLM 0 回）")
-    _who(serve)
-    serve.add_argument("--koza", required=True)
+    serve = sub.add_parser("serve", help="画面を開く。録音を入れる、問いに答える。答えでは LLM を呼ばない")
+    serve.add_argument("--performer", default=os.environ.get("NETACHO_PERFORMER", "performer-a"))
+    serve.add_argument("--neta", help="開く演目。省くといちばん新しい高座")
+    serve.add_argument("--koza", help="開く高座。省くといちばん新しい高座")
     serve.add_argument("--port", type=int, default=8765)
     serve.add_argument("--no-open", action="store_true", help="ブラウザを開かない")
     serve.set_defaults(func=cmd_serve)

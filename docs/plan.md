@@ -332,11 +332,12 @@ netacho seisho  --performer ID --neta 演目 --koza KOZA [--title 題] [--terms 
 netacho guide   --performer ID --neta 演目                         # LLM 0 回
 netacho view    --performer ID --neta 演目 --koza KOZA             # out/view/ へ書き出す
 netacho compare --performer ID --neta 演目 --koza KOZA --with-koza KOZA2 [--with-neta 演目2]  # 2 本を比べて問う
-netacho serve   --performer ID --neta 演目 --koza KOZA [--port N]  # 画面で問いに答える。LLM 0 回
+netacho serve   [--performer ID] [--neta 演目 --koza KOZA] [--port N]  # 画面。録音を入れる、問いに答える
+netacho auth                                                         # API の鍵を確かめる（課金なし）
 netacho dismiss --performer ID --neta 演目 --question Q --speaker S --reason R  # 的外れの問いを捨てる
 ```
 
-`netacho view` の後、`make viewer` で `http://localhost:8000/`（配信は `out/view` だけ。読むだけ）。答えるときは `netacho serve` が出す URL を開く。127.0.0.1 だけで待ち受け、書き込みには起動ごとのトークン、Host、Origin を確かめる。読み取りは `make viewer` と同じでトークンを求めない。札のタブからは、場面、言葉、札の文、理由を入れて札に出せる（`netacho decide` と同じ `performer.decide` を通す。位置は場面の中に固定で、選ぶときは CLI を使う）。笑いへの問いには、その所の録音の短い切り抜きと前後の台詞を添える。切り抜きは、1 本の問いでは前 12 秒、後 6 秒。比較の問いでは台詞の頭の 8 秒前から、台詞と笑いの終わりの 6 秒後まで（90 秒まで）。切り抜きはトークンのある画面にだけ渡し、`out/view` には置かない。画面の引用と笑いへの問いは、清書があれば清書で見せる。保存する根拠は文字起こしのままで、照合もそれで行う。Claude の直した文で Claude の推定を確かめないため。`serve` は既定のブラウザで開く（`--no-open` で止める）ので、トークン入りの URL はブラウザの履歴に残る。トークンは起動ごとに変わる。`serve` は CLI のサブコマンドで、書き込み（答え、答えの直し、公演日と会場の直し）は `netacho answer` と同じ `performer` を通す（演者本人がコマンドを打たずに答えるため）。公演日が分からない高座は `0000-00-00` で持つ。画面は 5 枚：反応の波と候補、型、札、弟子役の指摘と質問、清書。「Claude の候補」「演者の決定」「スクリプトの転記」を色とラベルで見分けられるようにする。
+`netacho view` の後、`make viewer` で `http://localhost:8000/`（配信は `out/view` だけ。読むだけ）。答えるときは `netacho serve` が出す URL を開く。127.0.0.1 だけで待ち受け、書き込みには起動ごとのトークン、Host、Origin を確かめる。読み取りは `make viewer` と同じでトークンを求めない。札のタブからは、場面、言葉、札の文、理由を入れて札に出せる（`netacho decide` と同じ `performer.decide` を通す。位置は場面の中に固定で、選ぶときは CLI を使う）。笑いへの問いには、その所の録音の短い切り抜きと前後の台詞を添える。切り抜きは、1 本の問いでは前 12 秒、後 6 秒。比較の問いでは台詞の頭の 8 秒前から、台詞と笑いの終わりの 6 秒後まで（90 秒まで）。切り抜きはトークンのある画面にだけ渡し、`out/view` には置かない。画面の引用と笑いへの問いは、清書があれば清書で見せる。保存する根拠は文字起こしのままで、照合もそれで行う。Claude の直した文で Claude の推定を確かめないため。`serve` は既定のブラウザで開く（`--no-open` で止める）ので、トークン入りの URL はブラウザの履歴に残る。トークンは起動ごとに変わる。`serve` は CLI のサブコマンドで、書き込み（答え、答えの直し、公演日と会場の直し）は `netacho answer` と同じ `performer` を通す（演者本人がコマンドを打たずに答えるため）。公演日が分からない高座は `0000-00-00` で持つ。画面から録音を入れられる（`netacho/jobs.py`）。録音は高座のフォルダに `source.*` として置き、鍵の確認、prep、build、note、seisho（比べる相手を選んだら compare も）を、段階ごとに別のプロセスの `python -m netacho` で順に回す。端末で打つのと同じ道なので、`budget.py` の上限も効く。同時に 1 本だけ。状態はサーバのメモリに持ち、画面を閉じても続く。落ちたら止まった段階から `--reuse` でやり直す（prep には付けない）。各段階の出力は高座のフォルダの `job.log` にだけ書き、応答には段階の名前と終了コードだけを出す。始める前に、上限と費用の累計と、鍵の有無（値は出さない）を画面に出す。高座が 1 本も無ければ高座を開かずに起動し、録音を入れる画面だけを出す。`--neta` と `--koza` を省くと、いちばん新しい高座を開く。画面は 5 枚：反応の波と候補、型、札、弟子役の指摘と質問、清書。「Claude の候補」「演者の決定」「スクリプトの転記」を色とラベルで見分けられるようにする。
 
 ### 費用の管理（`budget.py`）
 

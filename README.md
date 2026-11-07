@@ -14,30 +14,64 @@
 
 ## 使い方
 
-repo にはダミー（自作の架空の噺）だけが入っています。
+起動はコマンド 1 つで、その後はブラウザの中で済みます。
+
+### 用意するもの
+
+- macOS か Linux。ffmpeg（`brew install ffmpeg`）と [uv](https://docs.astral.sh/uv/)。Python 3.12 は uv が入れます
+- 録音を処理するときだけ、Anthropic の API の鍵（`ANTHROPIC_API_KEY`）。見るのと答えるのには要りません
+
+### 起動する
+
+```
+make setup                      # 依存を入れる
+export ANTHROPIC_API_KEY=...    # 鍵は環境変数で渡す。ファイルには書かない
+uv run netacho serve            # ブラウザが開く。止めるときは Ctrl-C
+```
+
+演者のデータは repo の外の `~/netacho-data/` に置きます（`NETACHO_DATA` で変えられます）。演者は ID で扱い、既定は `performer-a` です（`--performer` で変えられます）。高座があれば、いちばん新しい高座を開きます。
+
+### ブラウザでやること
+
+1. **録音を入れる**：最初は「最初の高座を入れる」の画面が出ます。2 本目からは「高座帳」の「＋ 録音を入れる」を使います。録音のファイル、演目、公演日、会場を入れます。同じ演目名で入れると、同じ帳面に書き足されます。前の高座を選ぶと、2 本を比べる段階も続けて回ります
+2. **費用を確かめて始める**：段階ごとの上限（$5）、全体の上限（$30）、これまでの合計が出ます。チェックを入れてから始めます。上限を超えそうなときは、`budget.py` が呼ぶ前に止めます
+3. **進み具合を見る**：鍵の確認 → 文字起こしと笑いの検出 → 帳面と弟子の問い → ノートと予測の比べ → 清書（→ 前の高座と比べる）の順に、今の段階と、かかった時間が出ます。画面を閉じても処理は続き、開き直すと続きが見えます。同時に動かすのは 1 本だけです。止まったら、止まった段階と「止まった所からやり直す」が出ます
+4. **できた高座を開く**：右上で「書く人」（本人か、作者の代筆か）を選び、「弟子の問い」に答えます。答えは書き換えられずに型へ残ります。的外れの問いは理由を付けて捨てられます
+5. **振り返る**：「高座の波」で笑いの来た所を見て、押すとその所から聞けます。「帳面」で噺と型、「札」で次の高座の前に見る札、「比べる」で 2 本の違い、「清書」で読める速記を見ます
+
+![録音を入れる（ダミーのデータ）](docs/reports/img/2026-11-07-upload-form.png)
+
+![処理の進み具合（ダミーのデータ）](docs/reports/img/2026-11-07-upload-progress.png)
+
+録音は手元から出ません。文字起こし（Whisper）と笑いの検出（AST）は手元で動かします。Claude の API に送るのは、文字起こしの文と、そこから作った帳面や笑いの所の情報で、音声は送りません。初回はモデルのダウンロードに時間がかかります。手元の実測では、25 分の高座 1 本で文字起こしに 558〜618 秒、Claude の役の費用は清書を含めて $1.11〜$1.65 でした（下の「数字」の 2 回）。
+
+### ダミーで画面だけ見る
+
+repo にはダミー（自作の架空の噺）だけが入っています。答えると書き込まれるので、写してから開きます。
 
 ```
 make setup
 make test
-NETACHO_DATA=tests/fixtures/dummy_koza uv run netacho view --performer performer-dummy --neta 雨宿り勘定 --koza 2026-01-01-dummy-hall
-make viewer   # http://localhost:8000/（ポートが塞がっていれば make viewer PORT=8765）
+cp -r tests/fixtures/dummy_koza /tmp/netacho-dummy
+NETACHO_DATA=/tmp/netacho-dummy uv run netacho serve --performer performer-dummy
 ```
 
-実際の録音で回すときは `ANTHROPIC_API_KEY` を環境変数で渡します。演者のデータは repo の外（`NETACHO_DATA`、既定 `~/netacho-data/`）に置きます。
+### 端末で使う
+
+画面でやることは、すべてコマンドでもできます。`--reuse` は、同じ入力の役の出力を使い回します（途中で落ちたときのやり直し用）。
 
 ```
+netacho auth                                                  # API の鍵を確かめる（課金なし）
 netacho run     --audio 録音 --performer ID --neta 演目 --koza 日付-会場
 netacho seisho  --performer ID --neta 演目 --koza 日付-会場 --title 題 [--terms 語,語]  # 清書
-netacho decide  --performer ID --neta 演目 --speaker 名 --words 言葉 --card 札の文 --why 理由 --scene 場面
+netacho compare --performer ID --neta 演目 --koza 日付-会場 --with-koza 日付-会場2  # 同じ演目の 2 本を比べて問う
 netacho answer  --performer ID --neta 演目 --question Q --speaker 名 --words 言葉
 netacho dismiss --performer ID --neta 演目 --question Q --speaker 名 --reason 理由
+netacho decide  --performer ID --neta 演目 --speaker 名 --words 言葉 --card 札の文 --why 理由 --scene 場面
 netacho guide   --performer ID --neta 演目                    # 札（LLM 0 回）
-netacho view    --performer ID --neta 演目 --koza 日付-会場
-netacho compare --performer ID --neta 演目 --koza 日付-会場 --with-koza 日付-会場2  # 同じ演目の 2 本を比べて問う
-netacho serve   --performer ID --neta 演目 --koza 日付-会場  # 演者が画面で問いに答える
+netacho view    --performer ID --neta 演目 --koza 日付-会場     # 画面用の JSON を out/view に書き出す
+netacho serve   [--performer ID] [--neta 演目 --koza 日付-会場] [--port 8765]
 ```
-
-`--reuse` は、同じ入力の役の出力を使い回します。正本が変わると入力も変わるので、途中で落ちたときのやり直しに使います。
 
 ## 仕組み
 
