@@ -88,16 +88,16 @@ def test_noter_input_is_one_block_without_history(built, data, tmp_path):  # noq
 
 
 def test_quoted_lines_do_not_count_as_a_leak():
-    answers = ["わしもこうやって儲けた"]
-    line = "わしもこうやって儲けた"
+    answers = ["傘を貸して勘定した"]
+    line = "傘を貸して勘定した"
     assert not pipeline.leaks_answer(
-        "「わしもこうやって儲けた」の所で、間を延ばしたんですか？", answers, line
+        "「傘を貸して勘定した」の所で、間を延ばしたんですか？", answers, line
     )
 
 
 def test_quoting_the_answer_itself_is_a_leak():
     answers = ["土地の名を言うと受ける"]
-    assert pipeline.leaks_answer("「土地の名を言うと受ける」んですね？", answers, "家建てたんで")
+    assert pipeline.leaks_answer("「土地の名を言うと受ける」んですね？", answers, "軒先借りたんで")
 
 
 def test_punctuation_does_not_hide_a_leak():
@@ -154,10 +154,10 @@ def test_only_the_cut_answer_is_checked():
 
 
 def test_words_that_are_also_in_the_shown_lines_are_not_a_leak():
-    answers = ["箕面に家建てたんで受けた"]
-    line = "1文ずつ儲けて箕面に家建てたんで"
-    assert not pipeline.leaks_answer("箕面に家建てたんで、の所はわざとですか？", answers, line)
-    assert pipeline.leaks_answer("家建てたんで受けたんですね？", answers, line)  # 台詞に無い連続は混入
+    answers = ["裏長屋の軒先借りたんで受けた"]
+    line = "雨のたびに裏長屋の軒先借りたんで"
+    assert not pipeline.leaks_answer("裏長屋の軒先借りたんで、の所はわざとですか？", answers, line)
+    assert pipeline.leaks_answer("軒先借りたんで受けたんですね？", answers, line)  # 台詞に無い連続は混入
 
 
 def test_full_and_half_width_are_the_same():
@@ -190,30 +190,30 @@ def test_note_and_question_leaks_are_counted_apart(built, data, tmp_path):  # no
 
 
 def test_a_run_across_two_lines_is_not_taken_from_the_lines():
-    answers = ["待つしかね行列ならの所"]
-    lines = ["頭を下げて待つしかね", "行列なら頭を下げて"]
-    assert pipeline.leaks_answer("待つしかね行列ならの所ですか", answers, lines)  # 境目の語は台詞に無い
+    answers = ["雨やむまで傘差しての所"]
+    lines = ["軒を借りて雨やむまで", "傘差して軒を借りて"]
+    assert pipeline.leaks_answer("雨やむまで傘差しての所ですか", answers, lines)  # 境目の語は台詞に無い
 
 
 def test_answer_made_only_of_the_line_is_not_a_leak():
-    line = ["わしもこうやって一文ずつ儲けて"]
+    line = ["傘を一本ずつ貸して勘定して"]
     assert not pipeline.leaks_answer(
-        "わしもこうやって一文ずつ儲けて、ですか？", ["わしもこうやって一文ずつ儲けて"], line
+        "傘を一本ずつ貸して勘定して、ですか？", ["傘を一本ずつ貸して勘定して"], line
     )
 
 
 def test_line_words_joined_to_the_performers_own_words_is_a_leak():
-    line = ["箕面に家建てたんで"]
-    answers = ["家建てたんでお客が沸いた"]
+    line = ["裏長屋の軒先借りたんで"]
+    answers = ["軒先借りたんでお客が沸いた"]
     assert pipeline.leaks_answer(
-        "家建てたんでお客が沸いたんですね？", answers, line
+        "軒先借りたんでお客が沸いたんですね？", answers, line
     )  # 接合の 6 字は台詞に無い
 
 
 def test_a_short_answer_alone_is_not_checked():
-    line = ["箕面に家建てたんで"]
+    line = ["裏長屋の軒先借りたんで"]
     assert pipeline.leaks_answer(
-        "箕面に家建てたんで沸く？", ["箕面に家建てたんで沸く"], line
+        "裏長屋の軒先借りたんで沸く？", ["裏長屋の軒先借りたんで沸く"], line
     )  # 接合は 1 字でも当たる
     assert not pipeline.leaks_answer(
         "客が沸く所ですか？", ["客が沸く"], line
