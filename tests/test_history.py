@@ -190,9 +190,9 @@ def test_note_and_question_leaks_are_counted_apart(built, data, tmp_path):  # no
 
 
 def test_a_run_across_two_lines_is_not_taken_from_the_lines():
-    answers = ["雨やむまで傘差しての所"]
+    answers = ["雨やむまで傘差して"]
     lines = ["軒を借りて雨やむまで", "傘差して軒を借りて"]
-    assert pipeline.leaks_answer("雨やむまで傘差しての所ですか", answers, lines)  # 境目の語は台詞に無い
+    assert pipeline.leaks_answer("雨やむまで傘差してですか", answers, lines)  # 境目の語は台詞に無い
 
 
 def test_answer_made_only_of_the_line_is_not_a_leak():
@@ -204,9 +204,9 @@ def test_answer_made_only_of_the_line_is_not_a_leak():
 
 def test_line_words_joined_to_the_performers_own_words_is_a_leak():
     line = ["裏長屋の軒先借りたんで"]
-    answers = ["軒先借りたんでお客が沸いた"]
+    answers = ["軒先借りたんでお客が沸く"]  # 演者の語は 5 字。6 字に届くのは接合だけ
     assert pipeline.leaks_answer(
-        "軒先借りたんでお客が沸いたんですね？", answers, line
+        "軒先借りたんでお客が沸くんですね？", answers, line
     )  # 接合の 6 字は台詞に無い
 
 
@@ -214,7 +214,7 @@ def test_a_short_answer_alone_is_not_checked():
     line = ["裏長屋の軒先借りたんで"]
     assert pipeline.leaks_answer(
         "裏長屋の軒先借りたんで沸く？", ["裏長屋の軒先借りたんで沸く"], line
-    )  # 接合は 1 字でも当たる
+    )  # 接合は 2 字でも当たる
     assert not pipeline.leaks_answer(
         "客が沸く所ですか？", ["客が沸く"], line
     )  # 6 字に満たない答えは見ない（限界）
