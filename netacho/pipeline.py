@@ -8,6 +8,7 @@ import sys
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from . import candidates, compare, evidence, gaps, guide, merge, recheck, render, review, seisho, store, view
@@ -264,6 +265,12 @@ def read_review(neta: store.Neta) -> tuple[dict, dict]:
 
 
 HISTORY_MAX = 20  # 役に渡すこれまでのやり取りの上限。新しい順
+HISTORY_CHARS = 200  # 1 つの文の上限。超えた分は切り、切ったと書く。要約はしない
+LEAK_CHARS = 6  # 答えのこの字数の連続が問いやノートに入っていたら、答えを事実として書いたと見る
+
+
+def _cut(text: str) -> str:
+    return text if len(text) <= HISTORY_CHARS else text[:HISTORY_CHARS] + "…（以下略）"
 
 
 def history_block(questions: dict) -> list[dict]:
@@ -271,16 +278,30 @@ def history_block(questions: dict) -> list[dict]:
     rows = []
     for q in questions["questions"]:
         if "answer" in q:
-            rows.append((q["answer"]["recorded_at"], {"問い": q["text"], "答え": q["answer"]["words"]}))
+            row = {"問い": _cut(q["text"]), "答え": _cut(q["answer"]["words"])}
+            rows.append((q["answer"]["recorded_at"], row))
         elif "dismissed" in q:
-            rows.append(
-                (q["dismissed"]["recorded_at"], {"問い": q["text"], "捨てた理由": q["dismissed"]["reason"]})
-            )
+            row = {"問い": _cut(q["text"]), "捨てた理由": _cut(q["dismissed"]["reason"])}
+            rows.append((q["dismissed"]["recorded_at"], row))
     if not rows:
         return []
-    rows.sort(key=lambda r: r[0], reverse=True)
+    rows.sort(key=lambda r: datetime.fromisoformat(r[0]), reverse=True)
     text = json.dumps([r for _, r in rows[:HISTORY_MAX]], ensure_ascii=False, indent=1)
     return [{"type": "text", "text": "# これまでのやり取り\n" + text}]
+
+
+def answer_words(questions: dict) -> list[str]:
+    return [q["answer"]["words"] for q in questions["questions"] if "answer" in q]
+
+
+def leaks_answer(text: str, answers: list[str]) -> bool:
+    """演者の答えの言葉が、役の文にそのまま入っているか。言い換えまでは見ない。"""
+    body = "".join(text.split())
+    for words in answers:
+        w = "".join(words.split())
+        if any(w[k : k + LEAK_CHARS] in body for k in range(len(w) - LEAK_CHARS + 1)):
+            return True
+    return False
 
 
 def deshi_pass(ctx: Context, doc: dict, questions: dict, round_no: int) -> tuple[list[dict], int]:
@@ -528,19 +549,21 @@ def surprise_rows(found: dict) -> list[dict]:
     ]
 
 
-def checked_questions(doc: dict | None, found: dict) -> None:
+def checked_questions(doc: dict | None, found: dict, answers: list[str] = ()) -> None:
     """問いの文を入れる。無い、重なる、検査に落ちるものは決まった文にする。"""
     written: dict[str, list[str]] = {}
     for n in (doc or {"notes": []})["notes"]:
         written.setdefault(n["candidate_id"], []).append(n["text"].strip())
     for s in found["surprises"]:
         texts = written.get(s["id"], [])
-        ok = len(texts) == 1 and note_is_ok(texts[0], QUESTION_ALLOWED)
+        ok = (
+            len(texts) == 1 and note_is_ok(texts[0], QUESTION_ALLOWED) and not leaks_answer(texts[0], answers)
+        )
         s["question"] = texts[0] if ok else gaps.FALLBACK_QUESTION
         s["question_source"] = "claude" if ok else "fixed"
 
 
-def checked_notes(doc: dict | None, cands: dict) -> tuple[dict[str, str], set[str]]:
+def checked_notes(doc: dict | None, cands: dict, answers: list[str] = ()) -> tuple[dict[str, str], set[str]]:
     """候補ごとに 1 件の文を返す。無い、重なる、検査に落ちるものは決まった文にする。
 
     返すのは (文, 決まった文にした候補の ID)。
@@ -552,7 +575,7 @@ def checked_notes(doc: dict | None, cands: dict) -> tuple[dict[str, str], set[st
     fixed: set[str] = set()
     for c in cands["candidates"]:
         texts = written.get(c["id"], [])
-        if len(texts) == 1 and note_is_ok(texts[0]):
+        if len(texts) == 1 and note_is_ok(texts[0]) and not leaks_answer(texts[0], answers):
             out[c["id"]] = texts[0]
         else:
             out[c["id"]] = NOTE_FALLBACK[c["why"]]
@@ -609,8 +632,9 @@ def note(
             store.write(run_path, ctx.usage.to_json(), "run")  # 費用は実測として残す
             raise
         store.write(ctx.neta.drafts / "noter.json", doc, "noter")
-    notes, fixed = checked_notes(doc, cands)
-    checked_questions(doc, found)
+    answers = answer_words(read_review(ctx.neta)[1])  # 答えを事実として書いた文は、決まった文にする
+    notes, fixed = checked_notes(doc, cands, answers)
+    checked_questions(doc, found, answers)
     store.write(kdir / "gaps.json", found, "gaps")
     review_doc, questions = read_review(ctx.neta)
     gaps.add_questions(found, review_doc, questions)
@@ -755,6 +779,7 @@ def compare_koza(
             review_doc, questions = read_review(ctx.neta)
             drop_open_asks(review_doc, questions, pair)
             done = {q.get("spot_id") for q in questions["questions"] if "answer" in q or "dismissed" in q}
+            answers = answer_words(questions)
             # 答えた所は聞き役に見せない。また問わないし、費用も使わない
             known = [s for s in doc["spots"] if s["scene_id"] in titles and s["id"] not in done]
             chosen = compare.candidates(known)
@@ -798,7 +823,7 @@ def compare_koza(
                     fallback += 1
                     continue
                 settled = compare.settle(spot, row, a, b, shown[spot["id"]])
-                if settled is None or not ask_is_ok(words, settled):
+                if settled is None or not ask_is_ok(words, settled) or leaks_answer(words, answers):
                     fallback += 1  # 場所の合わない問いは出さない。所も書き換えない
                     continue
                 spot = settled

@@ -1120,3 +1120,20 @@ def test_asker_input_is_unchanged_without_history(tmp_path):
     client = client_of(REPLY)
     run(root, client, tmp_path)
     assert len(client.calls["asker"][0]["messages"][0]["content"]) == 1
+
+
+def test_question_that_quotes_the_answer_is_dropped(tmp_path):
+    root, neta = two_books(tmp_path)
+    words = next(q for q in store.read(neta.questions, "questions")["questions"] if "answer" in q)["answer"][
+        "words"
+    ]
+
+    def leaky(kw):
+        reply = json.loads(answer_all(kw))
+        for r in reply["questions"]:
+            r["text"] = f"{words}ですか？"
+        return json.dumps(reply, ensure_ascii=False)
+
+    run(root, client_of(leaky), tmp_path)
+    assert not [q for q in store.read(neta.questions, "questions")["questions"] if words in q["text"]]
+    assert store.read(neta.koza_dir(K1) / "run.json", "run")["compare"]["fallback"] >= 1
