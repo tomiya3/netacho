@@ -184,6 +184,37 @@ def test_note_and_question_leaks_are_counted_apart(built, data, tmp_path):  # no
     rows = json.loads(client.calls["noter"][0]["messages"][0]["content"][0]["text"])
     notes = sum(r["kind"] != "予測なしで反応あり" for r in rows)
     asks = len(rows) - notes
-    assert notes >= 1  # ノートの混入を実際に通している
+    assert notes >= 1 and asks >= 1  # ノートと問いの両方の混入を実際に通している
     assert run["notes"]["leaked"] == notes and run["notes"]["leaked_questions"] == asks
     assert run["notes"]["fallback"] >= run["notes"]["leaked"]
+
+
+def test_a_run_across_two_lines_is_not_taken_from_the_lines():
+    answers = ["待つしかね行列ならの所"]
+    lines = ["頭を下げて待つしかね", "行列なら頭を下げて"]
+    assert pipeline.leaks_answer("待つしかね行列ならの所ですか", answers, lines)  # 境目の語は台詞に無い
+
+
+def test_answer_made_only_of_the_line_is_not_a_leak():
+    line = ["わしもこうやって一文ずつ儲けて"]
+    assert not pipeline.leaks_answer(
+        "わしもこうやって一文ずつ儲けて、ですか？", ["わしもこうやって一文ずつ儲けて"], line
+    )
+
+
+def test_line_words_joined_to_the_performers_own_words_is_a_leak():
+    line = ["箕面に家建てたんで"]
+    answers = ["家建てたんでお客が沸いた"]
+    assert pipeline.leaks_answer(
+        "家建てたんでお客が沸いたんですね？", answers, line
+    )  # 接合の 6 字は台詞に無い
+
+
+def test_a_short_answer_alone_is_not_checked():
+    line = ["箕面に家建てたんで"]
+    assert pipeline.leaks_answer(
+        "箕面に家建てたんで沸く？", ["箕面に家建てたんで沸く"], line
+    )  # 接合は 1 字でも当たる
+    assert not pipeline.leaks_answer(
+        "客が沸く所ですか？", ["客が沸く"], line
+    )  # 6 字に満たない答えは見ない（限界）
