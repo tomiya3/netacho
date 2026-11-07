@@ -760,3 +760,18 @@ def test_edit_by_someone_else_changes_who_wrote_the_answer(running):
 @pytest.mark.parametrize("venue", ["会場\nA", "長" * 101])
 def test_koza_refuses_a_venue_that_is_not_one_short_line(running, venue):
     assert call(running, "/api/koza", {"neta": N, "koza": K, "date": "2026-03-04", "venue": venue})[0] == 400
+
+
+def test_edit_drops_the_recheck_of_the_old_answer(running):
+    add_question(running)
+    call(running, "/api/answer", {"question": "q-0901", "speaker": "本人", "words": "前の言葉"})
+    side = {"verdict": "not_written", "quote": "", "reply": "無い"}
+    rows = [
+        {"question_id": q, "before": side, "after": side, "cites_answer": False} for q in ("q-0901", "q-0001")
+    ]
+    store.write(running.neta.recheck, {"schema_version": 1, "koza_id": K, "rows": rows}, "recheck")
+    body = {"question": "q-0901", "speaker": "本人", "words": "後の言葉"}
+    assert call(running, "/api/edit", body)[0] == 200
+    left = store.read(running.neta.recheck, "recheck")["rows"]
+    assert [r["question_id"] for r in left] == ["q-0001"]
+

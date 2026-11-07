@@ -365,6 +365,21 @@ function entries(d) {
   }).sort((a, b) => a.order - b.order || (a.t ?? 0) - (b.t ?? 0));
 }
 
+function recheckLine(label, side) {
+  if (!side) return el("p", { class: "small" }, `${label}：判定なし（検査で落としたか、返らなかった）`);
+  const written = side.verdict === "written";
+  return el("p", { class: "small" }, `${label}：${written ? "書いてある" : "書いていない"}。${ja(side.reply)}${written ? `　帳面の引用：${ja(side.quote)}` : ""}`);
+}
+
+function recheckBody(row) {
+  return [
+    el("p", { class: "small" }, who("ai"), "　帳面だけを読んで、この問いに答えられるか"),
+    recheckLine("答えの前", row.before),
+    recheckLine("答えの後", row.after),
+    ...(row.after?.verdict === "written" ? [el("p", { class: "small" }, row.cites_answer ? "後の引用は、演者の答えから。" : "後の引用は、答え以外の所から。")] : []),
+  ];
+}
+
 function answerForm(q) {
   const words = el("textarea", { "aria-label": "答え", placeholder: "話すように書いてください" });
   const note = el("p", { class: "status", role: "status" });
@@ -412,6 +427,8 @@ function askCard(e, d) {
   }
   if (q.answer) body.push(el("div", { class: "decided" }, el("div", { class: "seal" }, "決"),
     el("div", { class: "grow" }, el("p", { class: "words" }, `「${q.answer.words}」`), el("div", { class: "small" }, who("me"), `　${q.answer.speaker}`), TOKEN ? editForm(q) : null)));
+  const check = (d.recheck?.rows || []).find(r => r.question_id === q.id);
+  if (check) body.push(...recheckBody(check));
   if (q.dismissed) body.push(el("p", { class: "small" }, who("me", "演者が捨てた"), `　「${q.dismissed.reason}」（${q.dismissed.speaker}）`));
   if (TOKEN && !q.answer && !q.dismissed) body.push(answerForm(q));
   return el("article", { class: `card ${fixed ? "copy" : "ai"}${q.dismissed ? " dropped" : ""}`, id: "q-" + q.id },

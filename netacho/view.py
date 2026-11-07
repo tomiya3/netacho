@@ -162,6 +162,30 @@ def clean_quotes(text: str, lines: dict) -> str:
     return re.sub(r"「([^「」]+)」", swap, text)
 
 
+def clean_recheck(recheck: dict | None, lines: dict) -> dict | None:
+    """読み直し役の引用と返事の字を、清書にする。見せる時だけで、正本は変えない。"""
+    if not recheck or not lines:
+        return recheck
+
+    def side(row: dict | None) -> dict | None:
+        if not row:
+            return row
+        return {
+            **row,
+            "quote": clean_quotes(f"「{row['quote']}」", lines)[1:-1],
+            "reply": clean_quotes(row["reply"], lines),
+        }
+
+    def row_of(r: dict) -> dict:
+        after = side(r["after"])
+        if after and r["cites_answer"]:  # 引用は演者の答えの言葉なので、字を変えない
+            after["quote"] = r["after"]["quote"]
+        return {**r, "before": side(r["before"]), "after": after}
+
+    rows = [row_of(r) for r in recheck["rows"]]
+    return {**recheck, "rows": rows}
+
+
 def clean_notes(candidates: dict | None, lines: dict) -> dict | None:
     """ノートの文の引用を、清書の字で見せる。ノート役は文字起こしを読んで書くので。"""
     if not candidates or not lines:
@@ -358,6 +382,9 @@ def payload(neta: store.Neta, koza_id: str) -> dict:
         "guide": _optional(neta.guide, "guide"),
         "review": clean_review(_optional(neta.review, "review"), questions, shown),
         "questions": shown,
+        "recheck": clean_recheck(recheck, lines)
+        if (recheck := _optional(neta.recheck, "recheck")) and recheck.get("koza_id") == koza_id
+        else None,
         "places": places,
         "compare": compare_view(neta, kdir),
         "compares": compares_from_others(neta, koza_id),

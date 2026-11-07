@@ -16,6 +16,7 @@ FILES = {
     BASE / "kata.json": "book",
     BASE / "questions.json": "questions",
     BASE / "review" / "deshi.json": "review",
+    BASE / "review" / "recheck.json": "recheck",
     BASE / "guide" / "guide.json": "guide",
     BASE / "drafts" / "writer.json": "writer",
     BASE / "drafts" / "checker.json": "checker",
@@ -25,6 +26,7 @@ FILES = {
     BASE / "drafts" / "scribe.json": "scribe",
     BASE / "drafts" / "asker.json": "asker",
     BASE / "drafts" / "aligner.json": "aligner",
+    BASE / "drafts" / "rechecker.json": "rechecker",
     KOZA / "koza.json": "koza",
     KOZA / "transcript.json": "transcript",
     KOZA / "timeline.json": "timeline",
@@ -35,7 +37,17 @@ FILES = {
     KOZA / "compare.json": "compare",
     KOZA / "run.json": "run",
 }
-ROLE_SCHEMAS = ["writer", "checker", "noter", "deshi", "lexicon", "scribe", "asker", "aligner"]
+ROLE_SCHEMAS = [
+    "writer",
+    "checker",
+    "noter",
+    "deshi",
+    "lexicon",
+    "scribe",
+    "asker",
+    "aligner",
+    "rechecker",
+]
 
 
 def _load(path: Path) -> dict:

@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "rechecker",
+  "description": "読み直し役の出力。引用の実在はスクリプトが確かめる",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "answers"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "question_id",
+          "verdict",
+          "quote",
+          "reply"
+        ],
+        "properties": {
+          "question_id": {
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "written",
+              "not_written"
+            ]
+          },
+          "quote": {
+            "type": "string"
+          },
+          "reply": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

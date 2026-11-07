@@ -219,5 +219,9 @@ def edit_answer(neta: store.Neta, *, question: str, speaker: str, words: str, no
         item.setdefault("history", []).append({"at": at, "before": before, "after": words, "by": speaker})
     q["answer"] = {"speaker": speaker, "recorded_at": at, "words": words}
     check_refs(hanashi, kata, review=review, questions=questions)
-    store.write(neta.kata, kata, "book")  # kata → questions の順。途中で落ちても、やり直せば揃う
+    store.write(neta.kata, kata, "book")  # questions を最後に。途中で落ちても、やり直せば揃う
+    if neta.recheck.exists():  # 直す前の答えの判定を、今の答えの物として見せない
+        doc = store.read(neta.recheck, "recheck")
+        rows = [r for r in doc["rows"] if r["question_id"] != question]
+        store.write(neta.recheck, {**doc, "rows": rows}, "recheck")
     store.write(neta.questions, questions, "questions")

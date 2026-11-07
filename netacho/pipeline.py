@@ -10,7 +10,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import candidates, compare, evidence, gaps, guide, merge, render, review, seisho, store, view
+from . import candidates, compare, evidence, gaps, guide, merge, recheck, render, review, seisho, store, view
 from .budget import Budget
 from .runner import RoleCache, Usage, call_role
 from .schema import check_refs
@@ -387,6 +387,53 @@ def reread(
         store.write(run_path, ctx.usage.to_json(), "run")
     guide.refresh(ctx.neta)  # 指摘が増えて札から外れる項目があれば反映する（LLM 0 回）
     return current
+
+
+def book_text(neta: store.Neta, hanashi: dict, kata: dict) -> str:
+    """読み直し役に見せる帳面。弟子役の読む .md と同じ形。保存しない。"""
+    lookup = render.scene_lookup(timelines(neta))
+    return render.to_markdown(hanashi, lookup) + "\n" + render.to_markdown(kata, lookup)
+
+
+def recheck_pass(ctx: Context, pairs: list, text: str, name: str) -> tuple[dict, int, int]:
+    raw = call_role(
+        ctx.client, "rechecker", recheck.content(text, pairs), "rechecker", ctx.usage, ctx.budget, ctx.cache
+    )
+    store.write(ctx.neta.drafts / f"recheck-{name}.json", raw, "rechecker")
+    return recheck.receive(raw, pairs, text)
+
+
+def recheck_answers(
+    performer: str,
+    neta_name: str,
+    koza_id: str,
+    *,
+    client,
+    budget: Budget | None = None,
+    reuse: bool = False,
+    root: Path | None = None,
+) -> dict | None:
+    """答えた問いを、答えの前と後の帳面で読ませる。答えた問いが無ければ API を呼ばず None。"""
+    ctx = _context(performer, neta_name, koza_id, client=client, budget=budget, reuse=reuse, root=root)
+    questions = read_review(ctx.neta)[1]
+    pairs = recheck.answered(questions, ctx.kata)
+    if not pairs:
+        return None
+    run_path = ctx.neta.koza_dir(koza_id) / "run.json"
+    ctx.neta.recheck.unlink(missing_ok=True)  # 途中で落ちたとき、前回の結果を今の帳面の物として見せない
+    ctx.usage.extra.pop("recheck", None)
+    before_text = book_text(ctx.neta, ctx.hanashi, recheck.without_answers(ctx.kata, pairs))
+    after_text = book_text(ctx.neta, ctx.hanashi, ctx.kata)
+    try:
+        before, dropped_before, missing_before = recheck_pass(ctx, pairs, before_text, "before")
+        after, dropped_after, missing_after = recheck_pass(ctx, pairs, after_text, "after")
+        rows = recheck.merge_sides(pairs, before, after, before_text)
+        result = recheck.stats(rows, dropped_before + dropped_after, missing_before + missing_after)
+        store.write(ctx.neta.recheck, {"schema_version": 1, "koza_id": koza_id, "rows": rows}, "recheck")
+        ctx.usage.extra["recheck"] = result
+    finally:  # 落ちても、呼んだ分の費用を残す
+        store.write(run_path, ctx.usage.to_json(), "run")
+    return result
 
 
 # ノート役の文の検査。断定、客の気持ち、直し方の提案、数字の羅列を通さない。
