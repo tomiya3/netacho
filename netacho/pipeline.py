@@ -8,7 +8,7 @@ import sys
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import candidates, compare, evidence, gaps, guide, merge, recheck, render, review, seisho, store, view
@@ -269,6 +269,18 @@ HISTORY_CHARS = 200  # 1 つの文の上限。超えた分は切り、切った�
 LEAK_CHARS = 6  # 答えのこの字数の連続が問いやノートに入っていたら、答えを事実として書いたと見る
 
 
+JST = timezone(timedelta(hours=9))
+
+
+def _when(at: str) -> datetime:
+    """並べるための時刻。時差の無い時刻は日本時間、読めない時刻は一番古いと見る。止めない。"""
+    try:
+        t = datetime.fromisoformat(at)
+    except ValueError:
+        return datetime.min.replace(tzinfo=JST)
+    return t if t.tzinfo else t.replace(tzinfo=JST)
+
+
 def _cut(text: str) -> str:
     return text if len(text) <= HISTORY_CHARS else text[:HISTORY_CHARS] + "…（以下略）"
 
@@ -285,7 +297,7 @@ def history_block(questions: dict) -> list[dict]:
             rows.append((q["dismissed"]["recorded_at"], row))
     if not rows:
         return []
-    rows.sort(key=lambda r: datetime.fromisoformat(r[0]), reverse=True)
+    rows.sort(key=lambda r: _when(r[0]), reverse=True)
     text = json.dumps([r for _, r in rows[:HISTORY_MAX]], ensure_ascii=False, indent=1)
     return [{"type": "text", "text": "# これまでのやり取り\n" + text}]
 
@@ -295,8 +307,11 @@ def answer_words(questions: dict) -> list[str]:
 
 
 def leaks_answer(text: str, answers: list[str]) -> bool:
-    """演者の答えの言葉が、役の文にそのまま入っているか。言い換えまでは見ない。"""
-    body = "".join(text.split())
+    """演者の答えの言葉が、役の文にそのまま入っているか。言い換えまでは見ない。
+
+    「」で引いた台詞は除く。台詞の引用は検査済みで、答えが台詞の語を繰り返すと誤って当たるため。
+    """
+    body = "".join(re.sub(r"[「『].*?[」』]", "", text).split())
     for words in answers:
         w = "".join(words.split())
         if any(w[k : k + LEAK_CHARS] in body for k in range(len(w) - LEAK_CHARS + 1)):

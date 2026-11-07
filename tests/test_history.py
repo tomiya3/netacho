@@ -6,7 +6,7 @@ from fakes import ScriptedClient
 from test_build import K, N, P
 from test_guide import _with_question, built  # noqa: F401
 
-from netacho import performer, pipeline
+from netacho import gaps, performer, pipeline
 from netacho.budget import Budget
 
 
@@ -85,3 +85,25 @@ def test_noter_input_is_one_block_without_history(built, data, tmp_path):  # noq
     pipeline.note(P, N, K, client=client, budget=Budget(tmp_path / "ledger.json"), root=data)
     content = client.calls["noter"][0]["messages"][0]["content"]
     assert all(not b["text"].startswith("# これまでのやり取り") for b in content)
+
+
+def test_quoted_lines_do_not_count_as_a_leak():
+    answers = ["わしもこうやって儲けた"]
+    assert not pipeline.leaks_answer("「わしもこうやって儲けた」の所で、間を延ばしたんですか？", answers)
+
+
+def test_odd_times_do_not_stop_the_order():
+    rows = [
+        q(1, answer="時差なし", at="2026-01-02T10:00:00"),
+        q(2, answer="読めない", at="きのう"),
+        q(3, answer="時差あり", at="2026-01-02T09:00:00+09:00"),
+    ]
+    assert [h["答え"] for h in history(rows)] == ["時差なし", "時差あり", "読めない"]
+
+
+def test_surprise_question_that_writes_the_answer_falls_back():
+    found = {"surprises": [{"id": "sur-0001"}]}
+    doc = {"notes": [{"candidate_id": "sur-0001", "text": "ここは間を詰めて勢いを出す所ですか。"}]}
+    pipeline.checked_questions(doc, found, ["ここは間を詰めて勢いを出す"])
+    assert found["surprises"][0]["question"] == gaps.FALLBACK_QUESTION
+    assert found["surprises"][0]["question_source"] == "fixed"
