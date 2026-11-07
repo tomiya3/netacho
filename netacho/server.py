@@ -255,6 +255,11 @@ class Handler(BaseHTTPRequestHandler):
             suffix = jobs.audio_suffix(arg("name"))
             terms = jobs.parse_terms(arg("terms"))
             kdir = self.server.neta.sibling(neta_name).koza_dir(koza_id)
+            if (kdir / "koza.json").exists():
+                raise jobs.JobError(
+                    "同じ演目に、同じ日付と会場の高座がもうあります。途中で止まった高座なら、"
+                    "端末で netacho build、note、seisho に --reuse を付けて続きを回せます"
+                )
             compare = None
             if arg("with_koza"):
                 other, other_koza = _target(self.server, {"neta": arg("with_neta"), "koza": arg("with_koza")})
@@ -264,12 +269,8 @@ class Handler(BaseHTTPRequestHandler):
         except (jobs.JobError, store.StoreError, performer.PerformerError) as e:
             self._json(400, {"error": str(e)})
             return
-        if (kdir / "koza.json").exists():
-            message = (
-                "同じ演目に、同じ日付と会場の高座がもうあります。途中で止まった高座なら、"
-                "端末で netacho build、note、seisho に --reuse を付けて続きを回せます"
-            )
-            self._json(400, {"error": message})
+        except ValueError:  # パスに使えない字（NUL など）が、比べる相手の名前などに入っていた
+            self._json(400, {"error": "入力が正しくありません"})
             return
         if not _room_for(kdir, length):
             message = "ディスクの空きが足りません。録音の 2 倍と 1 GB ほどの空きを作ってください"
@@ -287,14 +288,21 @@ class Handler(BaseHTTPRequestHandler):
         except jobs.JobError as e:
             self._json(409, {"error": str(e)})
             return
-        try:
+        try:  # ここから先で何が起きても、始められなかったら枠を返す
             dest = self._receive(kdir, suffix, length)
-        except OSError:
+        except Exception:
             runner.release()
             self._json(400, {"error": "録音を受け取れなかった"})
             return
-        job = jobs.Job(self.server.neta.performer, neta_name, koza_id, dest, terms, compare=compare)
-        runner.start(job, kdir)
+        try:
+            job = jobs.Job(self.server.neta.performer, neta_name, koza_id, dest, terms, compare=compare)
+            runner.start(job, kdir)
+        except Exception as e:
+            runner.release()
+            dest.unlink(missing_ok=True)
+            print(f"処理を始められなかった（{type(e).__name__}）", flush=True)  # 種類だけ。中身は出さない
+            self._json(500, {"error": "処理を始められなかった"})
+            return
         self._json(200, {"ok": True, "job": job.status()})
 
     def _receive(self, kdir: Path, suffix: str, length: int) -> Path:

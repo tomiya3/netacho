@@ -54,7 +54,11 @@ class Budget:
         self.run_spent = 0.0
         base = os.environ.get(RUN_BASE_ENV)
         if base is not None:  # 同じ録音の前の段階で使った分を、この回の使用に数える
-            self.run_spent = max(0.0, self.total_spent() - float(base))
+            try:
+                start = float(base)
+            except ValueError as e:
+                raise BudgetError(f"{RUN_BASE_ENV} が数字でない。費用を数えられないので止める") from e
+            self.run_spent = max(0.0, self.total_spent() - start)
 
     def total_spent(self) -> float:
         if not self.ledger.exists():

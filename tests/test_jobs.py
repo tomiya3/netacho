@@ -234,3 +234,21 @@ def test_recording_with_a_base_does_not_count_twice(tmp_path, monkeypatch):
     first.record("writer", "claude-opus-5-5", 0.5)
     assert first.run_spent == pytest.approx(1.5)
     assert budget.Budget(ledger).run_spent == pytest.approx(1.5)  # 次の段階も同じ値から
+
+
+def test_a_broken_base_stops_with_a_reason(tmp_path, monkeypatch):
+    monkeypatch.setenv(budget.RUN_BASE_ENV, "abc")
+    with pytest.raises(budget.BudgetError, match=budget.RUN_BASE_ENV):
+        budget.Budget(tmp_path / "ledger.json")
+
+
+@pytest.mark.parametrize("name", ["傘\x00a", "傘\x1fa", "傘\x7fa"])  # 端の空白は strip で落ちる
+def test_control_characters_are_not_names(name):
+    with pytest.raises(jobs.JobError):
+        jobs.new_koza(name, "", "hall")
+
+
+@pytest.mark.parametrize("name", ["傘\u202e貸し", "傘\u200b貸し"])
+def test_invisible_format_characters_are_not_names(name):
+    with pytest.raises(jobs.JobError):
+        jobs.new_koza(name, "", "hall")

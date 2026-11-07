@@ -942,6 +942,51 @@ def test_check_validates_without_reading_or_reserving(uploading):
     assert check(uploading)[0] == 409
 
 
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"neta": "傘\x00貸し"},
+        {"venue": "hall\x00"},
+        {"venue": "hall\x1b"},
+        {"with_neta": N + "\x00", "with_koza": K},
+        {"with_neta": N, "with_koza": K + "\x00"},
+    ],
+)
+def test_control_characters_are_refused_before_taking_the_slot(uploading, params):
+    status, _ = upload(uploading, **params)
+    assert status == 400
+    assert not uploading.runner.busy
+    assert upload(uploading)[0] == 200  # 次の録音は入れられる
+    wait_job(uploading)
+
+
+def test_slot_is_freed_when_starting_fails(uploading, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("始められない")
+
+    monkeypatch.setattr(uploading.runner, "start", broken)
+    status, _ = upload(uploading)
+    assert status == 500
+    assert not uploading.runner.busy
+    kdir = uploading.neta.sibling("傘貸し長屋").koza_dir("2026-03-04-hall-b")
+    assert not list(kdir.glob("source*"))  # 受け取った録音をごみに残さない
+
+
+def test_slot_is_freed_when_receiving_fails(uploading, monkeypatch):
+    def broken(*args, **kwargs):
+        raise ValueError("想定外")
+
+    monkeypatch.setattr(server.Handler, "_receive", broken)
+    status, _ = upload(uploading)
+    assert status == 400
+    assert not uploading.runner.busy and uploading.runner.status() is None
+
+
+def test_check_refuses_a_koza_that_already_exists(uploading):
+    status, body = check(uploading, neta=N, date="2026-01-01", venue="dummy-hall")
+    assert status == 400 and "もうあります" in json.loads(body)["error"]
+
+
 def test_upload_refuses_a_second_while_busy(uploading):
     uploading.runner.reserve()
     status, _ = upload(uploading)
@@ -1066,7 +1111,10 @@ def raw_post(srv, path, head, body):
         lines = [f"POST {path} HTTP/1.1", f"Host: 127.0.0.1:{srv.port}", *head, "", ""]
         sock.sendall("\r\n".join(lines).encode() + body)
         sock.shutdown(socket.SHUT_WR)
-        return sock.recv(4096)
+        reply = b""
+        while chunk := sock.recv(4096):  # 頭と本文が別に届くことがある
+            reply += chunk
+        return reply
 
 
 def upload_query():

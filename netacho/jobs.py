@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
@@ -22,8 +23,8 @@ from pathlib import Path
 from . import budget, store
 
 UNKNOWN_DATE = "0000-00-00"
-# フォルダの名前にする。空白、区切り、先頭の . と -（コマンドの引数と取り違える）を許さない
-NAME = re.compile(r"[^\s/\\.\-][^\s/\\]{0,39}")
+# フォルダの名前にする。空白、制御文字、区切り、先頭の . と -（コマンドの引数と取り違える）を許さない
+NAME = re.compile(r"[^\s\x00-\x1f\x7f/\\.\-][^\s\x00-\x1f\x7f/\\]{0,39}")
 AUDIO_TYPES = (".wav", ".m4a", ".mp3", ".aac", ".flac", ".mp4", ".mov")
 MAX_TERMS = 500
 
@@ -44,7 +45,8 @@ class JobError(ValueError):
 
 def _name(value: str, what: str) -> str:
     value = value.strip()
-    if not NAME.fullmatch(value):
+    hidden = any(unicodedata.category(c).startswith("C") for c in value)  # 幅ゼロや向きの上書きも
+    if hidden or not NAME.fullmatch(value):
         raise JobError(f"{what}は空白や / を含まず、. や - で始まらない 40 字までで")
     return value
 
