@@ -1137,4 +1137,4 @@ def test_question_that_quotes_the_answer_is_dropped(tmp_path):
     run(root, client_of(leaky), tmp_path)
     assert not [q for q in store.read(neta.questions, "questions")["questions"] if words in q["text"]]
     counts = store.read(neta.koza_dir(K1) / "run.json", "run")["compare"]
-    assert counts["leaked"] >= 1 and counts["fallback"] >= counts["leaked"]
+    assert counts["leaked"] >= 1 and counts["fallback"] == counts["leaked"]  # 混入のほかは落ちていない

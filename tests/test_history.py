@@ -125,3 +125,29 @@ def test_surprise_question_that_writes_the_answer_falls_back():
     pipeline.checked_questions(doc, found, ["ここは間を詰めて勢いを出す"])
     assert found["surprises"][0]["question"] == gaps.FALLBACK_QUESTION
     assert found["surprises"][0]["question_source"] == "fixed"
+
+
+def test_note_that_quotes_the_shown_line_is_kept():
+    cands = {"candidates": [{"id": "cand-0001", "why": "no_candidate"}]}
+    doc = {
+        "notes": [
+            {
+                "candidate_id": "cand-0001",
+                "text": "「行列なら頭を下げて待つ」の後に、反応候補が少ない所です。",
+            }
+        ]
+    }
+    stat: dict = {}
+    notes, fixed = pipeline.checked_notes(
+        doc,
+        cands,
+        ["行列なら頭を下げて待つしかない"],
+        stat,
+        {"cand-0001": "行列なら頭を下げて待つしかねえな。"},
+    )
+    assert fixed == set() and stat == {}
+
+
+def test_only_the_cut_answer_is_checked():
+    words = pipeline.answer_words({"questions": [q(1, answer="あ" * 200 + "いうえおかきくけこ")]})
+    assert not pipeline.leaks_answer("いうえおかきくけこ", words)

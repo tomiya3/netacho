@@ -307,8 +307,8 @@ def history_block(questions: dict) -> list[dict]:
 
 
 def answer_words(questions: dict) -> list[str]:
-    """混入を検べる答え。役に見せた分だけ。見せていない答えは混ざりようがない。"""
-    return [r["答え"] for r in _shown(questions) if "答え" in r]
+    """混入を検べる答え。役に見せた分だけ（200 字で切った後の文）。見せていない言葉は混ざりようがない。"""
+    return [_cut(r["答え"]) for r in _shown(questions) if "答え" in r]
 
 
 _MARKS = re.compile(r"[\s、。，．,.!?！？…・]")
@@ -606,7 +606,11 @@ def checked_questions(
 
 
 def checked_notes(
-    doc: dict | None, cands: dict, answers: list[str] | None = None, stat: dict | None = None
+    doc: dict | None,
+    cands: dict,
+    answers: list[str] | None = None,
+    stat: dict | None = None,
+    lines: dict[str, str] | None = None,
 ) -> tuple[dict[str, str], set[str]]:
     """候補ごとに 1 件の文を返す。無い、重なる、検査に落ちるものは決まった文にする。
 
@@ -619,7 +623,8 @@ def checked_notes(
     fixed: set[str] = set()
     for c in cands["candidates"]:
         texts = written.get(c["id"], [])
-        if len(texts) == 1 and note_is_ok(texts[0]) and not _leaked(texts[0], answers, "", stat):
+        said = (lines or {}).get(c["id"], "")
+        if len(texts) == 1 and note_is_ok(texts[0]) and not _leaked(texts[0], answers, said, stat):
             out[c["id"]] = texts[0]
         else:
             out[c["id"]] = NOTE_FALLBACK[c["why"]]
@@ -679,7 +684,10 @@ def note(
         store.write(ctx.neta.drafts / "noter.json", doc, "noter")
     answers = answer_words(past)  # 答えを事実として書いた文は、決まった文にする
     stat: dict = {}
-    notes, fixed = checked_notes(doc, cands, answers, stat)
+    said = {
+        r["candidate_id"]: " ".join(str(v) for k, v in r.items() if k.endswith("_quote") and v) for r in rows
+    }  # ノート役に見せた台詞。これを引いただけなら混入と見ない
+    notes, fixed = checked_notes(doc, cands, answers, stat, said)
     checked_questions(doc, found, answers, stat)
     store.write(kdir / "gaps.json", found, "gaps")
     review_doc, questions = read_review(ctx.neta)
