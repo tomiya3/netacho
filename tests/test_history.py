@@ -151,3 +151,39 @@ def test_note_that_quotes_the_shown_line_is_kept():
 def test_only_the_cut_answer_is_checked():
     words = pipeline.answer_words({"questions": [q(1, answer="あ" * 200 + "いうえおかきくけこ")]})
     assert not pipeline.leaks_answer("いうえおかきくけこ", words)
+
+
+def test_words_that_are_also_in_the_shown_lines_are_not_a_leak():
+    answers = ["箕面に家建てたんで受けた"]
+    line = "1文ずつ儲けて箕面に家建てたんで"
+    assert not pipeline.leaks_answer("箕面に家建てたんで、の所はわざとですか？", answers, line)
+    assert pipeline.leaks_answer("家建てたんで受けたんですね？", answers, line)  # 台詞に無い連続は混入
+
+
+def test_full_and_half_width_are_the_same():
+    assert pipeline.leaks_answer("ＩＣレコーダーで撮って", ["ICレコーダーで撮ってる"])
+
+
+def test_note_and_question_leaks_are_counted_apart(built, data, tmp_path):  # noqa: F811
+    qid = _with_question(built, data, tmp_path)
+    words = "ここは間を詰めて勢いを出す"
+    performer.answer(built, question=qid, speaker=P, words=words)
+
+    def reply(kw):
+        rows = json.loads(kw["messages"][0]["content"][0]["text"])
+        return json.dumps(
+            {
+                "schema_version": 1,
+                "notes": [{"candidate_id": r["candidate_id"], "text": f"{words}所です。"} for r in rows],
+            },
+            ensure_ascii=False,
+        )
+
+    client = ScriptedClient(noter=[reply])
+    run = pipeline.note(P, N, K, client=client, budget=Budget(tmp_path / "ledger.json"), root=data)
+    rows = json.loads(client.calls["noter"][0]["messages"][0]["content"][0]["text"])
+    notes = sum(r["kind"] != "予測なしで反応あり" for r in rows)
+    asks = len(rows) - notes
+    assert notes >= 1  # ノートの混入を実際に通している
+    assert run["notes"]["leaked"] == notes and run["notes"]["leaked_questions"] == asks
+    assert run["notes"]["fallback"] >= run["notes"]["leaked"]

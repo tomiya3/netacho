@@ -205,7 +205,12 @@
         "leaked": {
           "type": "integer",
           "minimum": 0,
-          "description": "演者の答えの言葉がそのまま入っていて決まった文にした数。fallback にも含む"
+          "description": "演者の答えの言葉がそのまま入っていて決まった文にしたノートの数。fallback にも含む"
+        },
+        "leaked_questions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "演者の答えの言葉がそのまま入っていて決まった文にした「予測なしで反応あり」の問いの数。fallback には含まない"
         }
       }
     },
