@@ -151,3 +151,70 @@ def test_note_that_quotes_the_shown_line_is_kept():
 def test_only_the_cut_answer_is_checked():
     words = pipeline.answer_words({"questions": [q(1, answer="あ" * 200 + "いうえおかきくけこ")]})
     assert not pipeline.leaks_answer("いうえおかきくけこ", words)
+
+
+def test_words_that_are_also_in_the_shown_lines_are_not_a_leak():
+    answers = ["箕面に家建てたんで受けた"]
+    line = "1文ずつ儲けて箕面に家建てたんで"
+    assert not pipeline.leaks_answer("箕面に家建てたんで、の所はわざとですか？", answers, line)
+    assert pipeline.leaks_answer("家建てたんで受けたんですね？", answers, line)  # 台詞に無い連続は混入
+
+
+def test_full_and_half_width_are_the_same():
+    assert pipeline.leaks_answer("ＩＣレコーダーで撮って", ["ICレコーダーで撮ってる"])
+
+
+def test_note_and_question_leaks_are_counted_apart(built, data, tmp_path):  # noqa: F811
+    qid = _with_question(built, data, tmp_path)
+    words = "ここは間を詰めて勢いを出す"
+    performer.answer(built, question=qid, speaker=P, words=words)
+
+    def reply(kw):
+        rows = json.loads(kw["messages"][0]["content"][0]["text"])
+        return json.dumps(
+            {
+                "schema_version": 1,
+                "notes": [{"candidate_id": r["candidate_id"], "text": f"{words}所です。"} for r in rows],
+            },
+            ensure_ascii=False,
+        )
+
+    client = ScriptedClient(noter=[reply])
+    run = pipeline.note(P, N, K, client=client, budget=Budget(tmp_path / "ledger.json"), root=data)
+    rows = json.loads(client.calls["noter"][0]["messages"][0]["content"][0]["text"])
+    notes = sum(r["kind"] != "予測なしで反応あり" for r in rows)
+    asks = len(rows) - notes
+    assert notes >= 1 and asks >= 1  # ノートと問いの両方の混入を実際に通している
+    assert run["notes"]["leaked"] == notes and run["notes"]["leaked_questions"] == asks
+    assert run["notes"]["fallback"] >= run["notes"]["leaked"]
+
+
+def test_a_run_across_two_lines_is_not_taken_from_the_lines():
+    answers = ["待つしかね行列ならの所"]
+    lines = ["頭を下げて待つしかね", "行列なら頭を下げて"]
+    assert pipeline.leaks_answer("待つしかね行列ならの所ですか", answers, lines)  # 境目の語は台詞に無い
+
+
+def test_answer_made_only_of_the_line_is_not_a_leak():
+    line = ["わしもこうやって一文ずつ儲けて"]
+    assert not pipeline.leaks_answer(
+        "わしもこうやって一文ずつ儲けて、ですか？", ["わしもこうやって一文ずつ儲けて"], line
+    )
+
+
+def test_line_words_joined_to_the_performers_own_words_is_a_leak():
+    line = ["箕面に家建てたんで"]
+    answers = ["家建てたんでお客が沸いた"]
+    assert pipeline.leaks_answer(
+        "家建てたんでお客が沸いたんですね？", answers, line
+    )  # 接合の 6 字は台詞に無い
+
+
+def test_a_short_answer_alone_is_not_checked():
+    line = ["箕面に家建てたんで"]
+    assert pipeline.leaks_answer(
+        "箕面に家建てたんで沸く？", ["箕面に家建てたんで沸く"], line
+    )  # 接合は 1 字でも当たる
+    assert not pipeline.leaks_answer(
+        "客が沸く所ですか？", ["客が沸く"], line
+    )  # 6 字に満たない答えは見ない（限界）

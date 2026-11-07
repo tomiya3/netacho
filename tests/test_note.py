@@ -52,7 +52,7 @@ def test_note_writes_candidates_and_markdown(data, tmp_path):
     assert "見立ての回収の後に、反応候補が少ない所です。" in text
     assert "受けなかったという意味ではありません" in text
     assert "行列なら頭を下げて待つしかねえな。" in text  # 根拠が確かめられる
-    assert run["notes"] == {"candidates": 1, "fallback": 0, "leaked": 0}
+    assert run["notes"] == {"candidates": 1, "fallback": 0, "leaked": 0, "leaked_questions": 0}
     assert {r["name"] for r in run["roles"]} == {"writer", "checker", "deshi", "noter"}  # build に積み足す
 
 

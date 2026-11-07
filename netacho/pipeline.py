@@ -315,30 +315,41 @@ _MARKS = re.compile(r"[\s、。，．,.!?！？…・]")
 
 
 def _plain(text: str) -> str:
-    return _MARKS.sub("", text)
+    return _MARKS.sub("", unicodedata.normalize("NFKC", text))
 
 
-def _leaked(text: str, answers: list[str] | None, lines: str, stat: dict | None) -> bool:
-    """混入なら数える。落とした数を fallback と分けて run.json に残し、検査が効きすぎていないか見る。"""
+def _leaked(
+    text: str, answers: list[str] | None, lines: str | list[str], stat: dict | None, key: str = "leaked"
+) -> bool:
+    """混入なら stat[key] に数える。fallback と分けて run.json に残し、検査が効きすぎていないか見る。"""
     hit = leaks_answer(text, answers, lines)
     if hit and stat is not None:
-        stat["leaked"] = stat.get("leaked", 0) + 1
+        stat[key] = stat.get(key, 0) + 1
     return hit
 
 
-def leaks_answer(text: str, answers: list[str] | None, lines: str = "") -> bool:
+def leaks_answer(text: str, answers: list[str] | None, lines: str | list[str] = "") -> bool:
     """演者の答えの言葉が、役の文にそのまま入っているか。言い換えまでは見ない。
 
     「」で引いた所は、見せた台詞にあるときだけ除く。台詞の引用は検査済みで、答えが台詞の語を
-    繰り返すと誤って当たるため。台詞に無い引用（答えを引いた物）は残して検べる。句読点と空白は除いて比べる。
+    繰り返すと誤って当たるため。台詞に無い引用（答えを引いた物）は残して検べる。
+    答えの語のうち、見せた台詞の中にもある連続は、台詞から来た語として数えない。答えた所の話ほど
+    台詞と同じ語を使うので、それで問いを落とすと目的と逆になる。台詞は 1 つずつ見る（つないだ境目の
+    語を台詞と見ないため）。句読点と空白は除き、全角と半角はそろえて比べる。
     """
-    ref = _plain(lines)
-    body = re.sub(r"[「『](.*?)[」』]", lambda m: "" if _plain(m.group(1)) in ref else m.group(1), text)
+    refs = [_plain(x) for x in ([lines] if isinstance(lines, str) else lines) if x]
+
+    def in_lines(part: str) -> bool:
+        return any(part in r for r in refs)
+
+    body = re.sub(r"[「『](.*?)[」』]", lambda m: "" if in_lines(_plain(m.group(1))) else m.group(1), text)
     body = _plain(body)
     for words in answers or []:
         w = _plain(words)
-        if any(w[k : k + LEAK_CHARS] in body for k in range(len(w) - LEAK_CHARS + 1)):
-            return True
+        for k in range(len(w) - LEAK_CHARS + 1):
+            run = w[k : k + LEAK_CHARS]
+            if run in body and not in_lines(run):
+                return True
     return False
 
 
@@ -599,7 +610,7 @@ def checked_questions(
         ok = (
             len(texts) == 1
             and note_is_ok(texts[0], QUESTION_ALLOWED)
-            and not _leaked(texts[0], answers, s.get("before_quote", ""), stat)
+            and not _leaked(texts[0], answers, s.get("before_quote", ""), stat, "leaked_questions")
         )
         s["question"] = texts[0] if ok else gaps.FALLBACK_QUESTION
         s["question_source"] = "claude" if ok else "fixed"
@@ -610,7 +621,7 @@ def checked_notes(
     cands: dict,
     answers: list[str] | None = None,
     stat: dict | None = None,
-    lines: dict[str, str] | None = None,
+    lines: dict[str, list[str]] | None = None,
 ) -> tuple[dict[str, str], set[str]]:
     """候補ごとに 1 件の文を返す。無い、重なる、検査に落ちるものは決まった文にする。
 
@@ -623,7 +634,7 @@ def checked_notes(
     fixed: set[str] = set()
     for c in cands["candidates"]:
         texts = written.get(c["id"], [])
-        said = (lines or {}).get(c["id"], "")
+        said = (lines or {}).get(c["id"], [])
         if len(texts) == 1 and note_is_ok(texts[0]) and not _leaked(texts[0], answers, said, stat):
             out[c["id"]] = texts[0]
         else:
@@ -685,7 +696,7 @@ def note(
     answers = answer_words(past)  # 答えを事実として書いた文は、決まった文にする
     stat: dict = {}
     said = {
-        r["candidate_id"]: " ".join(str(v) for k, v in r.items() if k.endswith("_quote") and v) for r in rows
+        r["candidate_id"]: [str(v) for k, v in r.items() if k.endswith("_quote") and v] for r in rows
     }  # ノート役に見せた台詞。これを引いただけなら混入と見ない
     notes, fixed = checked_notes(doc, cands, answers, stat, said)
     checked_questions(doc, found, answers, stat)
@@ -710,6 +721,7 @@ def note(
         "candidates": len(cands["candidates"]),
         "fallback": len(fixed),
         "leaked": stat.get("leaked", 0),
+        "leaked_questions": stat.get("leaked_questions", 0),
     }
     ctx.usage.extra["gaps"] = gaps.counts(found)
     ctx.usage.extra["questions"] = len(questions["questions"])
@@ -881,9 +893,7 @@ def compare_koza(
                     fallback += 1
                     continue
                 settled = compare.settle(spot, row, a, b, shown[spot["id"]])
-                said = " ".join(
-                    ln["text"] for ln in shown[spot["id"]]["lines_a"] + shown[spot["id"]]["lines_b"]
-                )
+                said = [ln["text"] for ln in shown[spot["id"]]["lines_a"] + shown[spot["id"]]["lines_b"]]
                 if leaks_answer(words, answers, said):
                     leaked += 1  # 答えを事実として書いた問いは出さない。fallback とは分けて数える
                     fallback += 1
